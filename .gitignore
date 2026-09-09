@@ -1,0 +1,5 @@
+sandbox/
+
+# Godot
+godot/.godot/
+godot/export_presets.cfg

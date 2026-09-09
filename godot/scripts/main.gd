@@ -1,0 +1,447 @@
+extends Control
+
+var candidates_list: ItemList
+var roster_list: ItemList
+var section_option: OptionButton
+var skill_option: OptionButton
+var train_cost_label: Label
+var facility_button: Button
+var node_labels: Dictionary = {} # node_id -> Label
+var funds_label: Label
+var time_label: Label
+var speed_button: Button
+var board_log: RichTextLabel
+var board_title_label: Label
+var viewing_thread_id: String = "" # 空なら全体フィード
+var next_month_button: Button
+var graph_edit: GraphEdit
+
+var dialogue_panel: PanelContainer
+var left_slot: VBoxContainer
+var right_slot: VBoxContainer
+var speaker_name_label: Label
+var dialogue_text_label: Label
+var choices_box: VBoxContainer
+var advance_hint: Button
+
+func _ready() -> void:
+	_build_ui()
+	_build_dialogue_ui()
+	_seed_demo_world()
+	TimeSystem.day_advanced.connect(_on_day_advanced)
+	TimeSystem.month_ended.connect(_on_month_ended)
+	TimeSystem.speed_changed.connect(_on_speed_changed)
+	EventDialogue.line_shown.connect(_on_dialogue_line_shown)
+	EventDialogue.finished.connect(_on_dialogue_finished)
+	_refresh_all()
+
+func _process(_delta: float) -> void:
+	_refresh_time_label()
+
+func _build_ui() -> void:
+	var root := HBoxContainer.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(root)
+
+	var left := VBoxContainer.new()
+	left.custom_minimum_size = Vector2(240, 0)
+	root.add_child(left)
+
+	funds_label = Label.new()
+	left.add_child(funds_label)
+
+	var time_row := HBoxContainer.new()
+	left.add_child(time_row)
+
+	time_label = Label.new()
+	time_label.add_theme_font_size_override("font_size", 12)
+	time_label.modulate = Color(1, 1, 1, 0.7)
+	time_row.add_child(time_label)
+
+	speed_button = Button.new()
+	speed_button.text = "1x"
+	speed_button.pressed.connect(_on_speed_pressed)
+	time_row.add_child(speed_button)
+
+	var recruit_button := Button.new()
+	recruit_button.text = "募集を掛ける(コスト: %d)" % Economy.recruitment_post_cost()
+	recruit_button.pressed.connect(_on_recruit_pressed)
+	left.add_child(recruit_button)
+
+	candidates_list = ItemList.new()
+	candidates_list.custom_minimum_size = Vector2(0, 100)
+	left.add_child(candidates_list)
+
+	var hire_button := Button.new()
+	hire_button.text = "選択した候補を雇う"
+	hire_button.pressed.connect(_on_hire_pressed)
+	left.add_child(hire_button)
+
+	var roster_label := Label.new()
+	roster_label.text = "雇用NPC"
+	left.add_child(roster_label)
+
+	roster_list = ItemList.new()
+	roster_list.custom_minimum_size = Vector2(0, 150)
+	roster_list.item_selected.connect(func(_i): _refresh_train_cost_label())
+	left.add_child(roster_list)
+
+	section_option = OptionButton.new()
+	left.add_child(section_option)
+
+	var assign_button := Button.new()
+	assign_button.text = "選択NPCを担当セクションに割り当てる"
+	assign_button.pressed.connect(_on_assign_section_pressed)
+	left.add_child(assign_button)
+
+	var view_thread_button := Button.new()
+	view_thread_button.text = "選択セクションの詳細ログを見る"
+	view_thread_button.pressed.connect(_on_view_thread_pressed)
+	left.add_child(view_thread_button)
+
+	skill_option = OptionButton.new()
+	for skill in SkillTypes.all_skills():
+		skill_option.add_item(SkillTypes.SKILL_NAMES[skill], skill)
+	skill_option.item_selected.connect(func(_i): _refresh_train_cost_label())
+	left.add_child(skill_option)
+
+	var train_row := HBoxContainer.new()
+	left.add_child(train_row)
+
+	var train_button := Button.new()
+	train_button.text = "選択NPCのスキルを訓練する"
+	train_button.pressed.connect(_on_train_pressed)
+	train_row.add_child(train_button)
+
+	train_cost_label = Label.new()
+	train_row.add_child(train_cost_label)
+
+	facility_button = Button.new()
+	facility_button.pressed.connect(_on_upgrade_facility_pressed)
+	left.add_child(facility_button)
+
+	next_month_button = Button.new()
+	next_month_button.text = "次の月へ"
+	next_month_button.pressed.connect(_on_next_month_pressed)
+	next_month_button.visible = false
+	left.add_child(next_month_button)
+
+	graph_edit = GraphEdit.new()
+	graph_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(graph_edit)
+
+	var right := VBoxContainer.new()
+	right.custom_minimum_size = Vector2(260, 0)
+	root.add_child(right)
+
+	var board_header := HBoxContainer.new()
+	right.add_child(board_header)
+
+	board_title_label = Label.new()
+	board_title_label.text = "掲示板(全体)"
+	board_header.add_child(board_title_label)
+
+	var back_to_global_button := Button.new()
+	back_to_global_button.text = "全体に戻す"
+	back_to_global_button.pressed.connect(_on_back_to_global_pressed)
+	board_header.add_child(back_to_global_button)
+
+	board_log = RichTextLabel.new()
+	board_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	right.add_child(board_log)
+
+func _build_dialogue_ui() -> void:
+	dialogue_panel = PanelContainer.new()
+	dialogue_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	dialogue_panel.offset_top = -200 # BOTTOM_WIDEはtop/bottomアンカーが同値になり高さ0になるため、明示的に高さを確保する
+	dialogue_panel.visible = false
+	add_child(dialogue_panel) # rootの後に追加することで手前に重ねて表示する
+
+	var row := HBoxContainer.new()
+	dialogue_panel.add_child(row)
+
+	left_slot = _make_portrait_slot(Color(0.3, 0.45, 0.6))
+	row.add_child(left_slot)
+
+	var center := VBoxContainer.new()
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center.custom_minimum_size = Vector2(0, 200)
+	row.add_child(center)
+
+	speaker_name_label = Label.new()
+	speaker_name_label.add_theme_font_size_override("font_size", 20)
+	center.add_child(speaker_name_label)
+
+	dialogue_text_label = Label.new()
+	dialogue_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	dialogue_text_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center.add_child(dialogue_text_label)
+
+	choices_box = VBoxContainer.new()
+	center.add_child(choices_box)
+
+	advance_hint = Button.new()
+	advance_hint.text = "▼ 次へ"
+	advance_hint.pressed.connect(func(): EventDialogue.advance())
+	center.add_child(advance_hint)
+
+	right_slot = _make_portrait_slot(Color(0.6, 0.35, 0.3))
+	row.add_child(right_slot)
+
+func _make_portrait_slot(base_color: Color) -> VBoxContainer:
+	var slot := VBoxContainer.new()
+	var rect := ColorRect.new()
+	rect.custom_minimum_size = Vector2(140, 160)
+	rect.color = base_color
+	slot.add_child(rect)
+	var name_plate := Label.new()
+	name_plate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	slot.add_child(name_plate)
+	_dim_portrait_slot(slot)
+	return slot
+
+func _dim_portrait_slot(slot: VBoxContainer) -> void:
+	slot.modulate = Color(1, 1, 1, 0.35)
+	slot.get_child(1).text = ""
+
+func _highlight_portrait_slot(slot: VBoxContainer, character_name: String) -> void:
+	slot.modulate = Color(1, 1, 1, 1)
+	slot.get_child(1).text = character_name
+
+func _on_dialogue_line_shown(line: Dictionary) -> void:
+	dialogue_panel.visible = true
+	speaker_name_label.text = line.get("name", "")
+	dialogue_text_label.text = line.get("text", "")
+
+	var side: String = line.get("side", "none")
+	if side == "left":
+		_highlight_portrait_slot(left_slot, line.get("name", ""))
+	else:
+		_dim_portrait_slot(left_slot)
+	if side == "right":
+		_highlight_portrait_slot(right_slot, line.get("name", ""))
+	else:
+		_dim_portrait_slot(right_slot)
+
+	for child in choices_box.get_children():
+		child.queue_free()
+
+	var choices: Array = line.get("choices", [])
+	choices_box.visible = not choices.is_empty()
+	advance_hint.visible = choices.is_empty()
+	for i in range(choices.size()):
+		var choice_button := Button.new()
+		choice_button.text = choices[i]["label"]
+		choice_button.pressed.connect(func(): EventDialogue.choose(i))
+		choices_box.add_child(choice_button)
+
+func _on_dialogue_finished(_outcome: String) -> void:
+	# ゲーム状態への反映(ゲート突破の適用など)はExploration側が個別に処理する。
+	# ここではUIを閉じて最新状態を反映するだけ。
+	dialogue_panel.visible = false
+	_refresh_board()
+	_refresh_map()
+
+func _seed_demo_world() -> void:
+	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが
+	# オートロードとして既に流し込み済み。ここではWorldMapの内容を
+	# UI(セクション選択・ノードグラフ)として描画するだけ。
+	for section_id in WorldMap.sections.keys():
+		section_option.add_item(WorldMap.sections[section_id]["name"], section_option.item_count)
+		section_option.set_item_metadata(section_option.item_count - 1, section_id)
+
+	var positions := _compute_node_positions()
+	var created := {}
+	for id in WorldMap.nodes.keys():
+		var gnode := GraphNode.new()
+		gnode.title = WorldMap.nodes[id]["name"]
+		gnode.position_offset = positions.get(id, Vector2.ZERO)
+		var label := Label.new()
+		gnode.add_child(label)
+		gnode.set_slot(0, true, 0, Color.WHITE, true, 0, Color.WHITE)
+		graph_edit.add_child(gnode)
+		created[id] = gnode.name
+		node_labels[id] = label
+
+	for id in WorldMap.nodes.keys():
+		for neighbor in WorldMap.neighbors(id):
+			if created.has(id) and created.has(neighbor):
+				graph_edit.connect_node(created[id], 0, created[neighbor], 0)
+
+	_create_section_frames(created)
+	_refresh_map()
+
+## セクションごとにグリッド状の自動レイアウトを組む。手動で位置を指定しなくても、
+## ノード数がどれだけ増えても(数百規模でも)セクション同士が重ならないようにする。
+func _compute_node_positions() -> Dictionary:
+	const COLUMNS := 5
+	const CELL_SIZE := Vector2(240, 160)
+	const SECTION_GAP := 80
+
+	var positions := {}
+	var y_offset := 0.0
+	for section_id in WorldMap.sections.keys():
+		var member_ids := WorldMap.nodes_in_section(section_id)
+		if member_ids.is_empty():
+			continue
+		for i in range(member_ids.size()):
+			var col := i % COLUMNS
+			var row := i / COLUMNS
+			positions[member_ids[i]] = Vector2(col * CELL_SIZE.x, y_offset + row * CELL_SIZE.y)
+		var rows := ceili(float(member_ids.size()) / COLUMNS)
+		y_offset += rows * CELL_SIZE.y + SECTION_GAP
+
+	for id in WorldMap.nodes.keys():
+		if not positions.has(id):
+			positions[id] = Vector2.ZERO # 未所属フロアの保険
+
+	return positions
+
+func _refresh_map() -> void:
+	for id in node_labels.keys():
+		var label: Label = node_labels[id]
+		if WorldMap.is_passed(id):
+			label.text = "突破済み"
+		elif WorldMap.is_found(id):
+			label.text = "発見済み(進行不可)"
+		else:
+			label.text = "未発見"
+
+func _create_section_frames(created: Dictionary) -> void:
+	for section_id in WorldMap.sections.keys():
+		var member_ids := WorldMap.nodes_in_section(section_id)
+		if member_ids.is_empty():
+			continue
+		var frame := GraphFrame.new()
+		frame.title = WorldMap.sections[section_id]["name"]
+		frame.autoshrink_enabled = true
+		frame.tint_color_enabled = true
+		frame.tint_color = Color(0.5, 0.3, 0.1, 0.3)
+		graph_edit.add_child(frame)
+		for id in member_ids:
+			if created.has(id):
+				graph_edit.attach_graph_element_to_frame(created[id], frame.name)
+
+func _on_recruit_pressed() -> void:
+	Recruitment.post_recruitment()
+	_refresh_candidates()
+	_refresh_funds()
+
+func _on_hire_pressed() -> void:
+	var selected := candidates_list.get_selected_items()
+	if selected.is_empty():
+		return
+	Recruitment.hire_candidate(selected[0])
+	_refresh_candidates()
+	_refresh_roster()
+	_refresh_funds()
+
+func _on_assign_section_pressed() -> void:
+	var selected_npc := roster_list.get_selected_items()
+	if selected_npc.is_empty() or section_option.selected < 0:
+		return
+	var npc: Dictionary = Npcs.get_roster()[selected_npc[0]]
+	var section_id: String = section_option.get_item_metadata(section_option.selected)
+	Npcs.assign_section(npc["id"], section_id)
+	_refresh_roster()
+
+func _on_view_thread_pressed() -> void:
+	if section_option.selected < 0:
+		return
+	viewing_thread_id = section_option.get_item_metadata(section_option.selected)
+	board_title_label.text = "掲示板(%s)" % WorldMap.sections[viewing_thread_id]["name"]
+	_refresh_board()
+
+func _on_back_to_global_pressed() -> void:
+	viewing_thread_id = ""
+	board_title_label.text = "掲示板(全体)"
+	_refresh_board()
+
+func _on_train_pressed() -> void:
+	var selected_npc := roster_list.get_selected_items()
+	if selected_npc.is_empty() or skill_option.selected < 0:
+		return
+	var npc: Dictionary = Npcs.get_roster()[selected_npc[0]]
+	var skill: int = skill_option.get_item_id(skill_option.selected)
+	var cost := Economy.training_cost(Npcs.skill_level(npc["id"], skill))
+	if not Economy.spend(cost):
+		return
+	Npcs.train_skill(npc["id"], skill, cost)
+	_refresh_funds()
+	_refresh_roster()
+	_refresh_train_cost_label()
+
+func _on_upgrade_facility_pressed() -> void:
+	Economy.upgrade_facility()
+	_refresh_funds()
+	_refresh_facility_button()
+
+func _on_next_month_pressed() -> void:
+	TimeSystem.confirm_and_resume()
+	next_month_button.visible = false
+
+func _on_speed_pressed() -> void:
+	TimeSystem.cycle_speed()
+
+func _on_speed_changed(multiplier: float) -> void:
+	speed_button.text = "%gx" % multiplier
+
+func _on_day_advanced(_day: int) -> void:
+	_refresh_board()
+	_refresh_map()
+	_refresh_roster()
+	_refresh_train_cost_label()
+
+func _on_month_ended(_month: int) -> void:
+	next_month_button.visible = true
+	_refresh_board()
+
+func _refresh_all() -> void:
+	_refresh_funds()
+	_refresh_candidates()
+	_refresh_roster()
+	_refresh_board()
+	_refresh_map()
+	_refresh_train_cost_label()
+	_refresh_facility_button()
+
+func _refresh_train_cost_label() -> void:
+	var selected_npc := roster_list.get_selected_items()
+	if selected_npc.is_empty() or skill_option.selected < 0:
+		train_cost_label.text = ""
+		return
+	var npc: Dictionary = Npcs.get_roster()[selected_npc[0]]
+	var skill: int = skill_option.get_item_id(skill_option.selected)
+	var level := Npcs.skill_level(npc["id"], skill)
+	train_cost_label.text = "現在Lv%d → コスト%d" % [level, Economy.training_cost(level)]
+
+func _refresh_facility_button() -> void:
+	facility_button.text = "施設を拡張する(雇用上限+2, コスト: %d)" % Economy.facility_upgrade_cost()
+
+func _refresh_funds() -> void:
+	funds_label.text = "資金: %d / 雇用上限: %d" % [Economy.funds, Economy.employ_cap]
+
+func _refresh_time_label() -> void:
+	if TimeSystem.is_paused:
+		time_label.text = "月末集計待ち"
+		return
+	var remaining := int(TimeSystem.seconds_until_month_end())
+	time_label.text = "月末まで %d:%02d" % [remaining / 60, remaining % 60]
+
+func _refresh_candidates() -> void:
+	candidates_list.clear()
+	for c in Recruitment.current_candidates:
+		candidates_list.add_item("%s (質%.1f, コスト%d)" % [c["name"], c["quality"], c["cost"]])
+
+func _refresh_roster() -> void:
+	roster_list.clear()
+	for npc in Npcs.get_roster():
+		var section_id: String = npc["assigned_section"]
+		var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else "未割当"
+		roster_list.add_item("%s (血筋: %s, 担当: %s)" % [npc["name"], npc["innate_traits"].get("bloodline", "-"), section_name])
+
+func _refresh_board() -> void:
+	board_log.clear()
+	var source: Array = Board.thread_recent(viewing_thread_id, 30) if viewing_thread_id != "" else Board.recent(20)
+	for entry in source:
+		board_log.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])

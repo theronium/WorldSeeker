@@ -1,0 +1,41 @@
+extends Node
+# 単一の資金プールと、雇用/訓練/施設拡張のコスト計算。
+
+var funds: int = 300
+var employ_cap: int = 3
+var facility_level: int = 0
+
+func can_afford(amount: int) -> bool:
+	return funds >= amount
+
+func spend(amount: int) -> bool:
+	if not can_afford(amount):
+		return false
+	funds -= amount
+	return true
+
+func earn(amount: int) -> void:
+	funds += amount
+
+func recruitment_post_cost() -> int:
+	return 50
+
+func hire_cost(candidate_quality: float) -> int:
+	# quality は 0.0(平均)〜1.0(高能力・レア特性)想定。
+	# 初回雇用の負担を抑えるため基準額は低めに設定(募集コスト50+雇用50で初回合計100)
+	return int(50 + candidate_quality * 400)
+
+func training_cost(current_skill_level: int) -> int:
+	# レベルが上がるほど次の訓練が高額になる逓増カーブ
+	return int(20 * pow(1.4, current_skill_level))
+
+func facility_upgrade_cost() -> int:
+	return int(300 * pow(1.6, facility_level))
+
+func upgrade_facility() -> bool:
+	var cost := facility_upgrade_cost()
+	if not spend(cost):
+		return false
+	facility_level += 1
+	employ_cap += 2
+	return true
