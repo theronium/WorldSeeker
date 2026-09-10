@@ -91,6 +91,7 @@ func _peek_slot(slot_id: int) -> Dictionary:
 ## 新規スロットを作成してアクティブにする(design.md 8.2「スキーマ再プレイ」)。
 ## ワールドスキーマDB(world_schema_db.gd)経由でWorldMapを再構築するため、
 ## GDScript直書き経路と同じ形の「まっさらな世界」から始まることをこの一手が保証する。
+## 新規プレイは常に最新のワールドスキーマ(WorldSchemaDb.current_version_id)を使う。
 func create_new_slot() -> int:
 	var next_id := _next_free_slot_id()
 	save_game() # 離れる前のスロットを保存
@@ -100,7 +101,7 @@ func create_new_slot() -> int:
 	Recruitment.reset()
 	Board.reset()
 	ActionLog.reset()
-	WorldSchemaDb.import_into_worldmap()
+	WorldSchemaDb.import_into_worldmap(WorldSchemaDb.current_version_id)
 	_set_active_slot(next_id)
 	save_game()
 	return next_id
@@ -111,13 +112,35 @@ func _next_free_slot_id() -> int:
 		max_id = max(max_id, int(slot["slot_id"]))
 	return max_id + 1
 
-## 既存スロットに切り替える。WorldMapをスキーマDBからまっさらに再構築してから
-## そのスロットの進行状態を上書きする(別スロットの発見/突破状態が混ざらないようにするため)。
+## 指定スロットが最後に保存した時点のワールドスキーマバージョンIDを返す(未保存/未記録なら空文字)。
+func get_slot_schema_version(slot_id: int) -> String:
+	var path := _slot_path(slot_id)
+	if not FileAccess.file_exists(path):
+		return ""
+	var db := SQLite.new()
+	db.path = path
+	if not db.open_db():
+		return ""
+	_ensure_schema(db)
+	db.query_with_bindings("SELECT value FROM meta WHERE key = ?", ["schema_version"])
+	var result := ""
+	if not db.query_result.is_empty():
+		result = String(db.query_result[0]["value"])
+	db.close_db()
+	return result
+
+## 既存スロットに切り替える。WorldMapを「そのスロットが生成された時点のワールドスキーマ
+## バージョン」からまっさらに再構築してから、そのスロットの進行状態を上書きする
+## (別スロットの発見/突破状態が混ざらないようにするため。スロットに記録がなければ
+## 現行バージョンにフォールバックする)。
 func switch_to_slot(slot_id: int) -> bool:
 	if current_slot_id != slot_id:
 		save_game()
+	var pinned_version := get_slot_schema_version(slot_id)
+	if pinned_version == "":
+		pinned_version = WorldSchemaDb.current_version_id
 	_set_active_slot(slot_id)
-	WorldSchemaDb.import_into_worldmap()
+	WorldSchemaDb.import_into_worldmap(pinned_version)
 	return load_game()
 
 ## スロットを削除する。アクティブなスロットは(切り替え先が定まらないため)削除できない。
@@ -195,6 +218,9 @@ func save_game() -> void:
 	meta["npc_next_id"] = npc_data["next_id"]
 	ActionLog.ensure_run_id()
 	meta["run_id"] = ActionLog.run_id
+	# WorldMapが今実際に読み込んでいるスキーマバージョンを記録しておく(古いバージョンでも良い。
+	# world_schema_db.gdのコメント参照)。次回このスロットを開く時にswitch_to_slot()が使う。
+	meta["schema_version"] = WorldSchemaDb.active_version_id
 	for key in meta.keys():
 		db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", [key, meta[key]])
 

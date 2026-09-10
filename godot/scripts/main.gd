@@ -39,6 +39,14 @@ func _ready() -> void:
 	_build_dialogue_ui()
 	_build_action_log_ui()
 	_build_slot_ui()
+	# アクティブなセーブスロットが、今のworld_data.gdより古いワールドスキーマで生成された
+	# ものであれば、そのバージョンでWorldMapを作り直してからUIを組み立てる(スキーマの
+	# 複数バージョン管理。design.md 8.2/11章)。ノードグラフのUI(_seed_demo_world)は
+	# 実際にWorldMapに読み込まれた内容を基準にする必要があるため、この判定は
+	# _seed_demo_world()より前に行う。
+	var pinned_version := SaveSystem.get_slot_schema_version(SaveSystem.current_slot_id)
+	if pinned_version != "" and pinned_version != WorldSchemaDb.active_version_id:
+		WorldSchemaDb.import_into_worldmap(pinned_version)
 	_seed_demo_world()
 	SaveSystem.load_game()
 	TimeSystem.day_advanced.connect(_on_day_advanced)

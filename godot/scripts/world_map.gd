@@ -110,6 +110,14 @@ func load_progress(states: Dictionary) -> void:
 			nodes[id]["found"] = bool(states[id]["found"])
 			nodes[id]["passed"] = bool(states[id]["passed"])
 
+## ワールドスキーマの再構築前に呼ぶ(world_schema_db.gdのimport_into_worldmap())。
+## add_area/add_section/add_nodeは上書きのみで削除はしないため、これを呼ばずに
+## 別バージョンを読み込むと、前のバージョンにしかない要素が残ってしまう。
+func reset() -> void:
+	areas = {}
+	sections = {}
+	nodes = {}
+
 func frontier_for_section(section_id: String) -> Array:
 	# そのセクション内で、通過済みノードに隣接するがまだ未発見のノード一覧。
 	# 隣接元は他セクションの通過済みノードでもよい(ダンジョンの入口が村側からつながる場合など)。
