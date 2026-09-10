@@ -42,3 +42,17 @@ func entries_between(start_day: int, end_day: int) -> Array:
 
 func immediate_entries_between(start_day: int, end_day: int) -> Array:
 	return entries_between(start_day, end_day).filter(func(e): return e["importance"] == Importance.MAJOR)
+
+func save_state() -> Dictionary:
+	return {"entries": entries, "threads": threads}
+
+func load_state(data: Dictionary) -> void:
+	entries = data.get("entries", [])
+	for entry in entries:
+		entry["day"] = int(entry["day"])
+		entry["importance"] = int(entry["importance"])
+	threads = data.get("threads", {})
+	for thread_id in threads.keys():
+		for entry in threads[thread_id]["entries"]:
+			entry["day"] = int(entry["day"])
+			entry["importance"] = int(entry["importance"])

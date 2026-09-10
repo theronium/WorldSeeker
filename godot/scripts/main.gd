@@ -28,6 +28,7 @@ func _ready() -> void:
 	_build_ui()
 	_build_dialogue_ui()
 	_seed_demo_world()
+	SaveSystem.load_game()
 	TimeSystem.day_advanced.connect(_on_day_advanced)
 	TimeSystem.month_ended.connect(_on_month_ended)
 	TimeSystem.speed_changed.connect(_on_speed_changed)
@@ -37,6 +38,11 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_refresh_time_label()
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		SaveSystem.save_game()
+		get_tree().quit()
 
 func _build_ui() -> void:
 	var root := HBoxContainer.new()
@@ -391,6 +397,7 @@ func _on_day_advanced(_day: int) -> void:
 	_refresh_map()
 	_refresh_roster()
 	_refresh_train_cost_label()
+	SaveSystem.save_game()
 
 func _on_month_ended(_month: int) -> void:
 	next_month_button.visible = true

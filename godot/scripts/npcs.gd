@@ -85,3 +85,27 @@ func is_available(id: int, current_day: int) -> bool:
 	npc["status"] = Status.EXPLORING
 	npc["hp"] = npc["max_hp"]
 	return true
+
+func save_state() -> Dictionary:
+	return {"next_id": _next_id, "roster": roster}
+
+## JSON往復後はDictionaryキーが全て文字列に、数値が全てfloatになるため、
+## id/スキル種別(int)をキーに使うroster/skillsは明示的に復元し直す必要がある。
+func load_state(data: Dictionary) -> void:
+	roster = {}
+	var max_id := 0
+	for key in data.get("roster", {}).keys():
+		var id := int(key)
+		var npc: Dictionary = data["roster"][key]
+		npc["id"] = id
+		npc["status"] = int(npc["status"])
+		npc["recovering_until_day"] = int(npc["recovering_until_day"])
+		npc["combat_policy"]["action"] = int(npc["combat_policy"]["action"])
+		var skills := {}
+		for skill_key in npc["skills"].keys():
+			var entry: Dictionary = npc["skills"][skill_key]
+			skills[int(skill_key)] = {"level": int(entry["level"]), "exp": int(entry["exp"])}
+		npc["skills"] = skills
+		roster[id] = npc
+		max_id = max(max_id, id)
+	_next_id = max(int(data.get("next_id", 1)), max_id + 1)

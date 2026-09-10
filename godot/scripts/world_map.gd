@@ -97,6 +97,19 @@ func can_pass_gate(id: String, npc_id: int) -> bool:
 		_:
 			return true
 
+func save_progress() -> Dictionary:
+	var result := {}
+	for id in nodes.keys():
+		if nodes[id]["found"]:
+			result[id] = {"found": true, "passed": nodes[id]["passed"]}
+	return result
+
+func load_progress(states: Dictionary) -> void:
+	for id in states.keys():
+		if nodes.has(id):
+			nodes[id]["found"] = bool(states[id]["found"])
+			nodes[id]["passed"] = bool(states[id]["passed"])
+
 func frontier_for_section(section_id: String) -> Array:
 	# そのセクション内で、通過済みノードに隣接するがまだ未発見のノード一覧。
 	# 隣接元は他セクションの通過済みノードでもよい(ダンジョンの入口が村側からつながる場合など)。
