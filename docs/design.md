@@ -219,7 +219,7 @@ OpenWorld的なマップを、技能を割り振ったNPCに探索させる放�
 
 **現状の実装（スキーマ再プレイ＝複数セーブスロット）**: 8.1節の`world_schema_db.gd`によるワールドスキーマのDB出力（`export_snapshot()`）に加え、そこからWorldMap/Itemsを再構築する`import_into_worldmap()`を実装した。`world_data.gd`の`add_area`/`add_section`/`add_node`/`set_event_scripts`呼び出し経路と全く同じWorldMapの公開メソッドを通るため、GDScript直書き経路とDB経由の経路は常に同じ形のWorldMapに収束する。どのノードが「最初から突破済み」（village/forest_edgeなどのスタート地点）かはスキーマDBの`nodes.initially_passed`列に記録し、`world_schema_db.gd`の`_ready()`が`WorldData._ready()`の直後・`SaveSystem.load_game()`より前に実行される（project.godotのautoload順）ことを利用して、実プレイの進行状態と混ざらない「まっさらな初期状態」だけを捉えている。
 
-セーブデータは`user://saves/slot_<id>.sqlite`としてスロットごとに分離し（テーブル定義は共通、パスだけが違う）、アクティブなスロットIDは`user://worldseeker_meta.cfg`で管理する。`SaveSystem.create_new_slot()`は新しいスロットを作り、Economy/TimeSystem/Npcs/Recruitment/Board/ActionLogをそれぞれの`reset()`で初期化し、`WorldSchemaDb.import_into_worldmap()`でワールドを再構築してから保存する。`SaveSystem.switch_to_slot()`で既存スロットに切り替える際も、他スロットの発見/突破状態が混ざらないよう必ず`import_into_worldmap()`でWorldMapをまっさらに戻してからそのスロットの進行状態を読み込む。ワールドスキーマ自体は全スロット共通（マップは共有、進行状態だけがスロットごとに違う設計）。UIは`main.gd`の「セーブスロット...」パネル（スロット一覧・切替・確認ダイアログ付きの新規プレイ開始ボタン）。多スロットでのNPC/進行状態の分離とスキーマ再構築の一致を、シミュレーションとGodotエディタでの実行の両方で確認済み。
+セーブデータは`user://saves/slot_<id>.sqlite`としてスロットごとに分離し（テーブル定義は共通、パスだけが違う）、アクティブなスロットIDは`user://worldseeker_meta.cfg`で管理する。`SaveSystem.create_new_slot()`は新しいスロットを作り、Economy/TimeSystem/Npcs/Recruitment/Board/ActionLogをそれぞれの`reset()`で初期化し、`WorldSchemaDb.import_into_worldmap()`でワールドを再構築してから保存する。`SaveSystem.switch_to_slot()`で既存スロットに切り替える際も、他スロットの発見/突破状態が混ざらないよう必ず`import_into_worldmap()`でWorldMapをまっさらに戻してからそのスロットの進行状態を読み込む。ワールドスキーマ自体は全スロット共通（マップは共有、進行状態だけがスロットごとに違う設計）。`SaveSystem.delete_slot()`でスロットを削除できる（アクティブな＝現在開いているスロットは切り替え先が定まらないため削除不可、ガードしている）。UIは`main.gd`の「セーブスロット...」パネル（スロット一覧・切替・削除・確認ダイアログ付きの新規プレイ開始ボタン。削除も確認ダイアログ経由）。多スロットでのNPC/進行状態の分離とスキーマ再構築の一致、削除の安全ガードを、シミュレーションとGodotエディタでの実行の両方で確認済み。
 
 ## 9. マルチプレイ展望
 
@@ -239,7 +239,6 @@ OpenWorld的なマップを、技能を割り振ったNPCに探索させる放�
 
 ## 11. 検討中・未決定事項
 
-- **セーブスロットの削除UI**: スロットの一覧・切替・新規作成はできるが、不要になったスロットを消す操作はまだない
 - **ワールドスキーマ自体の複数バージョン管理**: 現状はスキーマDBが「起動のたびに`world_data.gd`の内容で上書きする1スナップショットのみ」。将来world_data.gdの内容が変わった後も、既存スロットが自分の生成時点のマップ形状を保ち続けたい場合はスロットごとにスキーマを固定する仕組みが必要（現状は全スロットが常に最新のworld_data.gdを共有する設計）
 - 6章の数値表は初期チューニング値であり、実プレイでの調整が必要（特に施設拡張の成長カーブの段階数・上限アップ幅は未検証）
 - 野良NPCの発見頻度（現在: セクションあたり5%/日）は初期値であり、実プレイでの調整が必要

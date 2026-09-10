@@ -31,6 +31,8 @@ var action_log_text: RichTextLabel
 var slot_panel: PanelContainer
 var slot_list: ItemList
 var new_game_confirm: ConfirmationDialog
+var delete_slot_confirm: ConfirmationDialog
+var _pending_delete_slot_id: int = -1
 
 func _ready() -> void:
 	_build_ui()
@@ -363,6 +365,11 @@ func _build_slot_ui() -> void:
 	open_button.pressed.connect(_on_open_slot_pressed)
 	col.add_child(open_button)
 
+	var delete_button := Button.new()
+	delete_button.text = "選択したスロットを削除する"
+	delete_button.pressed.connect(_on_delete_slot_pressed)
+	col.add_child(delete_button)
+
 	var new_game_button := Button.new()
 	new_game_button.text = "新規プレイを開始する"
 	new_game_button.pressed.connect(func(): new_game_confirm.popup_centered())
@@ -372,6 +379,10 @@ func _build_slot_ui() -> void:
 	new_game_confirm.dialog_text = "現在の進行とは別に、新しいセーブスロットでゼロから始めます。よろしいですか？"
 	new_game_confirm.confirmed.connect(_on_new_game_confirmed)
 	add_child(new_game_confirm)
+
+	delete_slot_confirm = ConfirmationDialog.new()
+	delete_slot_confirm.confirmed.connect(_on_delete_slot_confirmed)
+	add_child(delete_slot_confirm)
 
 func _on_open_slots_pressed() -> void:
 	_refresh_slot_list()
@@ -402,6 +413,22 @@ func _on_new_game_confirmed() -> void:
 	SaveSystem.create_new_slot()
 	_refresh_all()
 	slot_panel.visible = false
+
+func _on_delete_slot_pressed() -> void:
+	var selected := slot_list.get_selected_items()
+	if selected.is_empty():
+		return
+	var slot_id: int = slot_list.get_item_metadata(selected[0])
+	if slot_id == SaveSystem.current_slot_id:
+		return # 開いている(アクティブな)スロットは削除できない
+	_pending_delete_slot_id = slot_id
+	delete_slot_confirm.dialog_text = "スロット%dを完全に削除します。元に戻せません。よろしいですか？" % slot_id
+	delete_slot_confirm.popup_centered()
+
+func _on_delete_slot_confirmed() -> void:
+	SaveSystem.delete_slot(_pending_delete_slot_id)
+	_pending_delete_slot_id = -1
+	_refresh_slot_list()
 
 func _seed_demo_world() -> void:
 	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが

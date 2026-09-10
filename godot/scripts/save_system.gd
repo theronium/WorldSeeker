@@ -120,6 +120,15 @@ func switch_to_slot(slot_id: int) -> bool:
 	WorldSchemaDb.import_into_worldmap()
 	return load_game()
 
+## スロットを削除する。アクティブなスロットは(切り替え先が定まらないため)削除できない。
+func delete_slot(slot_id: int) -> bool:
+	if slot_id == current_slot_id:
+		return false
+	var path := _slot_path(slot_id)
+	if not FileAccess.file_exists(path):
+		return false
+	return DirAccess.remove_absolute(path) == OK
+
 ## 行動ログビューアー用: 現在のスロットのaction_logを取得する(npc_id<0で全NPC分)。
 func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
 	var result := []
