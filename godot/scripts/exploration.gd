@@ -36,7 +36,7 @@ func _retry_gates(npc: Dictionary, current_day: int) -> void:
 			if _attempt_gate(npc["id"], node_id, current_day):
 				WorldMap.mark_passed(node_id)
 				_grant_item_reward(npc["id"], node)
-				_post_floor(npc["name"], node_id, current_day, "%sが「%s」を突破した" % [npc["name"], node["name"]])
+				_post_floor(npc["name"], node_id, current_day, "%sが「%s」を突破した" % [npc["name"], node["name"]], "gate_pass", npc["id"])
 
 func _attempt_discovery(npc: Dictionary, current_day: int) -> void:
 	# 担当セクションの未発見の隣接ノード全てに、並列で1回ずつ発見を試みる
@@ -98,16 +98,20 @@ func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool,
 		WorldMap.mark_passed(node_id)
 		if npc_id != -1:
 			_grant_item_reward(npc_id, node)
-		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見した" % [discoverer_name, node["name"]])
+		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見した" % [discoverer_name, node["name"]], "discover_pass", npc_id)
 	else:
-		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見したが、まだ先へ進めない" % [discoverer_name, node["name"]])
+		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見したが、まだ先へ進めない" % [discoverer_name, node["name"]], "discover_blocked", npc_id)
 
 	if not milestone["was_section_entered"]:
 		var section_name: String = WorldMap.sections[milestone["section_id"]]["name"] if WorldMap.sections.has(milestone["section_id"]) else milestone["section_id"]
-		Board.post(current_day, "「%s」に初めて到達した" % section_name, Board.Importance.MAJOR, "exploration")
+		var text := "「%s」に初めて到達した" % section_name
+		Board.post(current_day, text, Board.Importance.MAJOR, "exploration")
+		ActionLog.record(current_day, "milestone_section", text, npc_id, node_id, milestone["section_id"])
 	if milestone["area_id"] != "" and not milestone["was_area_entered"]:
 		var area_name: String = WorldMap.areas[milestone["area_id"]]["name"] if WorldMap.areas.has(milestone["area_id"]) else milestone["area_id"]
-		Board.post(current_day, "「%s」に初めて足を踏み入れた" % area_name, Board.Importance.MAJOR, "exploration")
+		var text := "「%s」に初めて足を踏み入れた" % area_name
+		Board.post(current_day, text, Board.Importance.MAJOR, "exploration")
+		ActionLog.record(current_day, "milestone_area", text, npc_id, node_id, milestone["section_id"])
 
 func _grant_item_reward(npc_id: int, node: Dictionary) -> void:
 	var item_id: String = node.get("item_reward", "")
@@ -115,10 +119,11 @@ func _grant_item_reward(npc_id: int, node: Dictionary) -> void:
 		return
 	Items.grant(npc_id, item_id)
 
-func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String) -> void:
+func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
 	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "exploration")
+	ActionLog.record(current_day, event_type, text, npc_id, node_id, section_id)
 
 func _attempt_gate(npc_id: int, node_id: String, current_day: int) -> bool:
 	var gate: Dictionary = WorldMap.nodes[node_id]["gate"]

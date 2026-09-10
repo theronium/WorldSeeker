@@ -9,6 +9,10 @@ extends Node
 # 保存のたびに全テーブルをDELETEしてから現在の状態を丸ごと再INSERTする(差分更新はしない)。
 # npc_id/skillなどint型のキーはSQLiteのINTEGERカラムに素のint/floatとしてバインドしており、
 # JSON保存で問題になった「数値が全てfloat化・キーが全て文字列化される」事象は発生しない。
+#
+# 例外は`action_log`テーブル(action_log.gd、design.md 8.2の「記録再生」用): こちらは
+# 「現在の状態」ではなく「これまで起きた出来事の履歴」なので、他テーブルと違いDELETEの
+# 対象にせず、ActionLog側にバッファされた分だけをINSERTで追記する。
 
 const SAVE_PATH := "user://worldseeker_save.sqlite"
 
@@ -30,6 +34,10 @@ func _ensure_schema(db: SQLite) -> void:
 	db.query("CREATE TABLE IF NOT EXISTS board_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_threads (thread_id TEXT PRIMARY KEY, title TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_thread_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
+	db.query("""CREATE TABLE IF NOT EXISTS action_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, day INTEGER, event_type TEXT,
+		npc_id INTEGER, node_id TEXT, section_id TEXT, text TEXT
+	)""")
 
 func save_game() -> void:
 	var db := SQLite.new()
@@ -52,6 +60,8 @@ func save_game() -> void:
 	}
 	var npc_data: Dictionary = Npcs.save_state()
 	meta["npc_next_id"] = npc_data["next_id"]
+	ActionLog.ensure_run_id()
+	meta["run_id"] = ActionLog.run_id
 	for key in meta.keys():
 		db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", [key, meta[key]])
 
@@ -92,6 +102,8 @@ func save_game() -> void:
 				"INSERT INTO board_thread_entries (thread_id, day, text, importance, source) VALUES (?, ?, ?, ?, ?)",
 				[thread_id, entry["day"], entry["text"], entry["importance"], entry["source"]])
 
+	ActionLog.flush(db)
+
 	db.query("COMMIT")
 	db.close_db()
 
@@ -119,6 +131,8 @@ func load_game() -> bool:
 	TimeSystem.current_month = int(meta.get("current_month", TimeSystem.current_month))
 	TimeSystem.is_paused = bool(int(meta.get("is_paused", 0)))
 	TimeSystem.speed_multiplier = float(meta.get("speed_multiplier", 1.0))
+	if meta.has("run_id"):
+		ActionLog.run_id = String(meta["run_id"])
 
 	var roster := {}
 	db.query("SELECT * FROM npcs")
