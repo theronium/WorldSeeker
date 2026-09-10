@@ -48,3 +48,11 @@ func seconds_until_month_end() -> float:
 	var days_remaining := DAYS_PER_MONTH - day_in_month
 	var real_seconds_remaining := (days_remaining * SECONDS_PER_DAY - _accumulated) / speed_multiplier
 	return max(0.0, real_seconds_remaining)
+
+## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
+func reset() -> void:
+	current_day = 0
+	current_month = 0
+	is_paused = false
+	speed_multiplier = 1.0
+	_accumulated = 0.0

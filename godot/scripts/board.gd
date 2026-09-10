@@ -56,3 +56,8 @@ func load_state(data: Dictionary) -> void:
 		for entry in threads[thread_id]["entries"]:
 			entry["day"] = int(entry["day"])
 			entry["importance"] = int(entry["importance"])
+
+## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
+func reset() -> void:
+	entries = []
+	threads = {}

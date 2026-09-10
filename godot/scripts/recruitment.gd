@@ -38,3 +38,7 @@ func hire_candidate(index: int) -> int:
 	var id := Npcs.hire(candidate["name"], candidate["innate_traits"], candidate["skills"])
 	current_candidates.remove_at(index)
 	return id
+
+## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
+func reset() -> void:
+	current_candidates = []

@@ -109,3 +109,8 @@ func load_state(data: Dictionary) -> void:
 		roster[id] = npc
 		max_id = max(max_id, id)
 	_next_id = max(int(data.get("next_id", 1)), max_id + 1)
+
+## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
+func reset() -> void:
+	roster = {}
+	_next_id = 1

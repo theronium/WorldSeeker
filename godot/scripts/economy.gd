@@ -39,3 +39,9 @@ func upgrade_facility() -> bool:
 	facility_level += 1
 	employ_cap += 2
 	return true
+
+## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
+func reset() -> void:
+	funds = 300
+	employ_cap = 3
+	facility_level = 0

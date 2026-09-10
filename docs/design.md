@@ -215,9 +215,11 @@ OpenWorld的なマップを、技能を割り振ったNPCに探索させる放�
 
 **現状の実装（進行状態の保存/復元）**: `save_system.gd`が`addons/godot-sqlite`(GDExtension、Windows x86_64バイナリのみをリポジトリに同梱)経由でSQLiteファイル(`user://worldseeker_save.sqlite`)に進行状態を保存/復元する。保存対象は資金・雇用NPC名簿(血筋/スキル経験値/所持品込み)・ワールドの発見/突破状態・掲示板ログ(全体+スレッド)。テーブルは`meta`(スカラー値のキーバリュー)・`npcs`/`npc_traits`/`npc_skills`/`npc_inventory`(NPC関連を正規化、JSON blobは使わない)・`world_progress`・`board_entries`/`board_threads`/`board_thread_entries`・`action_log`(後述)の10個。`meta`以下`board_thread_entries`までは保存のたびに全テーブルをDELETEしてから現在の状態を丸ごと再INSERTする(差分更新はしない)。日次(`TimeSystem.day_advanced`)およびウィンドウを閉じたタイミングで自動保存し、起動時に自動ロードする(手動セーブ/ロードUIはなし、放置ゲームとして常時オートセーブ方針)。多NPC・複数セクションをまたいだ状態(血筋/所持品/スキル値を含む)での保存→ロード一致をシミュレーションで確認済み。
 
-**現状の実装（記録再生＝行動ログ）**: `action_log.gd`が担当。採用方式は**ログビューアー方式**（決定論的リプレイ＝乱数のシード管理をして同じ結果を再現する方式ではない）。粒度は掲示板と同じ「意味のある出来事のみ」（発見・ゲート突破・マイルストーン。日々のゲート再挑戦の失敗などルーチン判定は記録しない）で、`exploration.gd`の掲示板投稿と同じ箇所から構造化された行を追加で記録する。掲示板の`text`が表示用の整形済み文字列だけを持つのに対し、`action_log`テーブルは`day`/`event_type`/`npc_id`/`node_id`/`section_id`という構造化列を持ち、後から特定NPCやノードで絞り込める。他テーブルと異なり**削除されない追記専用ログ**で、`ActionLog`がメモリ上にバッファした新規分だけを保存のたびにINSERTする。プレイ回をまたいでも区別できるよう`run_id`を発行し、`meta`テーブル経由でセーブ/ロードされる。行動ログを実際に閲覧するビューアーUIはまだ実装しておらず、次の課題。
+**現状の実装（記録再生＝行動ログ）**: `action_log.gd`が担当。採用方式は**ログビューアー方式**（決定論的リプレイ＝乱数のシード管理をして同じ結果を再現する方式ではない）。粒度は掲示板と同じ「意味のある出来事のみ」（発見・ゲート突破・マイルストーン。日々のゲート再挑戦の失敗などルーチン判定は記録しない）で、`exploration.gd`の掲示板投稿と同じ箇所から構造化された行を追加で記録する。掲示板の`text`が表示用の整形済み文字列だけを持つのに対し、`action_log`テーブルは`day`/`event_type`/`npc_id`/`node_id`/`section_id`という構造化列を持ち、後から特定NPCやノードで絞り込める。他テーブルと異なり**削除されない追記専用ログ**で、`ActionLog`がメモリ上にバッファした新規分だけを保存のたびにINSERTする。プレイ回をまたいでも区別できるよう`run_id`を発行し、`meta`テーブル経由でセーブ/ロードされる。閲覧用ビューアーUIは`main.gd`の専用パネル（「行動ログを見る」ボタン）として実装済みで、NPCで絞り込める（`SaveSystem.query_action_log()`がその場でDBに問い合わせる。常時メモリに保持はしない）。
 
-**現状の実装（スキーマ再プレイ）**: 8.1節の`world_schema_db.gd`によるワールドスキーマのDB出力が、このテンプレート保存の土台になる。ただし現状は「起動のたびに`world_data.gd`の内容で上書きする1スナップショットのみ」で、複数バージョンの履歴管理や、DBからの読み込みで実際に新規プレイを開始する導線（別セーブスロット等）はまだない。多NPC・複数セクションでのシミュレーションで、スキーマDBの行数(エリア/セクション/ノード/接続/イベント台本)がWorldMapの実データと完全一致することを確認済み。
+**現状の実装（スキーマ再プレイ＝複数セーブスロット）**: 8.1節の`world_schema_db.gd`によるワールドスキーマのDB出力（`export_snapshot()`）に加え、そこからWorldMap/Itemsを再構築する`import_into_worldmap()`を実装した。`world_data.gd`の`add_area`/`add_section`/`add_node`/`set_event_scripts`呼び出し経路と全く同じWorldMapの公開メソッドを通るため、GDScript直書き経路とDB経由の経路は常に同じ形のWorldMapに収束する。どのノードが「最初から突破済み」（village/forest_edgeなどのスタート地点）かはスキーマDBの`nodes.initially_passed`列に記録し、`world_schema_db.gd`の`_ready()`が`WorldData._ready()`の直後・`SaveSystem.load_game()`より前に実行される（project.godotのautoload順）ことを利用して、実プレイの進行状態と混ざらない「まっさらな初期状態」だけを捉えている。
+
+セーブデータは`user://saves/slot_<id>.sqlite`としてスロットごとに分離し（テーブル定義は共通、パスだけが違う）、アクティブなスロットIDは`user://worldseeker_meta.cfg`で管理する。`SaveSystem.create_new_slot()`は新しいスロットを作り、Economy/TimeSystem/Npcs/Recruitment/Board/ActionLogをそれぞれの`reset()`で初期化し、`WorldSchemaDb.import_into_worldmap()`でワールドを再構築してから保存する。`SaveSystem.switch_to_slot()`で既存スロットに切り替える際も、他スロットの発見/突破状態が混ざらないよう必ず`import_into_worldmap()`でWorldMapをまっさらに戻してからそのスロットの進行状態を読み込む。ワールドスキーマ自体は全スロット共通（マップは共有、進行状態だけがスロットごとに違う設計）。UIは`main.gd`の「セーブスロット...」パネル（スロット一覧・切替・確認ダイアログ付きの新規プレイ開始ボタン）。多スロットでのNPC/進行状態の分離とスキーマ再構築の一致を、シミュレーションとGodotエディタでの実行の両方で確認済み。
 
 ## 9. マルチプレイ展望
 
@@ -230,15 +232,15 @@ OpenWorld的なマップを、技能を割り振ったNPCに探索させる放�
 - **エンジン**: Godot 4.7（GDScript）。既存プロジェクト（MyCells）と同じ構成で、学習コストを抑える
 - **配布形態**: Windowsネイティブ export（.exe）。まずはローカルで自分だけが遊ぶ想定（9章のマルチプレイ展望とは別に、配布はローカル前提から始める）
 - **マップ描画**: Godot標準の `GraphEdit` / `GraphNode` を使い、ノードグラフをそのまま可視化する
-- **永続化**: `GDSQLite`アドオン（`godot/addons/godot-sqlite`、Windows向けバイナリのみ同梱）を2つの用途に使い分けている。(1) `save_system.gd`: セーブデータ（進行状態: 資金・NPC・ワールド探索進捗・掲示板ログ・行動ログ）を`user://worldseeker_save.sqlite`に保存（8.2節）。(2) `world_schema_db.gd`: `world_data.gd`が構築したワールドスキーマを`user://worldseeker_world_schema.sqlite`へ起動のたびにスナップショット出力（8.1節）。用途が異なるため意図的に別ファイルに分けている
+- **永続化**: `GDSQLite`アドオン（`godot/addons/godot-sqlite`、Windows向けバイナリのみ同梱）を2つの用途に使い分けている。(1) `save_system.gd`: セーブデータ（進行状態: 資金・NPC・ワールド探索進捗・掲示板ログ・行動ログ）を`user://saves/slot_<id>.sqlite`に複数セーブスロットとして保存（8.2節）。(2) `world_schema_db.gd`: `world_data.gd`が構築したワールドスキーマを`user://worldseeker_world_schema.sqlite`へ起動のたびにスナップショット出力し、新規プレイ開始時にはそこからWorldMapを再構築する（8.1/8.2節）。用途が異なるため意図的に別ファイルに分けている
 - **プロジェクト構成**: `godot/` 以下にGodotプロジェクトを配置。主要システムはautoloadシングルトンとして分割（`time_system.gd` / `world_map.gd` / `items.gd` / `world_data.gd` / `world_schema_db.gd` / `npcs.gd` / `wild_npcs.gd` / `recruitment.gd` / `economy.gd` / `board.gd` / `action_log.gd` / `combat.gd` / `event_dialogue.gd` / `exploration.gd` / `save_system.gd`）。スキル種別は `skill_types.gd`（`class_name SkillTypes`）で共有定義。`world_data.gd`はコンテンツ定義専用で、UIコード（`main.gd`）から独立している。`items.gd`はアイテム定義とNPC所持品を管理する最小限のシステム
 - **自動探索ループ検証済み**: NPCの雇用→担当セクション割り当て→日次の発見/ゲート突破（スキル・戦闘）→イベント会話の自動発火→掲示板記録までの一連の流れを、シミュレーションで動作確認済み
 - **初期スキャフォールド検証済み**: `scenes/main.tscn` + `scripts/main.gd` で、募集→候補提示→雇用、ノードグラフのマップ表示、掲示板ログ表示までの最小ループが実際に動作することをGodotエディタでの起動確認済み
 
 ## 11. 検討中・未決定事項
 
-- **行動ログのビューアーUI**: `action_log.gd`への記録自体は実装済みだが、それを実際に閲覧するプレイ画面はまだない
-- **スキーマDBからの新規プレイ開始導線**: `world_schema_db.gd`によるスナップショット出力・シミュレーションでの整合性確認までは完了したが、「保存したテンプレートを選んでゼロから新規プレイを始める」という複数セーブスロット的なUI/フローは未着手（現状は常に`world_data.gd`起動→スナップショット上書きの単一継続プレイのみ）
+- **セーブスロットの削除UI**: スロットの一覧・切替・新規作成はできるが、不要になったスロットを消す操作はまだない
+- **ワールドスキーマ自体の複数バージョン管理**: 現状はスキーマDBが「起動のたびに`world_data.gd`の内容で上書きする1スナップショットのみ」。将来world_data.gdの内容が変わった後も、既存スロットが自分の生成時点のマップ形状を保ち続けたい場合はスロットごとにスキーマを固定する仕組みが必要（現状は全スロットが常に最新のworld_data.gdを共有する設計）
 - 6章の数値表は初期チューニング値であり、実プレイでの調整が必要（特に施設拡張の成長カーブの段階数・上限アップ幅は未検証）
 - 野良NPCの発見頻度（現在: セクションあたり5%/日）は初期値であり、実プレイでの調整が必要
 - **コンテンツのさらなる肉付け**: 2エリア・10セクション・45フロアまで拡張したが、5.1節の「数百ノード」目標にはまだ遠い。`world_data.gd`に構造は用意済みで、セクション追加やエリア追加は`add_area`/`add_section`/`add_node`を呼ぶだけなので、今後も継続的に育てていく

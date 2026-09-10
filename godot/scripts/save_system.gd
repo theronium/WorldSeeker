@@ -13,13 +13,136 @@ extends Node
 # 例外は`action_log`テーブル(action_log.gd、design.md 8.2の「記録再生」用): こちらは
 # 「現在の状態」ではなく「これまで起きた出来事の履歴」なので、他テーブルと違いDELETEの
 # 対象にせず、ActionLog側にバッファされた分だけをINSERTで追記する。
+#
+# 複数セーブスロット対応: セーブファイルは`user://saves/slot_<id>.sqlite`としてスロットごとに
+# 分ける(テーブル定義はスロット間で共通、パスだけが変わる)。どのスロットがアクティブかは
+# `user://worldseeker_meta.cfg`に1行だけ持たせている。ワールドスキーマ(world_schema_db.gd)は
+# 全スロット共通の単一ファイルのまま(スロットは「進行状態」の違いであり、マップ自体は
+# 共有する設計。design.md 8.2参照)。
 
-const SAVE_PATH := "user://worldseeker_save.sqlite"
+const SLOT_DIR := "user://saves"
+const META_PATH := "user://worldseeker_meta.cfg"
 
 const TABLES := [
 	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory",
 	"world_progress", "board_entries", "board_threads", "board_thread_entries",
 ]
+
+var current_slot_id: int = 1
+
+func _ready() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(META_PATH) == OK:
+		current_slot_id = int(cfg.get_value("state", "active_slot", 1))
+
+func _slot_path(slot_id: int) -> String:
+	return "%s/slot_%d.sqlite" % [SLOT_DIR, slot_id]
+
+func _set_active_slot(slot_id: int) -> void:
+	current_slot_id = slot_id
+	var cfg := ConfigFile.new()
+	cfg.load(META_PATH) # 失敗しても新規作成として続行してよい
+	cfg.set_value("state", "active_slot", slot_id)
+	cfg.save(META_PATH)
+
+## 既存スロット一覧(スロットID順)。各スロットのDBを開いて概要(資金/日付/NPC数)だけ読む。
+func list_slots() -> Array:
+	var result := []
+	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
+	var dir := DirAccess.open(SLOT_DIR)
+	if dir == null:
+		return result
+	dir.list_dir_begin()
+	var file_name := dir.get_next()
+	while file_name != "":
+		if file_name.begins_with("slot_") and file_name.ends_with(".sqlite"):
+			var slot_id := int(file_name.trim_prefix("slot_").trim_suffix(".sqlite"))
+			var info := _peek_slot(slot_id)
+			if not info.is_empty():
+				result.append(info)
+		file_name = dir.get_next()
+	dir.list_dir_end()
+	result.sort_custom(func(a, b): return a["slot_id"] < b["slot_id"])
+	return result
+
+func _peek_slot(slot_id: int) -> Dictionary:
+	var db := SQLite.new()
+	db.path = _slot_path(slot_id)
+	if not db.open_db():
+		return {}
+	_ensure_schema(db)
+	db.query("SELECT key, value FROM meta")
+	var meta := {}
+	for row in db.query_result:
+		meta[String(row["key"])] = row["value"]
+	db.query("SELECT COUNT(*) AS c FROM npcs")
+	var npc_count: int = int(db.query_result[0]["c"]) if not db.query_result.is_empty() else 0
+	db.close_db()
+	if meta.is_empty():
+		return {}
+	return {
+		"slot_id": slot_id,
+		"funds": int(meta.get("funds", 0)),
+		"day": int(meta.get("current_day", 0)),
+		"month": int(meta.get("current_month", 0)),
+		"npc_count": npc_count,
+	}
+
+## 新規スロットを作成してアクティブにする(design.md 8.2「スキーマ再プレイ」)。
+## ワールドスキーマDB(world_schema_db.gd)経由でWorldMapを再構築するため、
+## GDScript直書き経路と同じ形の「まっさらな世界」から始まることをこの一手が保証する。
+func create_new_slot() -> int:
+	var next_id := _next_free_slot_id()
+	save_game() # 離れる前のスロットを保存
+	Economy.reset()
+	TimeSystem.reset()
+	Npcs.reset()
+	Recruitment.reset()
+	Board.reset()
+	ActionLog.reset()
+	WorldSchemaDb.import_into_worldmap()
+	_set_active_slot(next_id)
+	save_game()
+	return next_id
+
+func _next_free_slot_id() -> int:
+	var max_id := 0
+	for slot in list_slots():
+		max_id = max(max_id, int(slot["slot_id"]))
+	return max_id + 1
+
+## 既存スロットに切り替える。WorldMapをスキーマDBからまっさらに再構築してから
+## そのスロットの進行状態を上書きする(別スロットの発見/突破状態が混ざらないようにするため)。
+func switch_to_slot(slot_id: int) -> bool:
+	if current_slot_id != slot_id:
+		save_game()
+	_set_active_slot(slot_id)
+	WorldSchemaDb.import_into_worldmap()
+	return load_game()
+
+## 行動ログビューアー用: 現在のスロットのaction_logを取得する(npc_id<0で全NPC分)。
+func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
+	var result := []
+	var db := SQLite.new()
+	db.path = _slot_path(current_slot_id)
+	if not db.open_db():
+		return result
+	_ensure_schema(db)
+	if npc_id < 0:
+		db.query_with_bindings("SELECT * FROM action_log ORDER BY id DESC LIMIT ?", [limit])
+	else:
+		db.query_with_bindings("SELECT * FROM action_log WHERE npc_id = ? ORDER BY id DESC LIMIT ?", [npc_id, limit])
+	for row in db.query_result:
+		result.append({
+			"day": int(row["day"]),
+			"event_type": String(row["event_type"]),
+			"npc_id": int(row["npc_id"]),
+			"node_id": String(row["node_id"]),
+			"section_id": String(row["section_id"]),
+			"text": String(row["text"]),
+		})
+	db.close_db()
+	return result
 
 func _ensure_schema(db: SQLite) -> void:
 	db.query("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value)")
@@ -40,8 +163,9 @@ func _ensure_schema(db: SQLite) -> void:
 	)""")
 
 func save_game() -> void:
+	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
 	var db := SQLite.new()
-	db.path = SAVE_PATH
+	db.path = _slot_path(current_slot_id)
 	if not db.open_db():
 		return
 	_ensure_schema(db)
@@ -108,10 +232,10 @@ func save_game() -> void:
 	db.close_db()
 
 func load_game() -> bool:
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(_slot_path(current_slot_id)):
 		return false
 	var db := SQLite.new()
-	db.path = SAVE_PATH
+	db.path = _slot_path(current_slot_id)
 	if not db.open_db():
 		return false
 	_ensure_schema(db)

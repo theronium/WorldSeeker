@@ -24,9 +24,19 @@ var dialogue_text_label: Label
 var choices_box: VBoxContainer
 var advance_hint: Button
 
+var action_log_panel: PanelContainer
+var action_log_npc_option: OptionButton
+var action_log_text: RichTextLabel
+
+var slot_panel: PanelContainer
+var slot_list: ItemList
+var new_game_confirm: ConfirmationDialog
+
 func _ready() -> void:
 	_build_ui()
 	_build_dialogue_ui()
+	_build_action_log_ui()
+	_build_slot_ui()
 	_seed_demo_world()
 	SaveSystem.load_game()
 	TimeSystem.day_advanced.connect(_on_day_advanced)
@@ -49,9 +59,14 @@ func _build_ui() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(root)
 
+	var left_scroll := ScrollContainer.new()
+	left_scroll.custom_minimum_size = Vector2(240, 0)
+	root.add_child(left_scroll)
+
 	var left := VBoxContainer.new()
 	left.custom_minimum_size = Vector2(240, 0)
-	root.add_child(left)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left_scroll.add_child(left)
 
 	funds_label = Label.new()
 	left.add_child(funds_label)
@@ -131,6 +146,16 @@ func _build_ui() -> void:
 	next_month_button.pressed.connect(_on_next_month_pressed)
 	next_month_button.visible = false
 	left.add_child(next_month_button)
+
+	var action_log_button := Button.new()
+	action_log_button.text = "行動ログを見る"
+	action_log_button.pressed.connect(_on_open_action_log_pressed)
+	left.add_child(action_log_button)
+
+	var slot_button := Button.new()
+	slot_button.text = "セーブスロット..."
+	slot_button.pressed.connect(_on_open_slots_pressed)
+	left.add_child(slot_button)
 
 	graph_edit = GraphEdit.new()
 	graph_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -247,6 +272,136 @@ func _on_dialogue_finished(_outcome: String) -> void:
 	dialogue_panel.visible = false
 	_refresh_board()
 	_refresh_map()
+
+## 行動ログビューアー(design.md 8.2「記録再生」)。掲示板と違い、DBの`action_log`テーブルを
+## その場でクエリして表示する(常時メモリに保持しない)。NPCで絞り込める。
+func _build_action_log_ui() -> void:
+	action_log_panel = PanelContainer.new()
+	action_log_panel.set_anchors_preset(Control.PRESET_CENTER)
+	action_log_panel.offset_left = -280
+	action_log_panel.offset_top = -220
+	action_log_panel.offset_right = 280
+	action_log_panel.offset_bottom = 220
+	action_log_panel.visible = false
+	add_child(action_log_panel)
+
+	var col := VBoxContainer.new()
+	action_log_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "行動ログ"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): action_log_panel.visible = false)
+	header.add_child(close_button)
+
+	action_log_npc_option = OptionButton.new()
+	action_log_npc_option.item_selected.connect(func(_i): _refresh_action_log())
+	col.add_child(action_log_npc_option)
+
+	action_log_text = RichTextLabel.new()
+	action_log_text.custom_minimum_size = Vector2(0, 320)
+	action_log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(action_log_text)
+
+func _on_open_action_log_pressed() -> void:
+	action_log_npc_option.clear()
+	action_log_npc_option.add_item("全員", -1)
+	action_log_npc_option.set_item_metadata(0, -1)
+	for npc in Npcs.get_roster():
+		var idx := action_log_npc_option.item_count
+		action_log_npc_option.add_item(npc["name"], idx)
+		action_log_npc_option.set_item_metadata(idx, npc["id"])
+	action_log_panel.visible = true
+	_refresh_action_log()
+
+func _refresh_action_log() -> void:
+	var npc_id := -1
+	if action_log_npc_option.selected >= 0:
+		npc_id = action_log_npc_option.get_item_metadata(action_log_npc_option.selected)
+	action_log_text.clear()
+	for entry in SaveSystem.query_action_log(npc_id):
+		action_log_text.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
+
+## セーブスロット管理UI(design.md 8.2「スキーマ再プレイ」)。既存スロットの一覧・切替と、
+## スキーマDBから新規プレイを開始する導線をここにまとめる。
+func _build_slot_ui() -> void:
+	slot_panel = PanelContainer.new()
+	slot_panel.set_anchors_preset(Control.PRESET_CENTER)
+	slot_panel.offset_left = -280
+	slot_panel.offset_top = -220
+	slot_panel.offset_right = 280
+	slot_panel.offset_bottom = 220
+	slot_panel.visible = false
+	add_child(slot_panel)
+
+	var col := VBoxContainer.new()
+	slot_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "セーブスロット"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): slot_panel.visible = false)
+	header.add_child(close_button)
+
+	slot_list = ItemList.new()
+	slot_list.custom_minimum_size = Vector2(0, 260)
+	slot_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(slot_list)
+
+	var open_button := Button.new()
+	open_button.text = "このスロットを開く"
+	open_button.pressed.connect(_on_open_slot_pressed)
+	col.add_child(open_button)
+
+	var new_game_button := Button.new()
+	new_game_button.text = "新規プレイを開始する"
+	new_game_button.pressed.connect(func(): new_game_confirm.popup_centered())
+	col.add_child(new_game_button)
+
+	new_game_confirm = ConfirmationDialog.new()
+	new_game_confirm.dialog_text = "現在の進行とは別に、新しいセーブスロットでゼロから始めます。よろしいですか？"
+	new_game_confirm.confirmed.connect(_on_new_game_confirmed)
+	add_child(new_game_confirm)
+
+func _on_open_slots_pressed() -> void:
+	_refresh_slot_list()
+	slot_panel.visible = true
+
+func _refresh_slot_list() -> void:
+	slot_list.clear()
+	for slot in SaveSystem.list_slots():
+		var active_mark := " (現在)" if slot["slot_id"] == SaveSystem.current_slot_id else ""
+		var idx := slot_list.item_count
+		slot_list.add_item("スロット%d%s — 資金%d / Day%d / NPC%d人" % [
+			slot["slot_id"], active_mark, slot["funds"], slot["day"], slot["npc_count"]])
+		slot_list.set_item_metadata(idx, slot["slot_id"])
+
+func _on_open_slot_pressed() -> void:
+	var selected := slot_list.get_selected_items()
+	if selected.is_empty():
+		return
+	var slot_id: int = slot_list.get_item_metadata(selected[0])
+	if slot_id == SaveSystem.current_slot_id:
+		slot_panel.visible = false
+		return
+	SaveSystem.switch_to_slot(slot_id)
+	_refresh_all()
+	slot_panel.visible = false
+
+func _on_new_game_confirmed() -> void:
+	SaveSystem.create_new_slot()
+	_refresh_all()
+	slot_panel.visible = false
 
 func _seed_demo_world() -> void:
 	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが

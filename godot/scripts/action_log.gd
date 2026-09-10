@@ -38,3 +38,9 @@ func flush(db: SQLite) -> void:
 			"INSERT INTO action_log (run_id, day, event_type, npc_id, node_id, section_id, text) VALUES (?, ?, ?, ?, ?, ?, ?)",
 			[entry["run_id"], entry["day"], entry["event_type"], entry["npc_id"], entry["node_id"], entry["section_id"], entry["text"]])
 	_pending.clear()
+
+## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
+## run_idは空にするだけで、次のrecord()呼び出し時にensure_run_id()が新しいIDを発行する。
+func reset() -> void:
+	run_id = ""
+	_pending = []
