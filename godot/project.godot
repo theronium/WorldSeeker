@@ -14,6 +14,10 @@ config/name="WorldSeeker"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godot-sqlite/plugin.cfg")
+
 [autoload]
 
 TimeSystem="*res://scripts/time_system.gd"

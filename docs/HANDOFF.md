@@ -44,9 +44,11 @@ UIを手でクリックする代わりに、`main.gd` の `_ready()` の最後�
 | `combat.gd` | 戦闘解決(HP・戦闘力・事前設定方針) |
 | `event_dialogue.gd` | 汎用の会話ウィンドウ進行(分岐・outcome) |
 | `exploration.gd` | 自動探索の日次処理。上記のほぼ全部を束ねる中心的モジュール |
-| `save_system.gd` | 暫定JSON保存(GDSQLite未移行) |
+| `save_system.gd` | セーブ/ロード。`addons/godot-sqlite`(GDSQLite)経由でSQLiteに保存 |
 
 UI(表示のみ、ロジックは持たない): `scenes/main.tscn` + `scripts/main.gd`。
+
+`godot/addons/godot-sqlite/` は[2shady4u/godot-sqlite](https://github.com/2shady4u/godot-sqlite)のGDExtension(MITライセンス)。リポジトリ肥大化を避けるため**Windows x86_64バイナリのみ**を同梱しており(debug/release両方、`bin/libgdsqlite.windows.*.dll`)、Mac/Linux/Android/iOS向けは含めていない。別OSで動かす場合は[リリースページ](https://github.com/2shady4u/godot-sqlite/releases)から該当バイナリを追加すること。
 
 ## 実装済み
 
@@ -60,11 +62,12 @@ UI(表示のみ、ロジックは持たない): `scenes/main.tscn` + `scripts/ma
 - 時間システム(1ヶ月=25分@1x、1x〜16x倍速)
 - スキル訓練・施設拡張UI
 - ワールドコンテンツとUIの分離(`world_data.gd`)、セクション単位のグリッド自動レイアウト
-- セーブ/ロード(`save_system.gd`、JSON暫定): 資金・雇用NPC名簿(スキル経験値込み)・ワールド探索進捗(発見/突破状態)・掲示板ログを日次オートセーブ+ウィンドウクローズ時保存、起動時オートロード。手動セーブUIはなし
+- セーブ/ロード(`save_system.gd`、GDSQLite): 資金・雇用NPC名簿(血筋/スキル経験値/所持品込み)・ワールド探索進捗(発見/突破状態)・掲示板ログをSQLiteに日次オートセーブ+ウィンドウクローズ時保存、起動時オートロード。手動セーブUIはなし
 
 ## 未着手・既知の課題(詳細は design.md 11章)
 
-- **GDSQLiteへの永続化移行**(現状はJSON暫定保存。セーブ/ロード自体は動作確認済み)
+- **ワールドスキーマ(`world_data.gd`の静的コンテンツ定義)のDB化**: セーブデータ側は移行済みだが、こちらは未着手のまま(8.1節参照)
+- **リプレイ用行動ログ**: 8.2節の「記録再生」に相当する機能自体がまだ存在しない
 - **コンテンツのさらなる肉付け**(44フロア → 数百ノード目標)
 - 経済・戦闘・野良NPC頻度などの数値は初期チューニング値。実プレイでの調整が未実施
 - マルチプレイ化(設計上は想定済みだが未着手。セッション型の時間進行を常時稼働サーバーに移行する必要がある)
@@ -73,5 +76,5 @@ UI(表示のみ、ロジックは持たない): `scenes/main.tscn` + `scripts/ma
 
 優先度順というより「どれからでも進められる」独立した候補:
 1. コンテンツ追加(`world_data.gd` に `add_area`/`add_section`/`add_node`/`set_event_scripts` を呼び足すだけ)
-2. GDSQLite導入(アドオン追加 → `save_system.gd` の保存/読込をDB化。JSON保存自体は動作確認済みなので、フォーマットの置き換えのみ)
-3. 実際にGodotエディタでしばらく触ってみて、体感バランス(コスト・確率・戦闘難度)を調整する
+2. 実際にGodotエディタでしばらく触ってみて、体感バランス(コスト・確率・戦闘難度)を調整する
+3. リプレイ用行動ログの設計・実装、またはワールドスキーマのDB化(どちらも新規の設計判断が必要)
