@@ -16,5 +16,14 @@ const SKILL_NAMES := {
 	Skill.COMBAT: "戦闘力",
 }
 
+## 各スキルが何に使われるかの短い説明。訓練UIで名前の下に添えて表示する。
+const SKILL_DESCRIPTIONS := {
+	Skill.WISDOM: "リドルや封印など、知的な謎解きゲートを突破する",
+	Skill.LOCKPICKING: "施錠された扉のゲートを開ける",
+	Skill.DESTRUCTION: "障害物を破壊するゲートを突破する",
+	Skill.PERCEPTION: "隠し通路の発見確率と、知覚ゲートの突破に使う",
+	Skill.COMBAT: "戦闘の強さ(戦闘力 = Lv×10+10)",
+}
+
 static func all_skills() -> Array:
 	return Skill.values()

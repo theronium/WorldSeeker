@@ -213,6 +213,8 @@ func save_game() -> void:
 		"current_month": TimeSystem.current_month,
 		"is_paused": 1 if TimeSystem.is_paused else 0,
 		"speed_multiplier": TimeSystem.speed_multiplier,
+		"start_year": TimeSystem.start_year,
+		"start_month": TimeSystem.start_month,
 	}
 	var npc_data: Dictionary = Npcs.save_state()
 	meta["npc_next_id"] = npc_data["next_id"]
@@ -290,6 +292,8 @@ func load_game() -> bool:
 	TimeSystem.current_month = int(meta.get("current_month", TimeSystem.current_month))
 	TimeSystem.is_paused = bool(int(meta.get("is_paused", 0)))
 	TimeSystem.speed_multiplier = float(meta.get("speed_multiplier", 1.0))
+	TimeSystem.start_year = int(meta.get("start_year", TimeSystem.start_year))
+	TimeSystem.start_month = int(meta.get("start_month", TimeSystem.start_month))
 	if meta.has("run_id"):
 		ActionLog.run_id = String(meta["run_id"])
 

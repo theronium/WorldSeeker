@@ -2,13 +2,15 @@ extends Control
 
 var candidates_list: ItemList
 var roster_list: ItemList
-var section_option: OptionButton
-var skill_option: OptionButton
-var train_cost_label: Label
+var section_tree: Tree
+var npc_detail_label: Label
+var skill_level_labels: Dictionary = {} # skill:int -> Label(Lv/コスト表示)
+var _selected_npc_id: int = -1
 var facility_button: Button
 var node_labels: Dictionary = {} # node_id -> Label(状態表示)
 var node_centers: Dictionary = {} # node_id -> Vector2(map_canvas内での中心座標。接続線描画用)
 var funds_label: Label
+var date_label: Label
 var time_label: Label
 var speed_button: Button
 var board_log: RichTextLabel
@@ -100,6 +102,10 @@ func _build_ui() -> void:
 	funds_label = Label.new()
 	left.add_child(funds_label)
 
+	date_label = Label.new()
+	date_label.add_theme_font_size_override("font_size", 12)
+	left.add_child(date_label)
+
 	var time_row := HBoxContainer.new()
 	left.add_child(time_row)
 
@@ -109,7 +115,8 @@ func _build_ui() -> void:
 	time_row.add_child(time_label)
 
 	speed_button = Button.new()
-	speed_button.text = "1x"
+	speed_button.text = "倍速 1x"
+	speed_button.tooltip_text = "クリックで倍速切り替え(1x/2x/4x/8x/16x)"
 	speed_button.pressed.connect(_on_speed_pressed)
 	time_row.add_child(speed_button)
 
@@ -377,13 +384,17 @@ func _on_open_hire_pressed() -> void:
 
 ## NPC管理パネル(名簿・担当セクション割り当て・スキル訓練・施設拡張)。
 ## サイドバーの「NPC管理」ボタンから開く。
+##
+## 「場所を選んでからNPCを選ぶ」ではなく「NPCを選ぶと、その子の移動先や
+## スキル訓練などの操作が右側に出る」という順番にしてある方が分かりやすいため、
+## 左に名簿、右にその場で選択中のNPC向けの操作をまとめている。
 func _build_npc_ui() -> void:
 	npc_panel = PanelContainer.new()
 	npc_panel.set_anchors_preset(Control.PRESET_CENTER)
-	npc_panel.offset_left = -280
-	npc_panel.offset_top = -260
-	npc_panel.offset_right = 280
-	npc_panel.offset_bottom = 260
+	npc_panel.offset_left = -380
+	npc_panel.offset_top = -300
+	npc_panel.offset_right = 380
+	npc_panel.offset_bottom = 300
 	npc_panel.visible = false
 	add_child(npc_panel)
 
@@ -401,54 +412,164 @@ func _build_npc_ui() -> void:
 	close_button.pressed.connect(func(): _close_modal(npc_panel))
 	header.add_child(close_button)
 
+	var body := HBoxContainer.new()
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(body)
+
+	var left_col := VBoxContainer.new()
+	left_col.custom_minimum_size = Vector2(220, 0)
+	body.add_child(left_col)
+
 	var roster_label := Label.new()
-	roster_label.text = "雇用NPC"
-	col.add_child(roster_label)
+	roster_label.text = "雇用NPC(選択すると右に操作が出ます)"
+	roster_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	left_col.add_child(roster_label)
 
 	roster_list = ItemList.new()
-	roster_list.custom_minimum_size = Vector2(0, 150)
-	roster_list.item_selected.connect(func(_i): _refresh_train_cost_label())
-	col.add_child(roster_list)
-
-	section_option = OptionButton.new()
-	col.add_child(section_option)
-
-	var assign_button := Button.new()
-	assign_button.text = "選択NPCを担当セクションに割り当てる"
-	assign_button.pressed.connect(_on_assign_section_pressed)
-	col.add_child(assign_button)
-
-	var view_thread_button := Button.new()
-	view_thread_button.text = "選択セクションの詳細ログを見る"
-	view_thread_button.pressed.connect(_on_view_thread_pressed)
-	col.add_child(view_thread_button)
-
-	skill_option = OptionButton.new()
-	for skill in SkillTypes.all_skills():
-		skill_option.add_item(SkillTypes.SKILL_NAMES[skill], skill)
-	skill_option.item_selected.connect(func(_i): _refresh_train_cost_label())
-	col.add_child(skill_option)
-
-	var train_row := HBoxContainer.new()
-	col.add_child(train_row)
-
-	var train_button := Button.new()
-	train_button.text = "選択NPCのスキルを訓練する"
-	train_button.pressed.connect(_on_train_pressed)
-	train_row.add_child(train_button)
-
-	train_cost_label = Label.new()
-	train_row.add_child(train_cost_label)
+	roster_list.custom_minimum_size = Vector2(0, 300)
+	roster_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	roster_list.item_selected.connect(_on_roster_item_selected)
+	left_col.add_child(roster_list)
 
 	facility_button = Button.new()
 	facility_button.pressed.connect(_on_upgrade_facility_pressed)
-	col.add_child(facility_button)
+	left_col.add_child(facility_button)
+
+	var right_scroll := ScrollContainer.new()
+	right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(right_scroll)
+
+	var right_col := VBoxContainer.new()
+	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_scroll.add_child(right_col)
+
+	npc_detail_label = Label.new()
+	npc_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	right_col.add_child(npc_detail_label)
+
+	right_col.add_child(HSeparator.new())
+
+	var section_label := Label.new()
+	section_label.text = "担当セクションの割り当て(エリアごとに折り畳めます)"
+	section_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	right_col.add_child(section_label)
+
+	section_tree = Tree.new()
+	section_tree.custom_minimum_size = Vector2(0, 180)
+	section_tree.hide_root = true
+	right_col.add_child(section_tree)
+
+	var section_actions := HBoxContainer.new()
+	right_col.add_child(section_actions)
+
+	var assign_button := Button.new()
+	assign_button.text = "選択セクションに割り当てる"
+	assign_button.pressed.connect(_on_assign_to_section_pressed)
+	section_actions.add_child(assign_button)
+
+	var view_thread_button := Button.new()
+	view_thread_button.text = "このセクションのログを見る"
+	view_thread_button.pressed.connect(_on_view_thread_pressed)
+	section_actions.add_child(view_thread_button)
+
+	right_col.add_child(HSeparator.new())
+
+	var skill_label := Label.new()
+	skill_label.text = "スキル訓練"
+	right_col.add_child(skill_label)
+
+	skill_level_labels.clear()
+	for skill in SkillTypes.all_skills():
+		var row := HBoxContainer.new()
+		right_col.add_child(row)
+
+		var name_col := VBoxContainer.new()
+		name_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(name_col)
+
+		var name_label := Label.new()
+		name_label.text = SkillTypes.SKILL_NAMES[skill]
+		name_col.add_child(name_label)
+
+		var desc_label := Label.new()
+		desc_label.text = SkillTypes.SKILL_DESCRIPTIONS[skill]
+		desc_label.add_theme_font_size_override("font_size", 10)
+		desc_label.modulate = Color(1, 1, 1, 0.6)
+		name_col.add_child(desc_label)
+
+		var level_label := Label.new()
+		level_label.custom_minimum_size = Vector2(140, 0)
+		row.add_child(level_label)
+		skill_level_labels[skill] = level_label
+
+		var train_button := Button.new()
+		train_button.text = "訓練する"
+		train_button.pressed.connect(_on_train_skill_pressed.bind(skill))
+		row.add_child(train_button)
 
 func _on_open_npc_panel_pressed() -> void:
+	_populate_section_tree()
 	_refresh_roster()
-	_refresh_train_cost_label()
+	_refresh_npc_detail()
 	_refresh_facility_button()
 	_open_modal(npc_panel)
+
+## セクション選択肢をエリア→セクションの2階層に組んで、エリア単位で折り畳めるようにする。
+func _populate_section_tree() -> void:
+	section_tree.clear()
+	var root := section_tree.create_item()
+	for area_id in WorldMap.areas.keys():
+		var area_item := section_tree.create_item(root)
+		area_item.set_text(0, WorldMap.areas[area_id]["name"])
+		area_item.set_selectable(0, false)
+		for section_id in WorldMap.sections_in_area(area_id):
+			var section_item := section_tree.create_item(area_item)
+			section_item.set_text(0, WorldMap.sections[section_id]["name"])
+			section_item.set_metadata(0, section_id)
+
+func _on_roster_item_selected(index: int) -> void:
+	var roster := Npcs.get_roster()
+	_selected_npc_id = roster[index]["id"] if index >= 0 and index < roster.size() else -1
+	_refresh_npc_detail()
+
+func _refresh_npc_detail() -> void:
+	if _selected_npc_id < 0 or Npcs.get_npc(_selected_npc_id).is_empty():
+		npc_detail_label.text = "左の一覧からNPCを選択してください"
+		for skill in skill_level_labels.keys():
+			skill_level_labels[skill].text = ""
+		return
+	var npc := Npcs.get_npc(_selected_npc_id)
+	var section_id: String = npc["assigned_section"]
+	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else "未割当"
+	npc_detail_label.text = "%s (血筋: %s)\n担当: %s / HP: %d/%d" % [
+		npc["name"], npc["innate_traits"].get("bloodline", "-"), section_name, int(npc["hp"]), int(npc["max_hp"])]
+	for skill in skill_level_labels.keys():
+		var level := Npcs.skill_level(_selected_npc_id, skill)
+		skill_level_labels[skill].text = "Lv%d → コスト%d" % [level, Economy.training_cost(level)]
+
+func _on_assign_to_section_pressed() -> void:
+	if _selected_npc_id < 0:
+		return
+	var selected_item := section_tree.get_selected()
+	if selected_item == null:
+		return
+	var section_id = selected_item.get_metadata(0)
+	if section_id == null:
+		return
+	Npcs.assign_section(_selected_npc_id, section_id)
+	_refresh_roster()
+	_refresh_npc_detail()
+
+func _on_train_skill_pressed(skill: int) -> void:
+	if _selected_npc_id < 0:
+		return
+	var cost := Economy.training_cost(Npcs.skill_level(_selected_npc_id, skill))
+	if not Economy.spend(cost):
+		return
+	Npcs.train_skill(_selected_npc_id, skill, cost)
+	_refresh_funds()
+	_refresh_roster()
+	_refresh_npc_detail()
 
 ## セーブスロット管理UI(design.md 8.2「スキーマ再プレイ」)。既存スロットの一覧・切替と、
 ## スキーマDBから新規プレイを開始する導線をここにまとめる。
@@ -567,11 +688,8 @@ const MAP_OUTER_MARGIN := Vector2(20, 20)
 func _seed_demo_world() -> void:
 	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが
 	# オートロードとして既に流し込み済み。ここではWorldMapの内容を
-	# UI(セクション選択・ノードグラフ)として描画するだけ。
-	for section_id in WorldMap.sections.keys():
-		section_option.add_item(WorldMap.sections[section_id]["name"], section_option.item_count)
-		section_option.set_item_metadata(section_option.item_count - 1, section_id)
-
+	# UI(ノードグラフ)として描画するだけ。担当セクションの選択肢(section_tree)は
+	# NPC管理パネルを開くたびに_populate_section_treeで組み直す。
 	var positions := _compute_node_positions()
 	node_labels.clear()
 	node_centers.clear()
@@ -727,19 +845,14 @@ func _on_hire_pressed() -> void:
 	_refresh_roster()
 	_refresh_funds()
 
-func _on_assign_section_pressed() -> void:
-	var selected_npc := roster_list.get_selected_items()
-	if selected_npc.is_empty() or section_option.selected < 0:
-		return
-	var npc: Dictionary = Npcs.get_roster()[selected_npc[0]]
-	var section_id: String = section_option.get_item_metadata(section_option.selected)
-	Npcs.assign_section(npc["id"], section_id)
-	_refresh_roster()
-
 func _on_view_thread_pressed() -> void:
-	if section_option.selected < 0:
+	var selected_item := section_tree.get_selected()
+	if selected_item == null:
 		return
-	viewing_thread_id = section_option.get_item_metadata(section_option.selected)
+	var section_id = selected_item.get_metadata(0)
+	if section_id == null:
+		return
+	viewing_thread_id = section_id
 	board_title_label.text = "掲示板(%s)" % WorldMap.sections[viewing_thread_id]["name"]
 	_refresh_board()
 
@@ -747,20 +860,6 @@ func _on_back_to_global_pressed() -> void:
 	viewing_thread_id = ""
 	board_title_label.text = "掲示板(全体)"
 	_refresh_board()
-
-func _on_train_pressed() -> void:
-	var selected_npc := roster_list.get_selected_items()
-	if selected_npc.is_empty() or skill_option.selected < 0:
-		return
-	var npc: Dictionary = Npcs.get_roster()[selected_npc[0]]
-	var skill: int = skill_option.get_item_id(skill_option.selected)
-	var cost := Economy.training_cost(Npcs.skill_level(npc["id"], skill))
-	if not Economy.spend(cost):
-		return
-	Npcs.train_skill(npc["id"], skill, cost)
-	_refresh_funds()
-	_refresh_roster()
-	_refresh_train_cost_label()
 
 func _on_upgrade_facility_pressed() -> void:
 	Economy.upgrade_facility()
@@ -775,13 +874,13 @@ func _on_speed_pressed() -> void:
 	TimeSystem.cycle_speed()
 
 func _on_speed_changed(multiplier: float) -> void:
-	speed_button.text = "%gx" % multiplier
+	speed_button.text = "倍速 %dx" % int(multiplier)
 
 func _on_day_advanced(_day: int) -> void:
 	_refresh_board()
 	_refresh_map()
 	_refresh_roster()
-	_refresh_train_cost_label()
+	_refresh_npc_detail()
 	SaveSystem.save_game()
 
 func _on_month_ended(_month: int) -> void:
@@ -794,18 +893,8 @@ func _refresh_all() -> void:
 	_refresh_roster()
 	_refresh_board()
 	_refresh_map()
-	_refresh_train_cost_label()
+	_refresh_npc_detail()
 	_refresh_facility_button()
-
-func _refresh_train_cost_label() -> void:
-	var selected_npc := roster_list.get_selected_items()
-	if selected_npc.is_empty() or skill_option.selected < 0:
-		train_cost_label.text = ""
-		return
-	var npc: Dictionary = Npcs.get_roster()[selected_npc[0]]
-	var skill: int = skill_option.get_item_id(skill_option.selected)
-	var level := Npcs.skill_level(npc["id"], skill)
-	train_cost_label.text = "現在Lv%d → コスト%d" % [level, Economy.training_cost(level)]
 
 func _refresh_facility_button() -> void:
 	facility_button.text = "施設を拡張する(雇用上限+2, コスト: %d)" % Economy.facility_upgrade_cost()
@@ -814,6 +903,7 @@ func _refresh_funds() -> void:
 	funds_label.text = "資金: %d / 雇用上限: %d" % [Economy.funds, Economy.employ_cap]
 
 func _refresh_time_label() -> void:
+	date_label.text = TimeSystem.format_date()
 	if TimeSystem.is_paused:
 		time_label.text = "月末集計待ち"
 		return
@@ -827,10 +917,14 @@ func _refresh_candidates() -> void:
 
 func _refresh_roster() -> void:
 	roster_list.clear()
-	for npc in Npcs.get_roster():
+	var roster := Npcs.get_roster()
+	for i in range(roster.size()):
+		var npc: Dictionary = roster[i]
 		var section_id: String = npc["assigned_section"]
 		var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else "未割当"
 		roster_list.add_item("%s (血筋: %s, 担当: %s)" % [npc["name"], npc["innate_traits"].get("bloodline", "-"), section_name])
+		if npc["id"] == _selected_npc_id:
+			roster_list.select(i)
 
 func _refresh_board() -> void:
 	board_log.clear()
