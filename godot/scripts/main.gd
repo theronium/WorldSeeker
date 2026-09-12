@@ -37,11 +37,17 @@ var new_game_confirm: ConfirmationDialog
 var delete_slot_confirm: ConfirmationDialog
 var _pending_delete_slot_id: int = -1
 
+var hire_panel: PanelContainer
+var npc_panel: PanelContainer
+var modal_blocker: ColorRect
+
 func _ready() -> void:
 	_build_ui()
 	_build_dialogue_ui()
 	_build_action_log_ui()
 	_build_slot_ui()
+	_build_hire_ui()
+	_build_npc_ui()
 	# アクティブなセーブスロットが、今のworld_data.gdより古いワールドスキーマで生成された
 	# ものであれば、そのバージョンでWorldMapを作り直してからUIを組み立てる(スキーマの
 	# 複数バージョン管理。design.md 8.2/11章)。ノードグラフのUI(_seed_demo_world)は
@@ -72,6 +78,16 @@ func _build_ui() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(root)
 
+	# 雇用/NPC管理/行動ログ/セーブは全て画面中央に開くポップアップなので、
+	# 同時に開けると重なってしまう。開いている間は背後に敷いて他の操作を受け付けない
+	# 半透明の遮断レイヤー(常に1枚だけ存在し、_open_modal/_close_modalで使い回す)。
+	modal_blocker = ColorRect.new()
+	modal_blocker.set_anchors_preset(Control.PRESET_FULL_RECT)
+	modal_blocker.color = Color(0, 0, 0, 0.45)
+	modal_blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+	modal_blocker.visible = false
+	add_child(modal_blocker)
+
 	var left_scroll := ScrollContainer.new()
 	left_scroll.custom_minimum_size = Vector2(240, 0)
 	root.add_child(left_scroll)
@@ -97,76 +113,31 @@ func _build_ui() -> void:
 	speed_button.pressed.connect(_on_speed_pressed)
 	time_row.add_child(speed_button)
 
-	var recruit_button := Button.new()
-	recruit_button.text = "募集を掛ける(コスト: %d)" % Economy.recruitment_post_cost()
-	recruit_button.pressed.connect(_on_recruit_pressed)
-	left.add_child(recruit_button)
-
-	candidates_list = ItemList.new()
-	candidates_list.custom_minimum_size = Vector2(0, 100)
-	left.add_child(candidates_list)
-
-	var hire_button := Button.new()
-	hire_button.text = "選択した候補を雇う"
-	hire_button.pressed.connect(_on_hire_pressed)
-	left.add_child(hire_button)
-
-	var roster_label := Label.new()
-	roster_label.text = "雇用NPC"
-	left.add_child(roster_label)
-
-	roster_list = ItemList.new()
-	roster_list.custom_minimum_size = Vector2(0, 150)
-	roster_list.item_selected.connect(func(_i): _refresh_train_cost_label())
-	left.add_child(roster_list)
-
-	section_option = OptionButton.new()
-	left.add_child(section_option)
-
-	var assign_button := Button.new()
-	assign_button.text = "選択NPCを担当セクションに割り当てる"
-	assign_button.pressed.connect(_on_assign_section_pressed)
-	left.add_child(assign_button)
-
-	var view_thread_button := Button.new()
-	view_thread_button.text = "選択セクションの詳細ログを見る"
-	view_thread_button.pressed.connect(_on_view_thread_pressed)
-	left.add_child(view_thread_button)
-
-	skill_option = OptionButton.new()
-	for skill in SkillTypes.all_skills():
-		skill_option.add_item(SkillTypes.SKILL_NAMES[skill], skill)
-	skill_option.item_selected.connect(func(_i): _refresh_train_cost_label())
-	left.add_child(skill_option)
-
-	var train_row := HBoxContainer.new()
-	left.add_child(train_row)
-
-	var train_button := Button.new()
-	train_button.text = "選択NPCのスキルを訓練する"
-	train_button.pressed.connect(_on_train_pressed)
-	train_row.add_child(train_button)
-
-	train_cost_label = Label.new()
-	train_row.add_child(train_cost_label)
-
-	facility_button = Button.new()
-	facility_button.pressed.connect(_on_upgrade_facility_pressed)
-	left.add_child(facility_button)
-
 	next_month_button = Button.new()
 	next_month_button.text = "次の月へ"
 	next_month_button.pressed.connect(_on_next_month_pressed)
 	next_month_button.visible = false
 	left.add_child(next_month_button)
 
+	# 資金/時間以外の各機能は、ボタンが増えて240px幅のサイドバーに収まりきらなくなったため、
+	# ボタン1つで開くポップアップパネルにまとめてある(行動ログ・セーブスロットと同じパターン)。
+	var hire_button := Button.new()
+	hire_button.text = "雇用"
+	hire_button.pressed.connect(_on_open_hire_pressed)
+	left.add_child(hire_button)
+
+	var npc_button := Button.new()
+	npc_button.text = "NPC管理"
+	npc_button.pressed.connect(_on_open_npc_panel_pressed)
+	left.add_child(npc_button)
+
 	var action_log_button := Button.new()
-	action_log_button.text = "行動ログを見る"
+	action_log_button.text = "行動ログ"
 	action_log_button.pressed.connect(_on_open_action_log_pressed)
 	left.add_child(action_log_button)
 
 	var slot_button := Button.new()
-	slot_button.text = "セーブスロット..."
+	slot_button.text = "セーブ"
 	slot_button.pressed.connect(_on_open_slots_pressed)
 	left.add_child(slot_button)
 
@@ -200,6 +171,19 @@ func _build_ui() -> void:
 	board_log = RichTextLabel.new()
 	board_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right.add_child(board_log)
+
+## 雇用/NPC管理/行動ログ/セーブのポップアップパネルを、他を必ず閉じた上で1つだけ開く。
+## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
+func _open_modal(panel: PanelContainer) -> void:
+	for p in [hire_panel, npc_panel, action_log_panel, slot_panel]:
+		p.visible = (p == panel)
+	modal_blocker.visible = true
+	move_child(modal_blocker, get_child_count() - 1)
+	move_child(panel, get_child_count() - 1)
+
+func _close_modal(panel: PanelContainer) -> void:
+	panel.visible = false
+	modal_blocker.visible = false
 
 func _build_dialogue_ui() -> void:
 	dialogue_panel = PanelContainer.new()
@@ -316,7 +300,7 @@ func _build_action_log_ui() -> void:
 	header.add_child(title)
 	var close_button := Button.new()
 	close_button.text = "閉じる"
-	close_button.pressed.connect(func(): action_log_panel.visible = false)
+	close_button.pressed.connect(func(): _close_modal(action_log_panel))
 	header.add_child(close_button)
 
 	action_log_npc_option = OptionButton.new()
@@ -336,7 +320,7 @@ func _on_open_action_log_pressed() -> void:
 		var idx := action_log_npc_option.item_count
 		action_log_npc_option.add_item(npc["name"], idx)
 		action_log_npc_option.set_item_metadata(idx, npc["id"])
-	action_log_panel.visible = true
+	_open_modal(action_log_panel)
 	_refresh_action_log()
 
 func _refresh_action_log() -> void:
@@ -346,6 +330,125 @@ func _refresh_action_log() -> void:
 	action_log_text.clear()
 	for entry in SaveSystem.query_action_log(npc_id):
 		action_log_text.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
+
+## 雇用パネル(募集・候補一覧・雇用)。サイドバーの「雇用」ボタンから開く。
+func _build_hire_ui() -> void:
+	hire_panel = PanelContainer.new()
+	hire_panel.set_anchors_preset(Control.PRESET_CENTER)
+	hire_panel.offset_left = -240
+	hire_panel.offset_top = -180
+	hire_panel.offset_right = 240
+	hire_panel.offset_bottom = 180
+	hire_panel.visible = false
+	add_child(hire_panel)
+
+	var col := VBoxContainer.new()
+	hire_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "雇用"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): _close_modal(hire_panel))
+	header.add_child(close_button)
+
+	var recruit_button := Button.new()
+	recruit_button.text = "募集を掛ける(コスト: %d)" % Economy.recruitment_post_cost()
+	recruit_button.pressed.connect(_on_recruit_pressed)
+	col.add_child(recruit_button)
+
+	candidates_list = ItemList.new()
+	candidates_list.custom_minimum_size = Vector2(0, 160)
+	candidates_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(candidates_list)
+
+	var hire_button := Button.new()
+	hire_button.text = "選択した候補を雇う"
+	hire_button.pressed.connect(_on_hire_pressed)
+	col.add_child(hire_button)
+
+func _on_open_hire_pressed() -> void:
+	_refresh_candidates()
+	_open_modal(hire_panel)
+
+## NPC管理パネル(名簿・担当セクション割り当て・スキル訓練・施設拡張)。
+## サイドバーの「NPC管理」ボタンから開く。
+func _build_npc_ui() -> void:
+	npc_panel = PanelContainer.new()
+	npc_panel.set_anchors_preset(Control.PRESET_CENTER)
+	npc_panel.offset_left = -280
+	npc_panel.offset_top = -260
+	npc_panel.offset_right = 280
+	npc_panel.offset_bottom = 260
+	npc_panel.visible = false
+	add_child(npc_panel)
+
+	var col := VBoxContainer.new()
+	npc_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "NPC管理"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): _close_modal(npc_panel))
+	header.add_child(close_button)
+
+	var roster_label := Label.new()
+	roster_label.text = "雇用NPC"
+	col.add_child(roster_label)
+
+	roster_list = ItemList.new()
+	roster_list.custom_minimum_size = Vector2(0, 150)
+	roster_list.item_selected.connect(func(_i): _refresh_train_cost_label())
+	col.add_child(roster_list)
+
+	section_option = OptionButton.new()
+	col.add_child(section_option)
+
+	var assign_button := Button.new()
+	assign_button.text = "選択NPCを担当セクションに割り当てる"
+	assign_button.pressed.connect(_on_assign_section_pressed)
+	col.add_child(assign_button)
+
+	var view_thread_button := Button.new()
+	view_thread_button.text = "選択セクションの詳細ログを見る"
+	view_thread_button.pressed.connect(_on_view_thread_pressed)
+	col.add_child(view_thread_button)
+
+	skill_option = OptionButton.new()
+	for skill in SkillTypes.all_skills():
+		skill_option.add_item(SkillTypes.SKILL_NAMES[skill], skill)
+	skill_option.item_selected.connect(func(_i): _refresh_train_cost_label())
+	col.add_child(skill_option)
+
+	var train_row := HBoxContainer.new()
+	col.add_child(train_row)
+
+	var train_button := Button.new()
+	train_button.text = "選択NPCのスキルを訓練する"
+	train_button.pressed.connect(_on_train_pressed)
+	train_row.add_child(train_button)
+
+	train_cost_label = Label.new()
+	train_row.add_child(train_cost_label)
+
+	facility_button = Button.new()
+	facility_button.pressed.connect(_on_upgrade_facility_pressed)
+	col.add_child(facility_button)
+
+func _on_open_npc_panel_pressed() -> void:
+	_refresh_roster()
+	_refresh_train_cost_label()
+	_refresh_facility_button()
+	_open_modal(npc_panel)
 
 ## セーブスロット管理UI(design.md 8.2「スキーマ再プレイ」)。既存スロットの一覧・切替と、
 ## スキーマDBから新規プレイを開始する導線をここにまとめる。
@@ -370,7 +473,7 @@ func _build_slot_ui() -> void:
 	header.add_child(title)
 	var close_button := Button.new()
 	close_button.text = "閉じる"
-	close_button.pressed.connect(func(): slot_panel.visible = false)
+	close_button.pressed.connect(func(): _close_modal(slot_panel))
 	header.add_child(close_button)
 
 	slot_list = ItemList.new()
@@ -404,7 +507,7 @@ func _build_slot_ui() -> void:
 
 func _on_open_slots_pressed() -> void:
 	_refresh_slot_list()
-	slot_panel.visible = true
+	_open_modal(slot_panel)
 
 func _refresh_slot_list() -> void:
 	slot_list.clear()
@@ -421,16 +524,16 @@ func _on_open_slot_pressed() -> void:
 		return
 	var slot_id: int = slot_list.get_item_metadata(selected[0])
 	if slot_id == SaveSystem.current_slot_id:
-		slot_panel.visible = false
+		_close_modal(slot_panel)
 		return
 	SaveSystem.switch_to_slot(slot_id)
 	_refresh_all()
-	slot_panel.visible = false
+	_close_modal(slot_panel)
 
 func _on_new_game_confirmed() -> void:
 	SaveSystem.create_new_slot()
 	_refresh_all()
-	slot_panel.visible = false
+	_close_modal(slot_panel)
 
 func _on_delete_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
