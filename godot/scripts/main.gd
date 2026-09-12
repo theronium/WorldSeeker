@@ -6,7 +6,8 @@ var section_option: OptionButton
 var skill_option: OptionButton
 var train_cost_label: Label
 var facility_button: Button
-var node_labels: Dictionary = {} # node_id -> Label
+var node_labels: Dictionary = {} # node_id -> Label(状態表示)
+var node_centers: Dictionary = {} # node_id -> Vector2(map_canvas内での中心座標。接続線描画用)
 var funds_label: Label
 var time_label: Label
 var speed_button: Button
@@ -14,7 +15,9 @@ var board_log: RichTextLabel
 var board_title_label: Label
 var viewing_thread_id: String = "" # 空なら全体フィード
 var next_month_button: Button
-var graph_edit: GraphEdit
+var map_scroll: ScrollContainer
+var map_canvas: Control
+var _map_panning: bool = false
 
 var dialogue_panel: PanelContainer
 var left_slot: VBoxContainer
@@ -167,9 +170,16 @@ func _build_ui() -> void:
 	slot_button.pressed.connect(_on_open_slots_pressed)
 	left.add_child(slot_button)
 
-	graph_edit = GraphEdit.new()
-	graph_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	root.add_child(graph_edit)
+	map_scroll = ScrollContainer.new()
+	map_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.add_child(map_scroll)
+
+	map_canvas = Control.new()
+	map_canvas.mouse_filter = Control.MOUSE_FILTER_PASS
+	map_canvas.mouse_default_cursor_shape = Control.CURSOR_DRAG
+	map_canvas.draw.connect(_on_map_canvas_draw)
+	map_canvas.gui_input.connect(_on_map_canvas_gui_input)
+	map_scroll.add_child(map_canvas)
 
 	var right := VBoxContainer.new()
 	right.custom_minimum_size = Vector2(260, 0)
@@ -438,6 +448,19 @@ func _on_delete_slot_confirmed() -> void:
 	_pending_delete_slot_id = -1
 	_refresh_slot_list()
 
+const MAP_COLUMNS := 5
+const MAP_CELL_SIZE := Vector2(220, 100)
+const MAP_NODE_SIZE := Vector2(200, 74)
+const MAP_SECTION_GAP := 60.0
+const MAP_SECTION_HEADER := 26.0
+const MAP_SECTION_PADDING := 12.0
+const MAP_OUTER_MARGIN := Vector2(20, 20)
+
+## GraphEdit(Godot標準のノードエディタ用UI)は当初マップ表示に流用していたが、
+## ノード/フレームがドラッグで動かせてしまう(GraphElement.draggableを切ってもグラフ編集用の
+## 挙動が随所に残る)ため、プレイ中に意図せずレイアウトが崩れる問題があった。ノードグラフ編集の
+## ためのウィジェットであり、読み取り専用のマップ表示には使うべきでないと判断し、
+## 素のControlノードで組み直した(接続線は自前でdraw_lineする)。
 func _seed_demo_world() -> void:
 	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが
 	# オートロードとして既に流し込み済み。ここではWorldMapの内容を
@@ -447,51 +470,135 @@ func _seed_demo_world() -> void:
 		section_option.set_item_metadata(section_option.item_count - 1, section_id)
 
 	var positions := _compute_node_positions()
-	var created := {}
-	for id in WorldMap.nodes.keys():
-		var gnode := GraphNode.new()
-		gnode.title = WorldMap.nodes[id]["name"]
-		gnode.position_offset = positions.get(id, Vector2.ZERO)
-		var label := Label.new()
-		gnode.add_child(label)
-		gnode.set_slot(0, true, 0, Color.WHITE, true, 0, Color.WHITE)
-		graph_edit.add_child(gnode)
-		created[id] = gnode.name
-		node_labels[id] = label
+	node_labels.clear()
+	node_centers.clear()
+
+	var content_size := Vector2.ZERO
+	for section_id in WorldMap.sections.keys():
+		var member_ids := WorldMap.nodes_in_section(section_id)
+		if member_ids.is_empty():
+			continue
+		var bounds := _section_bounds(member_ids, positions)
+		_create_section_panel(section_id, bounds)
+		content_size.x = max(content_size.x, bounds.position.x + bounds.size.x)
+		content_size.y = max(content_size.y, bounds.position.y + bounds.size.y)
 
 	for id in WorldMap.nodes.keys():
-		for neighbor in WorldMap.neighbors(id):
-			if created.has(id) and created.has(neighbor):
-				graph_edit.connect_node(created[id], 0, created[neighbor], 0)
+		var cell_pos: Vector2 = positions.get(id, Vector2.ZERO)
+		_create_node_box(id, cell_pos)
+		content_size.x = max(content_size.x, cell_pos.x + MAP_CELL_SIZE.x)
+		content_size.y = max(content_size.y, cell_pos.y + MAP_CELL_SIZE.y)
 
-	_create_section_frames(created)
+	map_canvas.custom_minimum_size = content_size + Vector2(40, 40)
+	map_canvas.queue_redraw()
 	_refresh_map()
 
 ## セクションごとにグリッド状の自動レイアウトを組む。手動で位置を指定しなくても、
 ## ノード数がどれだけ増えても(数百規模でも)セクション同士が重ならないようにする。
 func _compute_node_positions() -> Dictionary:
-	const COLUMNS := 5
-	const CELL_SIZE := Vector2(240, 160)
-	const SECTION_GAP := 80
-
+	# ScrollContainerは子の負座標部分をスクロールでは見せてくれない(スクロール範囲は
+	# コンテンツが(0,0)起点である前提で計算される)ため、セクション枠のパディング/ヘッダー分だけ
+	# 全体を右下にずらして、どのセクション枠も座標が負にならないようにする。
 	var positions := {}
-	var y_offset := 0.0
+	var y_offset := MAP_OUTER_MARGIN.y
 	for section_id in WorldMap.sections.keys():
 		var member_ids := WorldMap.nodes_in_section(section_id)
 		if member_ids.is_empty():
 			continue
+		var section_top := y_offset + MAP_SECTION_HEADER
 		for i in range(member_ids.size()):
-			var col := i % COLUMNS
-			var row := i / COLUMNS
-			positions[member_ids[i]] = Vector2(col * CELL_SIZE.x, y_offset + row * CELL_SIZE.y)
-		var rows := ceili(float(member_ids.size()) / COLUMNS)
-		y_offset += rows * CELL_SIZE.y + SECTION_GAP
+			var col := i % MAP_COLUMNS
+			var row := i / MAP_COLUMNS
+			positions[member_ids[i]] = Vector2(MAP_OUTER_MARGIN.x + col * MAP_CELL_SIZE.x, section_top + row * MAP_CELL_SIZE.y)
+		var rows := ceili(float(member_ids.size()) / MAP_COLUMNS)
+		y_offset = section_top + rows * MAP_CELL_SIZE.y + MAP_SECTION_GAP
 
 	for id in WorldMap.nodes.keys():
 		if not positions.has(id):
-			positions[id] = Vector2.ZERO # 未所属フロアの保険
+			positions[id] = MAP_OUTER_MARGIN # 未所属フロアの保険
 
 	return positions
+
+func _section_bounds(member_ids: Array, positions: Dictionary) -> Rect2:
+	var min_pos: Vector2 = positions[member_ids[0]]
+	var max_pos: Vector2 = positions[member_ids[0]] + MAP_CELL_SIZE
+	for id in member_ids:
+		var p: Vector2 = positions[id]
+		min_pos.x = min(min_pos.x, p.x)
+		min_pos.y = min(min_pos.y, p.y)
+		max_pos.x = max(max_pos.x, p.x + MAP_CELL_SIZE.x)
+		max_pos.y = max(max_pos.y, p.y + MAP_CELL_SIZE.y)
+	var top_left := min_pos - Vector2(MAP_SECTION_PADDING, MAP_SECTION_HEADER)
+	var size := (max_pos - min_pos) + Vector2(MAP_SECTION_PADDING * 2.0, MAP_SECTION_HEADER + MAP_SECTION_PADDING)
+	return Rect2(top_left, size)
+
+func _create_section_panel(section_id: String, bounds: Rect2) -> void:
+	var panel := Panel.new()
+	panel.position = bounds.position
+	panel.size = bounds.size
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.5, 0.3, 0.1, 0.18)
+	style.border_color = Color(0.5, 0.3, 0.1, 0.6)
+	style.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", style)
+	map_canvas.add_child(panel)
+
+	var title := Label.new()
+	title.text = WorldMap.sections[section_id]["name"]
+	title.position = bounds.position + Vector2(6, 2)
+	title.add_theme_font_size_override("font_size", 14)
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	map_canvas.add_child(title)
+
+func _create_node_box(id: String, cell_pos: Vector2) -> void:
+	var margin := (MAP_CELL_SIZE - MAP_NODE_SIZE) / 2.0
+	var box := PanelContainer.new()
+	box.position = cell_pos + margin
+	box.custom_minimum_size = MAP_NODE_SIZE
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var vbox := VBoxContainer.new()
+	box.add_child(vbox)
+
+	var name_label := Label.new()
+	name_label.text = WorldMap.nodes[id]["name"]
+	name_label.add_theme_font_size_override("font_size", 13)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	vbox.add_child(name_label)
+
+	var status_label := Label.new()
+	status_label.add_theme_font_size_override("font_size", 11)
+	status_label.modulate = Color(1, 1, 1, 0.7)
+	vbox.add_child(status_label)
+
+	map_canvas.add_child(box)
+	node_labels[id] = status_label
+	node_centers[id] = cell_pos + MAP_CELL_SIZE / 2.0
+
+## ノード/セクション枠自体はドラッグできない(意図的にmouse_filter = IGNOREにしている)が、
+## スクロールバーだけでは数百ノード規模のマップを動き回るのがつらいので、
+## 何もない場所を左ドラッグすればキャンバスごと掴んで動かせるようにする。
+func _on_map_canvas_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_map_panning = event.pressed
+	elif event is InputEventMouseMotion and _map_panning:
+		map_scroll.scroll_horizontal -= event.relative.x
+		map_scroll.scroll_vertical -= event.relative.y
+
+func _on_map_canvas_draw() -> void:
+	var drawn := {}
+	for id in WorldMap.nodes.keys():
+		if not node_centers.has(id):
+			continue
+		for neighbor in WorldMap.neighbors(id):
+			if not node_centers.has(neighbor):
+				continue
+			var pair := "%s|%s" % [id, neighbor] if id < neighbor else "%s|%s" % [neighbor, id]
+			if drawn.has(pair):
+				continue
+			drawn[pair] = true
+			map_canvas.draw_line(node_centers[id], node_centers[neighbor], Color(1, 1, 1, 0.3), 2.0)
 
 func _refresh_map() -> void:
 	for id in node_labels.keys():
@@ -502,21 +609,6 @@ func _refresh_map() -> void:
 			label.text = "発見済み(進行不可)"
 		else:
 			label.text = "未発見"
-
-func _create_section_frames(created: Dictionary) -> void:
-	for section_id in WorldMap.sections.keys():
-		var member_ids := WorldMap.nodes_in_section(section_id)
-		if member_ids.is_empty():
-			continue
-		var frame := GraphFrame.new()
-		frame.title = WorldMap.sections[section_id]["name"]
-		frame.autoshrink_enabled = true
-		frame.tint_color_enabled = true
-		frame.tint_color = Color(0.5, 0.3, 0.1, 0.3)
-		graph_edit.add_child(frame)
-		for id in member_ids:
-			if created.has(id):
-				graph_edit.attach_graph_element_to_frame(created[id], frame.name)
 
 func _on_recruit_pressed() -> void:
 	Recruitment.post_recruitment()
