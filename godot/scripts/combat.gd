@@ -35,3 +35,27 @@ func resolve_encounter(npc_id: int, enemy_power: int, current_day: int) -> Dicti
 
 	npc["hp"] = hp
 	return {"result": "victory"}
+
+## exploration.gdのforecast_section(「予測」ボタン)用の非破壊シミュレーション。
+## resolve_encounter()と同じ戦闘計算式を使うが、NPCの実際のHP/経験値/回復状態には
+## 一切書き込まない(dry run)。
+func predict_result(npc_id: int, enemy_power: int) -> String:
+	var npc := Npcs.get_npc(npc_id)
+	if npc.is_empty():
+		return "error"
+
+	var combat_power: int = Npcs.skill_level(npc_id, SkillTypes.Skill.COMBAT) * 10 + 10
+	var hp: float = npc["hp"]
+	var policy: Dictionary = npc["combat_policy"]
+
+	while hp > 0 and enemy_power > 0:
+		hp -= max(1, enemy_power - combat_power)
+		enemy_power -= max(1, combat_power - enemy_power / 2)
+
+		if hp / npc["max_hp"] <= policy["hp_threshold"]:
+			if policy["action"] == Npcs.CombatAction.RETREAT:
+				return "retreat"
+			else:
+				hp += npc["max_hp"] * 0.3
+
+	return "defeat" if hp <= 0 else "victory"

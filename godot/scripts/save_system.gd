@@ -29,11 +29,16 @@ const TABLES := [
 ]
 
 var current_slot_id: int = 1
+## オートセーブ(日次/終了時)を止めたい、という要望への対応(2026-09-13追加)。手動セーブ/
+## 進行の複製機能があるので、オフにしても明示的な保存手段は残る。プレイヤー設定として
+## worldseeker_meta.cfgに永続化する(スロットごとの値ではない)。
+var autosave_enabled: bool = true
 
 func _ready() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(META_PATH) == OK:
 		current_slot_id = int(cfg.get_value("state", "active_slot", 1))
+		autosave_enabled = bool(cfg.get_value("state", "autosave_enabled", true))
 
 func _slot_path(slot_id: int) -> String:
 	return "%s/slot_%d.sqlite" % [SLOT_DIR, slot_id]
@@ -44,6 +49,21 @@ func _set_active_slot(slot_id: int) -> void:
 	cfg.load(META_PATH) # 失敗しても新規作成として続行してよい
 	cfg.set_value("state", "active_slot", slot_id)
 	cfg.save(META_PATH)
+
+func set_autosave_enabled(enabled: bool) -> void:
+	autosave_enabled = enabled
+	var cfg := ConfigFile.new()
+	cfg.load(META_PATH)
+	cfg.set_value("state", "autosave_enabled", enabled)
+	cfg.save(META_PATH)
+
+## オートセーブ経路(main.gdの日次/終了時保存)専用の入り口。autosave_enabledがfalseの間は
+## 何もしない。手動セーブ・分岐複製・スロット切替/削除・新規プレイなど、プレイヤーが明示的に
+## 操作した結果としてのsave_game()呼び出しはこのフラグの影響を受けない(そちらは直接
+## save_game()を呼ぶ)。
+func autosave() -> void:
+	if autosave_enabled:
+		save_game()
 
 ## 既存スロット一覧(スロットID順)。各スロットのDBを開いて概要(資金/日付/NPC数)だけ読む。
 func list_slots() -> Array:
@@ -105,6 +125,18 @@ func create_new_slot() -> int:
 	_set_active_slot(next_id)
 	save_game()
 	return next_id
+
+## 今のスロットの進行状態を、それとは別の新しいスロットへそのまま複製する(design.md 8.2
+## 「分岐」用)。create_new_slot()と違いワールド進行をゼロから作り直さず、今の状態をそのまま
+## 複製するため、同じ分岐点から別方向へ進められる2本目のスロットができる。アクティブスロットは
+## 複製後も元のままで、呼び出し側は引き続き同じスロットで続行する(ファイルコピーのみなので
+## WorldMap/Npcs等の再構築も不要)。
+func duplicate_current_slot() -> int:
+	save_game() # 複製前に最新の状態をディスクへ反映しておく
+	var next_id := _next_free_slot_id()
+	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
+	var err := DirAccess.copy_absolute(_slot_path(current_slot_id), _slot_path(next_id))
+	return next_id if err == OK else -1
 
 func _next_free_slot_id() -> int:
 	var max_id := 0

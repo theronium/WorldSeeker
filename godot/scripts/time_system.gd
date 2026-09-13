@@ -18,21 +18,39 @@ var current_month: int = 0
 var is_paused: bool = false # 月末になると自動でtrueになり、確認操作を待つ
 var speed_multiplier: float = 1.0
 var _accumulated: float = 0.0
+var _last_check_ms: int = 0
 
 ## 暦の起点(何年何月から始まったプレイか)。デフォルトは0年1月。
 ## 将来シナリオ選択機能ができた際は、reset()の後にこれを上書きして使う想定。
 var start_year: int = 0
 var start_month: int = 1 # 1〜12
 
-func _process(delta: float) -> void:
+func _ready() -> void:
+	_last_check_ms = Time.get_ticks_msec()
+
+## main.gdの_ready()の最後(UI構築・セーブロードなど起動時の重い処理が全て終わった直後)に
+## 呼ぶ。これを呼ばずTimeSystem自身の_ready()時点を基準にすると、そこから起動完了までに
+## かかった実時間がまるごと経過時間として計算されてしまう(この後まさにその不具合が起きた:
+## _first_process_frameで初回_processフレームのdeltaだけを捨てる対策では、実際には
+## `--headless --quit`が1フレームより多く処理してから終了するケースを防げず、起動チェックを
+## 繰り返すだけで日付がドリフトし続けた)。基準リセットのタイミングを実際の重い処理の直後に
+## 明示的に固定することで、その種の不確実性を排除する。
+func mark_boot_complete() -> void:
+	_last_check_ms = Time.get_ticks_msec()
+
+## フレームのdelta(Godot内部の計測値)を信用せず、実時間タイムスタンプの差分から経過時間を
+## 計算する。1回のチェックで進められる日数は最大1日までとし、それを超える分(遅延)は
+## _accumulatedに残したまま次回以降のチェックで徐々に追い上げる(セッション型なので、本当に
+## 長時間バックグラウンドで走っていた場合は数フレームのうちに自然に追いつく。一方、重い処理や
+## テスト起動による見せかけの大きなdeltaが原因で日付が瞬時に何日も飛ぶことはもう起きない)。
+func _process(_delta: float) -> void:
+	var now := Time.get_ticks_msec()
+	var elapsed_sec := (now - _last_check_ms) / 1000.0
+	_last_check_ms = now
 	if is_paused:
 		return
-	_accumulated += delta * speed_multiplier
-	# is_pausedもループ条件に含める: 1フレームのdeltaが大きい場合(重い_ready()直後の初回フレームなど)、
-	# ここでis_pausedをチェックしないと、_advance_day()が月末でis_paused=trueを立てても
-	# ループが止まらずそのまま次の月・その次の月まで一気に消化してしまい、月末の
-	# 自動一時停止(月末集計待ち)を素通りしてしまう。
-	while _accumulated >= SECONDS_PER_DAY and not is_paused:
+	_accumulated += elapsed_sec * speed_multiplier
+	if _accumulated >= SECONDS_PER_DAY:
 		_accumulated -= SECONDS_PER_DAY
 		_advance_day()
 
@@ -85,5 +103,6 @@ func reset() -> void:
 	is_paused = false
 	speed_multiplier = 1.0
 	_accumulated = 0.0
+	_last_check_ms = Time.get_ticks_msec()
 	start_year = 0
 	start_month = 1

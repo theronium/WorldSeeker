@@ -50,9 +50,22 @@ func _on_day_advanced(current_day: int) -> void:
 			continue
 		if not Npcs.is_available(npc["id"], current_day):
 			continue
+		_claim_wild_progress(npc)
 		_retry_gates(npc, current_day)
 		if Npcs.is_available(npc["id"], current_day):
 			_attempt_discovery(npc, current_day)
+
+## 野良NPC(wild_npcs.gd)がゲート無しのフロアを先に発見・突破してしまうと、found=trueに
+## なった時点でfrontier_for_section/_retry_gatesのどちらの対象からも永久に外れてしまい、
+## そのフロアを実際に担当している雇用NPCが常駐していても「誰か(灰色)」表示のまま二度と
+## 「自身(青)」に塗り替わらなかった(ささやきの森「森の小道」で報告された不具合)。
+## 担当NPCが稼働している間は、既に突破済みだが自分の踏破扱いになっていないフロアを
+## 日次でここに合流させる。
+func _claim_wild_progress(npc: Dictionary) -> void:
+	for node_id in WorldMap.nodes_in_section(npc["assigned_section"]):
+		var node: Dictionary = WorldMap.nodes[node_id]
+		if node["passed"] and not node["found_by_employed"]:
+			WorldMap.mark_passed(node_id, true)
 
 func _retry_gates(npc: Dictionary, current_day: int) -> void:
 	for node_id in WorldMap.nodes_in_section(npc["assigned_section"]):
@@ -66,11 +79,14 @@ func _retry_gates(npc: Dictionary, current_day: int) -> void:
 				_post_floor(npc["name"], node_id, current_day, "%sが「%s」を突破した" % [npc["name"], node["name"]], "gate_pass", npc["id"])
 				_check_section_cleared(npc["assigned_section"], current_day)
 
+func discovery_chance(npc_id: int) -> float:
+	var perception := Npcs.skill_level(npc_id, SkillTypes.Skill.PERCEPTION)
+	return min(DISCOVERY_MAX_CHANCE, DISCOVERY_BASE_CHANCE + perception * DISCOVERY_PER_PERCEPTION)
+
 func _attempt_discovery(npc: Dictionary, current_day: int) -> void:
 	# 担当セクションの未発見の隣接ノード全てに、並列で1回ずつ発見を試みる
 	var frontier := WorldMap.frontier_for_section(npc["assigned_section"])
-	var perception := Npcs.skill_level(npc["id"], SkillTypes.Skill.PERCEPTION)
-	var chance: float = min(DISCOVERY_MAX_CHANCE, DISCOVERY_BASE_CHANCE + perception * DISCOVERY_PER_PERCEPTION)
+	var chance := discovery_chance(npc["id"])
 
 	for node_id in frontier:
 		if not Npcs.is_available(npc["id"], current_day):
@@ -208,3 +224,77 @@ func _attempt_gate(npc_id: int, node_id: String, current_day: int) -> bool:
 			return WorldMap.can_pass_gate(node_id, npc_id)
 		_:
 			return WorldMap.can_pass_gate(node_id, npc_id)
+
+## NPC管理パネルの「予測」ボタン用: 指定NPCを指定セクションに置いた場合の、実際には
+## 配置転換しない今月(TimeSystem.DAYS_PER_MONTH日)の見込みだけを計算する。
+##
+## セクション内の未突破ノードを、現在到達済みの場所から辿れる順に「発見にかかる予想日数」
+## (1/発見確率、を経路に沿って積み上げたもの)で並べ、月内に到達しうる範囲でNPCが
+## 実際に戦えない(撤退/敗北になる)戦闘ゲートが無いかをCombat.predict_result(実際の
+## HP/経験値には触れない非破壊シミュレーション)で調べる。見つかった場合、その戦闘に
+## 月内に行き着く確率分だけ予測報酬を割り引く(=撤退が先に来れば、その分の報酬は無いもの
+## として扱う期待値化)。スキル/所持品/血筋のゲートで現状塞がれている先は、今月中に
+## 抜けられる保証が無いため、この見積もりには含めない。
+func forecast_section(npc_id: int, section_id: String) -> Dictionary:
+	var base_income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
+	var horizon := float(TimeSystem.DAYS_PER_MONTH)
+	var chance := discovery_chance(npc_id)
+
+	var eta_days: Dictionary = {} # node_id -> float(このノードの発見が見込まれる日数)
+	var queue: Array = WorldMap.frontier_for_section(section_id).duplicate()
+	for node_id in queue:
+		eta_days[node_id] = 1.0 / chance
+
+	var visited: Dictionary = {}
+	var risk_node_id := ""
+	var risk_eta := INF
+
+	while not queue.is_empty():
+		var node_id: String = queue.pop_front()
+		if visited.has(node_id):
+			continue
+		visited[node_id] = true
+		var eta: float = eta_days[node_id]
+		var node: Dictionary = WorldMap.nodes[node_id]
+		var gate: Dictionary = node.get("gate", {})
+
+		var passable := true
+		match gate.get("type", ""):
+			"combat":
+				if eta <= horizon:
+					var result := Combat.predict_result(npc_id, gate["enemy_power"])
+					if result != "victory":
+						risk_node_id = node_id
+						risk_eta = eta
+						break # BFSはeta昇順に訪れるため、最初に見つかった撤退/敗北が最短の危険地点
+			"skill":
+				passable = Npcs.skill_level(npc_id, gate["skill"]) >= gate["min_level"]
+			"innate_trait", "item":
+				passable = WorldMap.can_pass_gate(node_id, npc_id)
+
+		if not passable:
+			continue # 今のスキル/所持品では今月中に抜けられる保証が無い
+
+		for neighbor_id in node["connections"]:
+			if not WorldMap.nodes.has(neighbor_id):
+				continue
+			var neighbor: Dictionary = WorldMap.nodes[neighbor_id]
+			if neighbor["section"] != section_id or neighbor["found"] or visited.has(neighbor_id):
+				continue
+			var next_eta: float = eta + 1.0 / chance
+			if not eta_days.has(neighbor_id) or next_eta < eta_days[neighbor_id]:
+				eta_days[neighbor_id] = next_eta
+			queue.append(neighbor_id)
+
+	var retreat_probability := 0.0
+	var risk_node_name := ""
+	if risk_node_id != "":
+		retreat_probability = 1.0 - exp(-horizon / max(risk_eta, 0.01))
+		risk_node_name = WorldMap.nodes[risk_node_id]["name"]
+
+	return {
+		"base_income": base_income,
+		"predicted_income": int(round(base_income * (1.0 - retreat_probability))),
+		"retreat_probability": retreat_probability,
+		"risk_node_name": risk_node_name,
+	}

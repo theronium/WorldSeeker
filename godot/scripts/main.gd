@@ -2,7 +2,10 @@ extends Control
 
 var candidates_list: ItemList
 var hire_status_label: Label
-var roster_list: VBoxContainer # NPCごとのカード行(アイコン/HPバー/状態バッジ)を並べる
+var roster_grid: GridContainer # NPCごとの正方形ポートレートカード(画像/名前/状態)を並べる
+var npc_roster_view: Control # NPC管理パネル: 一覧ビュー(既定で表示)
+var npc_detail_view: Control # NPC管理パネル: 選択中NPCの詳細ビュー(タブで[ステータス][担当]切替)
+var npc_detail_tabs: TabContainer
 var section_tree: Tree
 var npc_detail_label: Label
 var skill_level_labels: Dictionary = {} # skill:int -> Label(Lv/コスト表示)
@@ -13,8 +16,11 @@ var node_labels: Dictionary = {} # node_id -> Label(状態表示)
 var node_name_labels: Dictionary = {} # node_id -> Label(名前表示。未発見なら????)
 var node_boxes: Dictionary = {} # node_id -> PanelContainer(自身/誰か/未踏破の色分け対象)
 var node_centers: Dictionary = {} # node_id -> Vector2(map_canvas内での中心座標。接続線描画用)
-var section_icon_rows: Dictionary = {} # section_id -> HBoxContainer(担当NPCアイコン表示用)
+var node_icon_rows: Dictionary = {} # node_id -> HBoxContainer(担当NPCアイコンを現在フロアに表示)
 var section_bounds_cache: Dictionary = {} # section_id -> Rect2(エリア選択ボタンのスクロール先計算用)
+var section_lock_icons: Dictionary = {} # section_id -> Control(未到達セクションの鍵アイコン)
+var facility_info_label: Label
+var section_forecast_label: Label
 var funds_label: Label
 var date_label: Label
 var time_label: Label
@@ -50,6 +56,8 @@ var action_log_text: RichTextLabel
 
 var slot_panel: PanelContainer
 var slot_list: ItemList
+var manual_save_status_label: Label
+var autosave_checkbox: CheckBox
 var new_game_confirm: ConfirmationDialog
 var delete_slot_confirm: ConfirmationDialog
 var _pending_delete_slot_id: int = -1
@@ -85,13 +93,14 @@ func _ready() -> void:
 	EventDialogue.line_shown.connect(_on_dialogue_line_shown)
 	EventDialogue.finished.connect(_on_dialogue_finished)
 	_refresh_all()
+	TimeSystem.mark_boot_complete()
 
 func _process(_delta: float) -> void:
 	_refresh_time_label()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		SaveSystem.save_game()
+		SaveSystem.autosave()
 		get_tree().quit()
 
 ## アプリ全体に1枚だけ適用する共通テーマ。「押せる/選べるもの」と「ただの文字」が
@@ -601,15 +610,16 @@ func _on_open_hire_pressed() -> void:
 ## NPC管理パネル(名簿・担当セクション割り当て・スキル訓練・施設拡張)。
 ## サイドバーの「NPC管理」ボタンから開く。
 ##
-## 「場所を選んでからNPCを選ぶ」ではなく「NPCを選ぶと、その子の移動先や
-## スキル訓練などの操作が右側に出る」という順番にしてある方が分かりやすいため、
-## 左に名簿、右にその場で選択中のNPC向けの操作をまとめている。
+## 一覧ビュー(NPCの正方形ポートレートカードを並べただけの画面)を既定で表示し、
+## カードをクリックすると詳細ビューに切り替わる(担当及びスキルは一覧には出さない)。
+## 詳細ビューは[ステータス(スキル訓練込み)][担当]の2タブに分け、常時2カラムで
+## 詰め込んでいた旧UIより縦横それぞれを広く使えるようにした。
 func _build_npc_ui() -> void:
 	npc_panel = PanelContainer.new()
 	npc_panel.set_anchors_preset(Control.PRESET_CENTER)
-	npc_panel.offset_left = -380
+	npc_panel.offset_left = -500
 	npc_panel.offset_top = -300
-	npc_panel.offset_right = 380
+	npc_panel.offset_right = 500
 	npc_panel.offset_bottom = 300
 	npc_panel.visible = false
 	add_child(npc_panel)
@@ -628,108 +638,78 @@ func _build_npc_ui() -> void:
 	close_button.pressed.connect(func(): _close_modal(npc_panel))
 	header.add_child(close_button)
 
-	var body := HBoxContainer.new()
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(body)
+	_build_npc_roster_view(col)
+	_build_npc_detail_view(col)
 
-	var left_col := VBoxContainer.new()
-	left_col.custom_minimum_size = Vector2(220, 0)
-	body.add_child(left_col)
+## 一覧ビュー: 正方形ポートレートカードのグリッドのみを中心に表示する(担当/スキルは
+## カードをクリックして詳細ビューに移るまで出さない)。
+func _build_npc_roster_view(col: VBoxContainer) -> void:
+	npc_roster_view = VBoxContainer.new()
+	npc_roster_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(npc_roster_view)
 
-	var roster_label := Label.new()
-	roster_label.text = "雇用NPC(選択すると右に操作が出ます)"
-	roster_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	left_col.add_child(roster_label)
-
-	# 血筋・担当・状態を1行の文字列に詰め込むと折り返し/はみ出しで読めなくなるため、
-	# NPCごとにアイコン・HPバー・状態バッジを別々の部品として並べたカード行に作り直した
-	# (ItemListの文字列一覧から、素のControlで組んだカードのリストへ)。
 	var roster_scroll := ScrollContainer.new()
-	roster_scroll.custom_minimum_size = Vector2(0, 300)
 	roster_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left_col.add_child(roster_scroll)
+	npc_roster_view.add_child(roster_scroll)
 
-	roster_list = VBoxContainer.new()
-	roster_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	roster_scroll.add_child(roster_list)
+	roster_grid = GridContainer.new()
+	roster_grid.columns = 5
+	roster_grid.add_theme_constant_override("h_separation", 10)
+	roster_grid.add_theme_constant_override("v_separation", 10)
+	roster_scroll.add_child(roster_grid)
 
 	facility_button = Button.new()
+	facility_button.text = "施設を拡張する"
 	facility_button.pressed.connect(_on_upgrade_facility_pressed)
-	left_col.add_child(facility_button)
+	npc_roster_view.add_child(facility_button)
 
-	var right_scroll := ScrollContainer.new()
-	right_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.add_child(right_scroll)
+	# コスト表示をボタン本体の文字列に埋め込むと、桁が増えるたびにボタンの最小幅が伸びて
+	# 押し広げてしまっていたため、ボタンの文言は固定にして数値は別行のLabelへ分離した。
+	facility_info_label = Label.new()
+	facility_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	facility_info_label.add_theme_font_size_override("font_size", 12)
+	facility_info_label.modulate = Color(1, 1, 1, 0.75)
+	npc_roster_view.add_child(facility_info_label)
 
-	var right_col := VBoxContainer.new()
-	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_scroll.add_child(right_col)
+## 詳細ビュー: 一覧でNPCを選ぶとここに切り替わる。上部に「一覧へ戻る」と簡単な身元表示、
+## 下は[ステータス][担当]のタブで残りの操作を分ける。
+func _build_npc_detail_view(col: VBoxContainer) -> void:
+	npc_detail_view = VBoxContainer.new()
+	npc_detail_view.visible = false
+	npc_detail_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(npc_detail_view)
+
+	var back_button := Button.new()
+	back_button.text = "← 一覧へ戻る"
+	back_button.pressed.connect(_on_npc_detail_back_pressed)
+	npc_detail_view.add_child(back_button)
 
 	npc_detail_label = Label.new()
 	npc_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	right_col.add_child(npc_detail_label)
+	npc_detail_view.add_child(npc_detail_label)
 
-	right_col.add_child(HSeparator.new())
+	npc_detail_tabs = TabContainer.new()
+	npc_detail_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	npc_detail_view.add_child(npc_detail_tabs)
 
-	var section_label := Label.new()
-	section_label.text = "担当セクションの割り当て(エリアごとに折り畳めます)"
-	section_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	right_col.add_child(section_label)
+	_build_npc_status_tab(npc_detail_tabs)
+	_build_npc_assignment_tab(npc_detail_tabs)
 
-	section_tree = Tree.new()
-	section_tree.custom_minimum_size = Vector2(0, 180)
-	section_tree.hide_root = true
-	right_col.add_child(section_tree)
-
-	var section_actions := HBoxContainer.new()
-	right_col.add_child(section_actions)
-
-	var assign_button := Button.new()
-	assign_button.text = "選択セクションに割り当てる"
-	assign_button.pressed.connect(_on_assign_to_section_pressed)
-	section_actions.add_child(assign_button)
-
-	var view_thread_button := Button.new()
-	view_thread_button.text = "このセクションのログを見る"
-	view_thread_button.pressed.connect(_on_view_thread_pressed)
-	section_actions.add_child(view_thread_button)
-
-	# 完全踏破後の挙動(留まって収入源として維持するか、次の未踏破セクションへ自動で移るか)。
-	# NPCごとに設定できる(exploration.gdのpost_clear_behavior参照)。
-	var post_clear_row := HBoxContainer.new()
-	right_col.add_child(post_clear_row)
-
-	var post_clear_label := Label.new()
-	post_clear_label.text = "完全踏破後:"
-	post_clear_row.add_child(post_clear_label)
-
-	var post_clear_group := ButtonGroup.new()
-	var stay_button := Button.new()
-	stay_button.text = "留まる(収入維持)"
-	stay_button.toggle_mode = true
-	stay_button.button_group = post_clear_group
-	stay_button.pressed.connect(_on_post_clear_behavior_pressed.bind(Npcs.PostClearBehavior.STAY))
-	post_clear_row.add_child(stay_button)
-	post_clear_behavior_buttons[Npcs.PostClearBehavior.STAY] = stay_button
-
-	var move_on_button := Button.new()
-	move_on_button.text = "次のセクションへ自動移動"
-	move_on_button.toggle_mode = true
-	move_on_button.button_group = post_clear_group
-	move_on_button.pressed.connect(_on_post_clear_behavior_pressed.bind(Npcs.PostClearBehavior.MOVE_ON))
-	post_clear_row.add_child(move_on_button)
-	post_clear_behavior_buttons[Npcs.PostClearBehavior.MOVE_ON] = move_on_button
-
-	right_col.add_child(HSeparator.new())
+## [ステータス]タブ: HP/状態/担当セクション名(npc_detail_labelに集約)に加え、
+## スキル訓練もここに含める(担当の割り当て操作とは別画面の方が見やすいという判断)。
+func _build_npc_status_tab(tabs: TabContainer) -> void:
+	var status_tab := VBoxContainer.new()
+	status_tab.name = "ステータス"
+	tabs.add_child(status_tab)
 
 	var skill_label := Label.new()
 	skill_label.text = "スキル訓練"
-	right_col.add_child(skill_label)
+	status_tab.add_child(skill_label)
 
 	skill_level_labels.clear()
 	for skill in SkillTypes.all_skills():
 		var row := HBoxContainer.new()
-		right_col.add_child(row)
+		status_tab.add_child(row)
 
 		var name_col := VBoxContainer.new()
 		name_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -755,12 +735,104 @@ func _build_npc_ui() -> void:
 		train_button.pressed.connect(_on_train_skill_pressed.bind(skill))
 		row.add_child(train_button)
 
-func _on_open_npc_panel_pressed() -> void:
+## [担当]タブ: セクション割り当て・予測・完全踏破後の挙動設定。
+func _build_npc_assignment_tab(tabs: TabContainer) -> void:
+	var assignment_tab := VBoxContainer.new()
+	assignment_tab.name = "担当"
+	tabs.add_child(assignment_tab)
+
+	var section_label := Label.new()
+	section_label.text = "担当セクションの割り当て(エリアごとに折り畳めます)"
+	section_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	assignment_tab.add_child(section_label)
+
+	section_tree = Tree.new()
+	section_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	section_tree.hide_root = true
+	assignment_tab.add_child(section_tree)
+
+	var section_actions := HBoxContainer.new()
+	assignment_tab.add_child(section_actions)
+
+	var assign_button := Button.new()
+	assign_button.text = "割り当て"
+	assign_button.pressed.connect(_on_assign_to_section_pressed)
+	section_actions.add_child(assign_button)
+
+	var view_thread_button := Button.new()
+	view_thread_button.text = "ログ"
+	view_thread_button.pressed.connect(_on_view_thread_pressed)
+	section_actions.add_child(view_thread_button)
+
+	var forecast_button := Button.new()
+	forecast_button.text = "予測"
+	forecast_button.pressed.connect(_on_forecast_pressed)
+	section_actions.add_child(forecast_button)
+
+	section_forecast_label = Label.new()
+	section_forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	section_forecast_label.modulate = Color(1, 1, 1, 0.85)
+	assignment_tab.add_child(section_forecast_label)
+
+	# 完全踏破後の挙動(留まって収入源として維持するか、次の未踏破セクションへ自動で移るか)。
+	# NPCごとに設定できる(exploration.gdのpost_clear_behavior参照)。
+	var post_clear_row := HBoxContainer.new()
+	assignment_tab.add_child(post_clear_row)
+
+	var post_clear_label := Label.new()
+	post_clear_label.text = "完全踏破後:"
+	post_clear_row.add_child(post_clear_label)
+
+	var post_clear_group := ButtonGroup.new()
+	var stay_button := Button.new()
+	stay_button.text = "ループ"
+	stay_button.tooltip_text = "留まる(収入維持)"
+	stay_button.toggle_mode = true
+	stay_button.button_group = post_clear_group
+	stay_button.pressed.connect(_on_post_clear_behavior_pressed.bind(Npcs.PostClearBehavior.STAY))
+	post_clear_row.add_child(stay_button)
+	post_clear_behavior_buttons[Npcs.PostClearBehavior.STAY] = stay_button
+
+	var move_on_button := Button.new()
+	move_on_button.text = "先へ進む"
+	move_on_button.tooltip_text = "次のセクションへ自動移動"
+	move_on_button.toggle_mode = true
+	move_on_button.button_group = post_clear_group
+	move_on_button.pressed.connect(_on_post_clear_behavior_pressed.bind(Npcs.PostClearBehavior.MOVE_ON))
+	post_clear_row.add_child(move_on_button)
+	post_clear_behavior_buttons[Npcs.PostClearBehavior.MOVE_ON] = move_on_button
+
+## 一覧ビューを表示する(NPC管理パネルを開いた時の既定表示)。
+func _show_npc_roster_view() -> void:
+	npc_roster_view.visible = true
+	npc_detail_view.visible = false
+
+## 詳細ビューを表示する(一覧でNPCを選んだ時、またはマップのNPCアイコンから直接開いた時)。
+func _show_npc_detail_view() -> void:
+	npc_roster_view.visible = false
+	npc_detail_view.visible = true
+
+func _on_npc_detail_back_pressed() -> void:
+	_refresh_roster() # 詳細側での訓練/割り当て変更をカードに反映してから一覧へ戻る
+	_show_npc_roster_view()
+
+## NPC管理パネルを開く共通処理。show_detailがtrueなら選択中NPCの詳細から始める
+## (マップのNPCアイコンをクリックした場合)。falseなら一覧ビューから始める
+## (サイドバーの「NPC管理」ボタンから開いた場合。一覧を中心に見せるため、以前選択して
+## いたNPCがあっても毎回一覧からにする)。
+func _open_npc_panel(show_detail: bool) -> void:
 	_populate_section_tree()
 	_refresh_roster()
-	_refresh_npc_detail()
 	_refresh_facility_button()
+	if show_detail:
+		_refresh_npc_detail()
+		_show_npc_detail_view()
+	else:
+		_show_npc_roster_view()
 	_open_modal(npc_panel)
+
+func _on_open_npc_panel_pressed() -> void:
+	_open_npc_panel(false)
 
 ## セクション選択肢をエリア→セクションの2階層に組んで、エリア単位で折り畳めるようにする。
 ## 割り当て先として選べるのは、既に誰かが到達しているか、隣接する突破済みノードから
@@ -781,18 +853,21 @@ func _populate_section_tree() -> void:
 			section_item.set_text(0, WorldMap.sections[section_id]["name"])
 			section_item.set_metadata(0, section_id)
 
-func _on_roster_row_pressed(npc_id: int) -> void:
+func _on_roster_card_pressed(npc_id: int) -> void:
 	_selected_npc_id = npc_id
 	_refresh_npc_detail()
+	_show_npc_detail_view()
 
 func _refresh_npc_detail() -> void:
 	if _selected_npc_id < 0 or Npcs.get_npc(_selected_npc_id).is_empty():
 		npc_detail_label.text = "左の一覧からNPCを選択してください"
+		section_forecast_label.text = ""
 		for skill in skill_level_labels.keys():
 			skill_level_labels[skill].text = ""
 		for behavior in post_clear_behavior_buttons.keys():
 			post_clear_behavior_buttons[behavior].button_pressed = false
 		return
+	section_forecast_label.text = ""
 	var npc := Npcs.get_npc(_selected_npc_id)
 	var section_id: String = npc["assigned_section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else "未割当"
@@ -853,6 +928,24 @@ func _on_assign_to_section_pressed() -> void:
 	_refresh_roster()
 	_refresh_npc_detail()
 
+## 「予測」ボタン: 選択中のNPCをTreeで選んだセクションに置いた場合の、実際の配置転換を
+## 行わずに今月の見込みだけを計算して表示する(Exploration.forecast_section参照)。
+func _on_forecast_pressed() -> void:
+	if _selected_npc_id < 0:
+		return
+	var selected_item := section_tree.get_selected()
+	if selected_item == null:
+		return
+	var section_id = selected_item.get_metadata(0)
+	if section_id == null:
+		return
+	var result := Exploration.forecast_section(_selected_npc_id, section_id)
+	if result["risk_node_name"] == "":
+		section_forecast_label.text = "予測報酬(1ヶ月): 約%d資金 / 撤退リスク: なし" % result["predicted_income"]
+	else:
+		section_forecast_label.text = "予測報酬(1ヶ月): 約%d資金(通常時は約%d資金) / 撤退リスク: 約%d%%(「%s」で撤退の恐れ)" % [
+			result["predicted_income"], result["base_income"], roundi(result["retreat_probability"] * 100), result["risk_node_name"]]
+
 func _on_train_skill_pressed(skill: int) -> void:
 	if _selected_npc_id < 0:
 		return
@@ -869,10 +962,10 @@ func _on_train_skill_pressed(skill: int) -> void:
 func _build_slot_ui() -> void:
 	slot_panel = PanelContainer.new()
 	slot_panel.set_anchors_preset(Control.PRESET_CENTER)
-	slot_panel.offset_left = -280
-	slot_panel.offset_top = -220
-	slot_panel.offset_right = 280
-	slot_panel.offset_bottom = 220
+	slot_panel.offset_left = -320
+	slot_panel.offset_top = -260
+	slot_panel.offset_right = 320
+	slot_panel.offset_bottom = 260
 	slot_panel.visible = false
 	add_child(slot_panel)
 
@@ -891,24 +984,67 @@ func _build_slot_ui() -> void:
 	header.add_child(close_button)
 
 	slot_list = ItemList.new()
-	slot_list.custom_minimum_size = Vector2(0, 260)
+	slot_list.custom_minimum_size = Vector2(0, 220)
 	slot_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(slot_list)
 
+	# ボタンを全部縦に並べると数が増えるたびにパネルの下端からはみ出してしまっていたため、
+	# 2列に分けて縦の高さを抑える。左列は「今どのスロットに対しても行う」保存系の操作、
+	# 右列はリストで選択したスロットに対する操作+新規プレイ、という分担。
+	var actions_row := HBoxContainer.new()
+	col.add_child(actions_row)
+
+	var left_col := VBoxContainer.new()
+	left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions_row.add_child(left_col)
+
+	# オートセーブ(日次/終了時)とは別に、プレイヤーが好きなタイミングで明示的に保存できる
+	# 手段が無く、「新規プレイを開始する」の内部処理(離れる前のスロットを保存)頼みになって
+	# いた。分岐前のチェックポイントとして能動的に保存したい、という要望への対応。
+	var manual_save_button := Button.new()
+	manual_save_button.text = "今すぐセーブする"
+	manual_save_button.pressed.connect(_on_manual_save_pressed)
+	left_col.add_child(manual_save_button)
+
+	# 「新規プレイ」は進行をゼロから作り直してしまうため、今の進行を保ったまま別スロットへ
+	# 分岐させたい(色々試す前のチェックポイントを残したい)場合の手段が無かった。ファイルを
+	# そのまま複製するだけなので確認ダイアログは挟まず即実行し、結果はステータス表示で伝える。
+	var duplicate_button := Button.new()
+	duplicate_button.text = "進行を複製する(分岐用)"
+	duplicate_button.tooltip_text = "現在の進行を複製する(分岐用の新規スロットを作る)"
+	duplicate_button.pressed.connect(_on_duplicate_slot_pressed)
+	left_col.add_child(duplicate_button)
+
+	var right_col := VBoxContainer.new()
+	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions_row.add_child(right_col)
+
 	var open_button := Button.new()
-	open_button.text = "このスロットを開く"
+	open_button.text = "このスロットをロードする"
 	open_button.pressed.connect(_on_open_slot_pressed)
-	col.add_child(open_button)
+	right_col.add_child(open_button)
 
 	var delete_button := Button.new()
 	delete_button.text = "選択したスロットを削除する"
 	delete_button.pressed.connect(_on_delete_slot_pressed)
-	col.add_child(delete_button)
+	right_col.add_child(delete_button)
 
 	var new_game_button := Button.new()
 	new_game_button.text = "新規プレイを開始する"
 	new_game_button.pressed.connect(func(): new_game_confirm.popup_centered())
-	col.add_child(new_game_button)
+	right_col.add_child(new_game_button)
+
+	# オートセーブを切りたい(手動セーブだけで管理したい)という要望への対応。
+	# チェック状態はworldseeker_meta.cfgに永続化し、次回起動後も引き継ぐ(SaveSystem.autosave_enabled)。
+	autosave_checkbox = CheckBox.new()
+	autosave_checkbox.text = "オートセーブを有効にする(日次/終了時)"
+	autosave_checkbox.button_pressed = SaveSystem.autosave_enabled
+	autosave_checkbox.toggled.connect(SaveSystem.set_autosave_enabled)
+	col.add_child(autosave_checkbox)
+
+	manual_save_status_label = Label.new()
+	manual_save_status_label.modulate = Color(1, 1, 1, 0.75)
+	col.add_child(manual_save_status_label)
 
 	new_game_confirm = ConfirmationDialog.new()
 	new_game_confirm.dialog_text = "現在の進行とは別に、新しいセーブスロットでゼロから始めます。よろしいですか？"
@@ -921,6 +1057,8 @@ func _build_slot_ui() -> void:
 
 func _on_open_slots_pressed() -> void:
 	_refresh_slot_list()
+	manual_save_status_label.text = ""
+	autosave_checkbox.button_pressed = SaveSystem.autosave_enabled
 	_open_modal(slot_panel)
 
 func _refresh_slot_list() -> void:
@@ -948,6 +1086,19 @@ func _on_new_game_confirmed() -> void:
 	SaveSystem.create_new_slot()
 	_refresh_all()
 	_close_modal(slot_panel)
+
+func _on_manual_save_pressed() -> void:
+	SaveSystem.save_game()
+	_refresh_slot_list()
+	manual_save_status_label.text = "保存しました(%s)" % TimeSystem.format_date()
+
+func _on_duplicate_slot_pressed() -> void:
+	var new_id := SaveSystem.duplicate_current_slot()
+	if new_id == -1:
+		manual_save_status_label.text = "複製に失敗しました"
+		return
+	_refresh_slot_list()
+	manual_save_status_label.text = "スロット%dとして複製しました(現在のスロットのまま続けられます)" % new_id
 
 func _on_delete_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
@@ -1025,8 +1176,9 @@ func _seed_demo_world() -> void:
 	node_name_labels.clear()
 	node_boxes.clear()
 	node_centers.clear()
-	section_icon_rows.clear()
+	node_icon_rows.clear()
 	section_bounds_cache.clear()
+	section_lock_icons.clear()
 
 	var cell_size := _map_cell_size()
 	var content_size := Vector2.ZERO
@@ -1169,14 +1321,17 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	map_canvas.add_child(title)
 
-	# どの雇用NPCがこのセクションを担当しているか一目で分かるよう、タイトルの下に
-	# 小さなアイコン(暫定として頭文字の丸ボタン。将来的には画像に差し替える)を並べる。
-	# クリックでNPC管理パネルを開き、そのNPCを選択した状態にする。中身は_refresh_map()で
-	# 担当替えのたびに作り直す(ここでは空の行を用意するだけ)。
-	var icon_row := HBoxContainer.new()
-	icon_row.position = bounds.position + Vector2(4, 20) * _map_zoom
-	map_canvas.add_child(icon_row)
-	section_icon_rows[section_id] = icon_row
+	# まだ誰も足を踏み入れておらず、隣接する突破済みノードも無いセクション(WorldMap.
+	# is_section_reachable=false)には、枠の下に鍵アイコンを出す。表示/非表示の切り替えは
+	# 到達状況が変わるたびに_refresh_mapで行うので、ここでは作るだけ(常時mapに常駐させ、
+	# ダブルクリック判定は_on_map_double_clickでこの位置を直接ヒットテストする)。
+	var lock_icon := Label.new()
+	lock_icon.text = "🔒 未到達(ダブルクリックで詳細)"
+	lock_icon.add_theme_font_size_override("font_size", max(9, roundi(12 * _map_zoom)))
+	lock_icon.modulate = Color(1, 0.82, 0.35, 0.95)
+	lock_icon.position = bounds.position + Vector2(6, bounds.size.y + 4 * _map_zoom)
+	map_canvas.add_child(lock_icon)
+	section_lock_icons[section_id] = lock_icon
 
 func _create_node_box(id: String, cell_pos: Vector2) -> void:
 	var cell_size := _map_cell_size()
@@ -1205,6 +1360,15 @@ func _create_node_box(id: String, cell_pos: Vector2) -> void:
 	node_name_labels[id] = name_label
 	node_labels[id] = status_label
 	node_centers[id] = cell_pos + cell_size / 2.0
+
+	# 担当NPCがどのフロアで今動いているか一目で分かるよう、枠の右下に頭文字アイコンを
+	# バッジ表示する(_current_node_for_npcが選んだ代表ノードに対して1つ、_refresh_npc_map_iconsが
+	# 担当替えのたびに作り直す)。box自体はmouse_filter=IGNOREなので、クリックを拾えるよう
+	# map_canvasの直接の子として重ねて配置する。
+	var icon_row := HBoxContainer.new()
+	icon_row.position = box.position + Vector2(node_size.x - 6, node_size.y - 18) * 1.0
+	map_canvas.add_child(icon_row)
+	node_icon_rows[id] = icon_row
 
 ## ノード/セクション枠自体はドラッグできない(意図的にmouse_filter = IGNOREにしている)が、
 ## スクロールバーだけでは数百ノード規模のマップを動き回るのがつらいので、
@@ -1248,6 +1412,11 @@ func _on_map_double_click(pos: Vector2) -> void:
 		var box: PanelContainer = node_boxes[id]
 		if box.get_rect().has_point(pos):
 			_show_node_detail(id)
+			return
+	for section_id in section_lock_icons.keys():
+		var lock_icon: Control = section_lock_icons[section_id]
+		if lock_icon.visible and lock_icon.get_rect().has_point(pos):
+			_show_section_lock_detail(section_id)
 			return
 	for section_id in section_bounds_cache.keys():
 		if section_bounds_cache[section_id].has_point(pos):
@@ -1301,6 +1470,46 @@ func _gate_description(gate: Dictionary) -> String:
 		_:
 			return "不明"
 
+## 未到達セクション(マップ上の鍵アイコン)をダブルクリックした時の詳細ウィンドウ。
+## 通常のフロア詳細(_show_node_detail)と同じnode_detail_panelを使い回す。
+func _show_section_lock_detail(section_id: String) -> void:
+	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
+	node_detail_title.text = "%s(未到達)" % section_name
+
+	node_detail_body.clear()
+	node_detail_body.append_text("まだ誰もこのセクションに足を踏み入れていません。\n\n開通に必要な条件:\n")
+	var reasons := _locked_section_reasons(section_id)
+	if reasons.is_empty():
+		node_detail_body.append_text("(不明)\n")
+	else:
+		for reason in reasons:
+			node_detail_body.append_text("・%s\n" % reason)
+
+	_open_modal(node_detail_panel)
+
+## 未到達セクションの詳細ウィンドウ用: 他セクションから繋がる入り口ノードのうち、
+## まだ通れないもの(=WorldMap.is_section_reachableがfalseになっている理由)を列挙する。
+## 未発見の入り口ノードは、フロア詳細と同様に名前を????のまま伏せる。
+func _locked_section_reasons(section_id: String) -> Array:
+	var member_ids := WorldMap.nodes_in_section(section_id)
+	var member_set := {}
+	for id in member_ids:
+		member_set[id] = true
+
+	var reasons := []
+	for id in member_ids:
+		for neighbor_id in WorldMap.neighbors(id):
+			if member_set.has(neighbor_id) or not WorldMap.nodes.has(neighbor_id):
+				continue
+			if WorldMap.is_passed(neighbor_id):
+				continue
+			var neighbor: Dictionary = WorldMap.nodes[neighbor_id]
+			var neighbor_section_name: String = WorldMap.sections[neighbor["section"]]["name"] if WorldMap.sections.has(neighbor["section"]) else neighbor["section"]
+			var neighbor_name: String = neighbor["name"] if WorldMap.is_found(neighbor_id) else "????"
+			var state: String = ("発見済みだが%s" % _gate_description(neighbor.get("gate", {}))) if WorldMap.is_found(neighbor_id) else "未発見"
+			reasons.append("「%s」(%s)が%s" % [neighbor_name, neighbor_section_name, state])
+	return reasons
+
 func _on_map_canvas_draw() -> void:
 	var drawn := {}
 	for id in WorldMap.nodes.keys():
@@ -1341,23 +1550,52 @@ func _refresh_map() -> void:
 		var alpha := 0.6 if (WorldMap.is_found(id) and not WorldMap.is_passed(id)) else 1.0
 		box.modulate = Color(1, 1, 1, alpha)
 
-	_refresh_section_npc_icons()
+	for section_id in section_lock_icons.keys():
+		section_lock_icons[section_id].visible = not WorldMap.is_section_reachable(section_id)
 
-## セクションごとの担当NPCアイコンを、現在の割り当て(担当替え・配置転換の結果)に
-## 合わせて作り直す。どのセクションにどのNPCがいるか一目で分かるようにするための表示で、
-## クリックするとNPC管理パネルでそのNPCを選択した状態にする。
-func _refresh_section_npc_icons() -> void:
-	var npcs_by_section: Dictionary = {}
-	for npc in Npcs.get_roster():
-		var section_id: String = npc["assigned_section"]
-		if section_id == "":
+	_refresh_npc_map_icons()
+
+## マップ上でNPCアイコンを表示するノード(現在フロア)を1つ選ぶ。担当NPCはセクション内の
+## 未発見フロア全部に同時並行でアタックする実装(exploration.gd)なので厳密な「今いる場所」は
+## 存在しないが、表示上は次の優先順で代表点を決める:
+## 1) 発見済みだが未突破のゲートがあれば、そこで足止め中として表示
+## 2) なければ、既知の最前線(未発見フロアに隣接する突破済みノード)
+## 3) それも無ければ(セクション完全踏破後など)セクション最後のノード
+func _current_node_for_npc(npc: Dictionary) -> String:
+	var section_id: String = npc["assigned_section"]
+	if section_id == "" or not WorldMap.sections.has(section_id):
+		return ""
+	var member_ids := WorldMap.nodes_in_section(section_id)
+	if member_ids.is_empty():
+		return ""
+
+	for id in member_ids:
+		if WorldMap.is_found(id) and not WorldMap.is_passed(id):
+			return id
+
+	for id in member_ids:
+		if not WorldMap.is_passed(id):
 			continue
-		if not npcs_by_section.has(section_id):
-			npcs_by_section[section_id] = []
-		npcs_by_section[section_id].append(npc)
+		for neighbor_id in WorldMap.neighbors(id):
+			if WorldMap.nodes.has(neighbor_id) and not WorldMap.nodes[neighbor_id]["found"]:
+				return id
 
-	for section_id in section_icon_rows.keys():
-		var row: HBoxContainer = section_icon_rows[section_id]
+	return member_ids[member_ids.size() - 1]
+
+## 担当NPCアイコンを、現在の割り当てと各自の現在フロア(_current_node_for_npc)に
+## 合わせて作り直す。クリックするとNPC管理パネルでそのNPCを選択した状態にする。
+func _refresh_npc_map_icons() -> void:
+	var npcs_by_node: Dictionary = {}
+	for npc in Npcs.get_roster():
+		var node_id := _current_node_for_npc(npc)
+		if node_id == "":
+			continue
+		if not npcs_by_node.has(node_id):
+			npcs_by_node[node_id] = []
+		npcs_by_node[node_id].append(npc)
+
+	for node_id in node_icon_rows.keys():
+		var row: HBoxContainer = node_icon_rows[node_id]
 		# queue_free()だけだと実際に破棄されるのはアイドルタイム(このフレームの終わり)まで
 		# 遅延するため、高倍速で1フレーム中に複数日分処理される(TimeSystem._process()の
 		# whileループがフレームをまたがずに何日も_advance_day()を呼ぶ)と、同じフレーム内で
@@ -1368,7 +1606,7 @@ func _refresh_section_npc_icons() -> void:
 		for child in row.get_children():
 			row.remove_child(child)
 			child.queue_free()
-		for npc in npcs_by_section.get(section_id, []):
+		for npc in npcs_by_node.get(node_id, []):
 			row.add_child(_create_npc_icon(npc["id"], npc["name"]))
 
 ## 頭文字だけの暫定アイコン(将来的にはNPCごとの画像に差し替える想定)。
@@ -1383,7 +1621,7 @@ func _create_npc_icon(npc_id: int, npc_name: String) -> Button:
 
 func _on_npc_icon_pressed(npc_id: int) -> void:
 	_selected_npc_id = npc_id
-	_on_open_npc_panel_pressed()
+	_open_npc_panel(true)
 
 ## マップ上部のエリア選択ボタン用: そのエリアの中で最も上にあるセクションの位置までスクロールする。
 func _on_area_nav_pressed(area_id: String) -> void:
@@ -1470,7 +1708,7 @@ func _on_day_advanced(_day: int) -> void:
 	_refresh_roster()
 	_refresh_npc_detail()
 	_refresh_funds() # セクション攻略の一時金は月末を待たずその日のうちに入るため、日次でも反映する
-	SaveSystem.save_game()
+	SaveSystem.autosave()
 
 func _on_month_ended(_month: int) -> void:
 	next_month_button.visible = true
@@ -1492,7 +1730,7 @@ func _refresh_all() -> void:
 	next_month_button.visible = TimeSystem.is_paused
 
 func _refresh_facility_button() -> void:
-	facility_button.text = "施設を拡張する(雇用上限+2, コスト: %d)" % Economy.facility_upgrade_cost()
+	facility_info_label.text = "雇用上限 +2\nコスト: %d" % Economy.facility_upgrade_cost()
 
 func _refresh_funds() -> void:
 	funds_label.text = "資金: %d / 雇用上限: %d" % [Economy.funds, Economy.employ_cap]
@@ -1511,15 +1749,15 @@ func _refresh_candidates() -> void:
 		candidates_list.add_item("%s (質%.1f, コスト%d)" % [c["name"], c["quality"], c["cost"]])
 
 func _refresh_roster() -> void:
-	for child in roster_list.get_children():
-		roster_list.remove_child(child)
+	for child in roster_grid.get_children():
+		roster_grid.remove_child(child)
 		child.queue_free()
-	var roster_group := ButtonGroup.new() # 行を作り直すたびに新しいグループにして排他選択させる
+	var roster_group := ButtonGroup.new() # 作り直すたびに新しいグループにして排他選択させる
 	for npc in Npcs.get_roster():
-		var row := _create_roster_row(npc, roster_group)
-		roster_list.add_child(row)
+		var card := _create_roster_card(npc, roster_group)
+		roster_grid.add_child(card)
 		if npc["id"] == _selected_npc_id:
-			row.button_pressed = true
+			card.button_pressed = true
 
 const BLOODLINE_COLORS := {
 	"平民": Color(0.45, 0.45, 0.48),
@@ -1537,73 +1775,76 @@ const STATUS_COLORS := {
 	Npcs.Status.IDLE: Color(0.35, 0.35, 0.38),
 }
 
-## ロースターのカード行1件。血筋色のアイコン(頭文字)・名前・担当セクション・HPバー・
-## 状態バッジを別々の部品として並べる(1つの文字列に詰め込んで折り返す旧UIの反省点)。
-## 行全体をtoggle_mode付きButtonにして、どこをクリックしてもそのNPCを選択できるようにする
-## (中の子要素はmouse_filter=IGNOREにしてクリックをButtonまで素通りさせる)。
-func _create_roster_row(npc: Dictionary, group: ButtonGroup) -> Button:
-	var row := Button.new()
-	row.toggle_mode = true
-	row.button_group = group
-	row.custom_minimum_size = Vector2(0, 48)
-	row.pressed.connect(_on_roster_row_pressed.bind(npc["id"]))
+const PORTRAIT_SIZE := 96.0
+# カードの横幅は「名前ラベル+状態バッジを横並びで収める」ために必要な幅から逆算する
+# べきところを、ポートレート(96px)基準の当て推量(+24px)で決め打ちしていたため、
+# 「アーチボルド」のような長めの名前だとinfo_row(名前+バッジ)がこの幅に収まらず、
+# カードの右端からはみ出して表示される不具合になっていた。Buttonは(VBoxContainer等の
+# Containerと違い)子要素の必要サイズを自分の最小サイズに反映しないため、customに
+# 決め打ちした値が子要素の実際の必要幅より小さくても警告なく素通りしてしまう点に注意
+# (このクラスの見落としは[[godot_install_path]]にも対策として記録した)。ここでは
+# 実際に収まる余裕を持った固定幅に広げ、かつ名前ラベル側にも省略表示の安全弁を入れる
+# ことで、想定より長い名前が来ても二重に安全なようにしている。
+const CARD_WIDTH := 190.0
 
-	# HBoxContainerを行いっぱいに敷くと、中身(アイコン/HPバー等)がボタン自体の背景色/枠線を
-	# ほぼ覆い隠してしまい、「押せる/選択できるボタンである」ことがかえって分かりにくくなる。
-	# 数pxの余白を残して、選択中の彩度の高い青がフチとして見えるようにする。
+## ロースターの正方形ポートレートカード1枚: [画像(正方形)]の下に[名前][状態]を並べる。
+## 画像は未実装のため、血筋色の正方形+頭文字で代用している(将来ここをTextureRectへ
+## 差し替え、NPCごとの画像を表示する想定)。カード全体をtoggle_mode付きButtonにして、
+## どこをクリックしてもそのNPCの詳細ビューに切り替わるようにする(中の子要素は
+## mouse_filter=IGNOREにしてクリックをButtonまで素通りさせる)。
+func _create_roster_card(npc: Dictionary, group: ButtonGroup) -> Button:
+	var card := Button.new()
+	card.toggle_mode = true
+	card.button_group = group
+	card.custom_minimum_size = Vector2(CARD_WIDTH, PORTRAIT_SIZE + 56)
+	card.tooltip_text = npc["name"] # 名前が省略表示された場合でもホバーでフルネームを確認できる
+	card.pressed.connect(_on_roster_card_pressed.bind(npc["id"]))
+
 	var margin := MarginContainer.new()
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 4)
-	row.add_child(margin)
+		margin.add_theme_constant_override("margin_" + side, 6)
+	card.add_child(margin)
 
-	var hbox := HBoxContainer.new()
-	hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hbox.add_theme_constant_override("separation", 6)
-	margin.add_child(hbox)
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(vbox)
 
-	var icon := PanelContainer.new()
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.custom_minimum_size = Vector2(32, 32)
-	var icon_style := StyleBoxFlat.new()
-	icon_style.bg_color = _bloodline_color(npc["innate_traits"].get("bloodline", ""))
-	icon_style.set_corner_radius_all(4)
-	icon.add_theme_stylebox_override("panel", icon_style)
-	var icon_label := Label.new()
-	icon_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon_label.text = npc["name"].substr(0, 1)
-	icon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	icon.add_child(icon_label)
-	hbox.add_child(icon)
+	var portrait := PanelContainer.new()
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.custom_minimum_size = Vector2(PORTRAIT_SIZE, PORTRAIT_SIZE)
+	var portrait_style := StyleBoxFlat.new()
+	portrait_style.bg_color = _bloodline_color(npc["innate_traits"].get("bloodline", ""))
+	portrait_style.set_corner_radius_all(6)
+	portrait.add_theme_stylebox_override("panel", portrait_style)
+	var portrait_label := Label.new()
+	portrait_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait_label.text = npc["name"].substr(0, 1)
+	portrait_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	portrait_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	portrait_label.add_theme_font_size_override("font_size", 36)
+	portrait.add_child(portrait_label)
+	vbox.add_child(portrait)
 
-	var info_col := VBoxContainer.new()
-	info_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	info_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hbox.add_child(info_col)
+	var info_row := HBoxContainer.new()
+	info_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	info_row.add_theme_constant_override("separation", 4)
+	vbox.add_child(info_row)
 
 	var name_label := Label.new()
 	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	name_label.text = npc["name"]
-	info_col.add_child(name_label)
-
-	var section_id: String = npc["assigned_section"]
-	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else "未割当"
-	var sub_label := Label.new()
-	sub_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sub_label.text = section_name
-	sub_label.add_theme_font_size_override("font_size", 11)
-	sub_label.modulate = Color(1, 1, 1, 0.6)
-	info_col.add_child(sub_label)
-
-	var hp_bar := ProgressBar.new()
-	hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hp_bar.custom_minimum_size = Vector2(44, 0)
-	hp_bar.show_percentage = false
-	hp_bar.max_value = npc["max_hp"]
-	hp_bar.value = npc["hp"]
-	hbox.add_child(hp_bar)
+	name_label.add_theme_font_size_override("font_size", 12)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# CARD_WIDTHを広げても、それを上回る名前が来た時に無条件にはみ出さないよう、
+	# 省略表示を安全弁として入れておく(はみ出た全文はcardのtooltip_textで確認できる)。
+	name_label.clip_text = true
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	info_row.add_child(name_label)
 
 	var badge := PanelContainer.new()
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1620,9 +1861,9 @@ func _create_roster_row(npc: Dictionary, group: ButtonGroup) -> Button:
 	badge_label.text = _npc_status_short(npc)
 	badge_label.add_theme_font_size_override("font_size", 11)
 	badge.add_child(badge_label)
-	hbox.add_child(badge)
+	info_row.add_child(badge)
 
-	return row
+	return card
 
 ## カード行のバッジ用に、状態を短い一言にする(詳細な残り日数は右側の詳細パネルに任せる)。
 func _npc_status_short(npc: Dictionary) -> String:
