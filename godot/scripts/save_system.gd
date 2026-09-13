@@ -25,7 +25,7 @@ const META_PATH := "user://worldseeker_meta.cfg"
 
 const TABLES := [
 	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory",
-	"world_progress", "board_entries", "board_threads", "board_thread_entries",
+	"world_progress", "section_rewards", "board_entries", "board_threads", "board_thread_entries",
 ]
 
 var current_slot_id: int = 1
@@ -176,6 +176,28 @@ func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
 	db.close_db()
 	return result
 
+## マップのフロアをダブルクリックした際の詳細表示用: そのフロア単体に絞った行動ログ。
+## query_action_log()と同じテーブルをnode_idで絞り込むだけの姉妹版。
+func query_action_log_for_node(node_id: String, limit: int = 50) -> Array:
+	var result := []
+	var db := SQLite.new()
+	db.path = _slot_path(current_slot_id)
+	if not db.open_db():
+		return result
+	_ensure_schema(db)
+	db.query_with_bindings("SELECT * FROM action_log WHERE node_id = ? ORDER BY id DESC LIMIT ?", [node_id, limit])
+	for row in db.query_result:
+		result.append({
+			"day": int(row["day"]),
+			"event_type": String(row["event_type"]),
+			"npc_id": int(row["npc_id"]),
+			"node_id": String(row["node_id"]),
+			"section_id": String(row["section_id"]),
+			"text": String(row["text"]),
+		})
+	db.close_db()
+	return result
+
 func _ensure_schema(db: SQLite) -> void:
 	db.query("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value)")
 	db.query("""CREATE TABLE IF NOT EXISTS npcs (
@@ -186,6 +208,11 @@ func _ensure_schema(db: SQLite) -> void:
 	db.query("CREATE TABLE IF NOT EXISTS npc_skills (npc_id INTEGER, skill INTEGER, level INTEGER, exp INTEGER, PRIMARY KEY (npc_id, skill))")
 	db.query("CREATE TABLE IF NOT EXISTS npc_inventory (npc_id INTEGER, item_id TEXT, PRIMARY KEY (npc_id, item_id))")
 	db.query("CREATE TABLE IF NOT EXISTS world_progress (node_id TEXT PRIMARY KEY, found INTEGER, passed INTEGER)")
+	# found_by_employed/post_clear_behaviorは後から追加した列。既存スロット(旧スキーマ)には
+	# まだ無いことがあるため、CREATE TABLE IF NOT EXISTSでは反映されない分をここで補う。
+	_ensure_column(db, "world_progress", "found_by_employed", "INTEGER DEFAULT 0")
+	_ensure_column(db, "npcs", "post_clear_behavior", "INTEGER DEFAULT %d" % Npcs.PostClearBehavior.MOVE_ON)
+	db.query("CREATE TABLE IF NOT EXISTS section_rewards (section_id TEXT PRIMARY KEY)")
 	db.query("CREATE TABLE IF NOT EXISTS board_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_threads (thread_id TEXT PRIMARY KEY, title TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_thread_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
@@ -193,6 +220,15 @@ func _ensure_schema(db: SQLite) -> void:
 		id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, day INTEGER, event_type TEXT,
 		npc_id INTEGER, node_id TEXT, section_id TEXT, text TEXT
 	)""")
+
+## 既存テーブルに列が無ければALTER TABLEで足す(CREATE TABLE IF NOT EXISTSは既存テーブルの
+## 列を追加してくれないため)。新しい永続化フィールドを足すたびにこのヘルパー経由で追加する。
+func _ensure_column(db: SQLite, table: String, column: String, column_def: String) -> void:
+	db.query("PRAGMA table_info(%s)" % table)
+	for row in db.query_result:
+		if String(row["name"]) == column:
+			return
+	db.query("ALTER TABLE %s ADD COLUMN %s %s" % [table, column, column_def])
 
 func save_game() -> void:
 	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
@@ -230,10 +266,10 @@ func save_game() -> void:
 	for npc_id in roster.keys():
 		var npc: Dictionary = roster[npc_id]
 		db.query_with_bindings(
-			"""INSERT INTO npcs (id, name, hp, max_hp, status, assigned_section, combat_hp_threshold, combat_action, recovering_until_day)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+			"""INSERT INTO npcs (id, name, hp, max_hp, status, assigned_section, combat_hp_threshold, combat_action, recovering_until_day, post_clear_behavior)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
 			[npc_id, npc["name"], npc["hp"], npc["max_hp"], npc["status"], npc["assigned_section"],
-				npc["combat_policy"]["hp_threshold"], npc["combat_policy"]["action"], npc["recovering_until_day"]])
+				npc["combat_policy"]["hp_threshold"], npc["combat_policy"]["action"], npc["recovering_until_day"], npc["post_clear_behavior"]])
 		for trait_key in npc["innate_traits"].keys():
 			db.query_with_bindings("INSERT INTO npc_traits (npc_id, trait_key, trait_value) VALUES (?, ?, ?)",
 				[npc_id, trait_key, npc["innate_traits"][trait_key]])
@@ -247,8 +283,11 @@ func save_game() -> void:
 	var progress: Dictionary = WorldMap.save_progress()
 	for node_id in progress.keys():
 		var state: Dictionary = progress[node_id]
-		db.query_with_bindings("INSERT INTO world_progress (node_id, found, passed) VALUES (?, ?, ?)",
-			[node_id, 1 if state["found"] else 0, 1 if state["passed"] else 0])
+		db.query_with_bindings("INSERT INTO world_progress (node_id, found, passed, found_by_employed) VALUES (?, ?, ?, ?)",
+			[node_id, 1 if state["found"] else 0, 1 if state["passed"] else 0, 1 if state["found_by_employed"] else 0])
+
+	for section_id in WorldMap.section_reward_claimed.keys():
+		db.query_with_bindings("INSERT INTO section_rewards (section_id) VALUES (?)", [section_id])
 
 	var board_data: Dictionary = Board.save_state()
 	for entry in board_data["entries"]:
@@ -309,6 +348,7 @@ func load_game() -> bool:
 			"assigned_section": String(row["assigned_section"]),
 			"combat_policy": {"hp_threshold": row["combat_hp_threshold"], "action": int(row["combat_action"])},
 			"recovering_until_day": int(row["recovering_until_day"]),
+			"post_clear_behavior": int(row.get("post_clear_behavior", Npcs.PostClearBehavior.MOVE_ON)),
 			"innate_traits": {},
 			"skills": {},
 			"inventory": [],
@@ -333,8 +373,16 @@ func load_game() -> bool:
 	var progress := {}
 	db.query("SELECT * FROM world_progress")
 	for row in db.query_result:
-		progress[String(row["node_id"])] = {"found": bool(row["found"]), "passed": bool(row["passed"])}
+		progress[String(row["node_id"])] = {
+			"found": bool(row["found"]),
+			"passed": bool(row["passed"]),
+			"found_by_employed": bool(row.get("found_by_employed", 0)),
+		}
 	WorldMap.load_progress(progress)
+
+	db.query("SELECT section_id FROM section_rewards")
+	for row in db.query_result:
+		WorldMap.mark_section_reward_claimed(String(row["section_id"]))
 
 	var entries := []
 	db.query("SELECT day, text, importance, source FROM board_entries ORDER BY seq")

@@ -206,7 +206,7 @@ func import_into_worldmap(version_id: String) -> void:
 		WorldMap.set_event_scripts(node_id, scripts_by_node[node_id]["pass"], scripts_by_node[node_id]["fail"])
 
 	for node_id in passed_nodes:
-		WorldMap.mark_passed(node_id)
+		WorldMap.mark_passed(node_id, true)
 
 	db.close_db()
 

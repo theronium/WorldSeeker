@@ -9,10 +9,15 @@ extends Node
 #   未発見          found=false, passed=false
 #   発見済みだが進めない  found=true,  passed=false (ゲート未突破)
 #   突破済み         found=true,  passed=true
+#
+# さらに found=true のノードは、雇用NPC自身が到達したか(found_by_employed)を区別する。
+# 野良NPCだけが見つけた場所はfound=true/found_by_employed=falseのままになる
+# (マップ表示で「自身/誰か/未踏破」の3色に塗り分けるための情報。design.md参照)。
 
 var areas: Dictionary = {} # area_id -> {id, name}
 var sections: Dictionary = {} # section_id -> {id, name, area}
-var nodes: Dictionary = {} # id -> {name, connections, found, passed, gate, section, event_script_pass, event_script_fail}
+var nodes: Dictionary = {} # id -> {name, connections, found, passed, found_by_employed, gate, section, event_script_pass, event_script_fail}
+var section_reward_claimed: Dictionary = {} # section_id -> true(攻略報酬を既に支給済みのセクション)
 
 func add_area(id: String, display_name: String) -> void:
 	areas[id] = {"id": id, "name": display_name}
@@ -27,6 +32,7 @@ func add_node(id: String, display_name: String, connections: Array, gate: Dictio
 		"connections": connections,
 		"found": false,
 		"passed": false,
+		"found_by_employed": false,
 		"gate": gate, # 例: {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 3} / {"type": "item", "item": "goblin_amulet"}
 		"section": section, # 所属するセクション(ダンジョン/エリア)のsection_id（未所属なら空文字）
 		"item_reward": item_reward, # 突破時に発見者へ渡すアイテムid（なければ空文字）
@@ -48,20 +54,27 @@ func nodes_in_section(section_id: String) -> Array:
 func sections_in_area(area_id: String) -> Array:
 	return sections.keys().filter(func(id): return sections[id]["area"] == area_id)
 
-func mark_found(id: String) -> void:
+func mark_found(id: String, by_employed: bool = false) -> void:
 	if nodes.has(id):
 		nodes[id]["found"] = true
+		if by_employed:
+			nodes[id]["found_by_employed"] = true
 
-func mark_passed(id: String) -> void:
+func mark_passed(id: String, by_employed: bool = false) -> void:
 	if nodes.has(id):
 		nodes[id]["found"] = true
 		nodes[id]["passed"] = true
+		if by_employed:
+			nodes[id]["found_by_employed"] = true
 
 func is_found(id: String) -> bool:
 	return nodes.has(id) and nodes[id]["found"]
 
 func is_passed(id: String) -> bool:
 	return nodes.has(id) and nodes[id]["passed"]
+
+func is_found_by_employed(id: String) -> bool:
+	return nodes.has(id) and nodes[id]["found_by_employed"]
 
 func is_section_entered(section_id: String) -> bool:
 	for id in nodes_in_section(section_id):
@@ -74,6 +87,13 @@ func is_area_entered(area_id: String) -> bool:
 		if is_section_entered(section_id):
 			return true
 	return false
+
+## NPCの担当割り当て先として選べるセクションかどうか。既に誰か(雇用/野良問わず)が
+## 足を踏み入れているか、まだ誰も入っていなくても隣接する突破済みノードから
+## 発見を試みられる状態(frontier_for_sectionが空でない)なら選べる。どちらでもない
+## (世界のどこからも繋がっていない未到達地帯)セクションは選択肢から隠す対象になる。
+func is_section_reachable(section_id: String) -> bool:
+	return is_section_entered(section_id) or not frontier_for_section(section_id).is_empty()
 
 func neighbors(id: String) -> Array:
 	if not nodes.has(id):
@@ -101,7 +121,7 @@ func save_progress() -> Dictionary:
 	var result := {}
 	for id in nodes.keys():
 		if nodes[id]["found"]:
-			result[id] = {"found": true, "passed": nodes[id]["passed"]}
+			result[id] = {"found": true, "passed": nodes[id]["passed"], "found_by_employed": nodes[id]["found_by_employed"]}
 	return result
 
 func load_progress(states: Dictionary) -> void:
@@ -109,6 +129,11 @@ func load_progress(states: Dictionary) -> void:
 		if nodes.has(id):
 			nodes[id]["found"] = bool(states[id]["found"])
 			nodes[id]["passed"] = bool(states[id]["passed"])
+			# found_by_employedが無い旧セーブ(この列を追加する前のもの)はfalseがデフォルト値として
+			# 補完される。village/forest_edgeなどはworld_data.gdの起動時ブートストラップで
+			# 既にtrueが立っているため、ここは上書きではなくOR統合にして、旧セーブ読み込みで
+			# ブートストラップ済みの値を後から潰してしまわないようにする。
+			nodes[id]["found_by_employed"] = nodes[id]["found_by_employed"] or bool(states[id].get("found_by_employed", false))
 
 ## ワールドスキーマの再構築前に呼ぶ(world_schema_db.gdのimport_into_worldmap())。
 ## add_area/add_section/add_nodeは上書きのみで削除はしないため、これを呼ばずに
@@ -117,6 +142,56 @@ func reset() -> void:
 	areas = {}
 	sections = {}
 	nodes = {}
+	section_reward_claimed = {}
+
+## セクションが所属するエリアの登場順(0始まり)+1を、収入・報酬計算用の倍率として使う。
+## 後発エリアほど高倍率になり(design.md 8.1「後発エリアほど規模と難度を緩やかに引き上げる」方針と
+## 整合)、セクションごとに新規データを追加しなくても、エリアを追加するだけで自動的に反映される。
+func section_multiplier(section_id: String) -> int:
+	if not sections.has(section_id):
+		return 1
+	var area_idx := areas.keys().find(sections[section_id]["area"])
+	return (area_idx if area_idx >= 0 else 0) + 1
+
+func passed_count_in_section(section_id: String) -> int:
+	var count := 0
+	for id in nodes_in_section(section_id):
+		if nodes[id]["passed"]:
+			count += 1
+	return count
+
+## セクション内の全フロアが突破済みになっている(=完全攻略済み)かどうか。
+func is_section_cleared(section_id: String) -> bool:
+	var member_ids := nodes_in_section(section_id)
+	if member_ids.is_empty():
+		return false
+	for id in member_ids:
+		if not nodes[id]["passed"]:
+			return false
+	return true
+
+func is_section_reward_claimed(section_id: String) -> bool:
+	return section_reward_claimed.get(section_id, false)
+
+func mark_section_reward_claimed(section_id: String) -> void:
+	section_reward_claimed[section_id] = true
+
+## 踏破後の自動再配置(NPCのpost_clear_behavior=MOVE_ON)用: 同じエリア内でまだ完全攻略されていない
+## セクションを優先し、無ければ次のエリア以降から順に探す。全て埋まっていれば空文字を返す。
+func next_section_to_explore(current_section_id: String) -> String:
+	if not sections.has(current_section_id):
+		return ""
+	var current_area: String = sections[current_section_id]["area"]
+	for section_id in sections_in_area(current_area):
+		if section_id != current_section_id and not is_section_cleared(section_id):
+			return section_id
+	var area_ids := areas.keys()
+	var start_idx := area_ids.find(current_area)
+	for i in range(start_idx + 1, area_ids.size()):
+		for section_id in sections_in_area(area_ids[i]):
+			if not is_section_cleared(section_id):
+				return section_id
+	return ""
 
 func frontier_for_section(section_id: String) -> Array:
 	# そのセクション内で、通過済みノードに隣接するがまだ未発見のノード一覧。

@@ -18,10 +18,11 @@ func _generate_candidates(count: int) -> Array:
 		var skills := {}
 		for skill in SkillTypes.all_skills():
 			skills[skill] = randi_range(0, 2) + int(quality * 3)
+		var bloodline: String = BLOODLINES[randi() % BLOODLINES.size()]
 		candidates.append({
-			"name": "候補%d" % (i + 1),
+			"name": NameGenerator.generate(bloodline),
 			"quality": quality,
-			"innate_traits": {"bloodline": BLOODLINES[randi() % BLOODLINES.size()]},
+			"innate_traits": {"bloodline": bloodline},
 			"skills": skills,
 			"cost": Economy.hire_cost(quality),
 		})

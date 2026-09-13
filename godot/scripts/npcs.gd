@@ -3,6 +3,10 @@ extends Node
 
 enum Status { IDLE, EXPLORING, RECOVERING }
 enum CombatAction { USE_ITEM, RETREAT }
+## 担当セクションを完全踏破した後の挙動(exploration.gdが月次/攻略時に参照する)。
+## STAY: そのセクションに留まり続け、収入源として維持する。
+## MOVE_ON: 次の未踏破セクションへ自動的に再配置される(無ければ何もしない)。
+enum PostClearBehavior { STAY, MOVE_ON }
 
 var _next_id: int = 1
 var roster: Dictionary = {} # id -> npc data
@@ -25,6 +29,7 @@ func hire(display_name: String, innate_traits: Dictionary, base_skills: Dictiona
 		"combat_policy": {"hp_threshold": 0.3, "action": CombatAction.USE_ITEM},
 		"recovering_until_day": -1,
 		"inventory": [],
+		"post_clear_behavior": PostClearBehavior.MOVE_ON,
 	}
 	return id
 
@@ -44,6 +49,10 @@ func assign_section(id: int, section_id: String) -> bool:
 func set_combat_policy(id: int, hp_threshold: float, action: int) -> void:
 	if roster.has(id):
 		roster[id]["combat_policy"] = {"hp_threshold": hp_threshold, "action": action}
+
+func set_post_clear_behavior(id: int, behavior: int) -> void:
+	if roster.has(id):
+		roster[id]["post_clear_behavior"] = behavior
 
 const EXP_PER_LEVEL := 10
 
@@ -101,6 +110,7 @@ func load_state(data: Dictionary) -> void:
 		npc["status"] = int(npc["status"])
 		npc["recovering_until_day"] = int(npc["recovering_until_day"])
 		npc["combat_policy"]["action"] = int(npc["combat_policy"]["action"])
+		npc["post_clear_behavior"] = int(npc.get("post_clear_behavior", PostClearBehavior.MOVE_ON))
 		var skills := {}
 		for skill_key in npc["skills"].keys():
 			var entry: Dictionary = npc["skills"][skill_key]

@@ -11,7 +11,7 @@ const DAYS_PER_MONTH := 30
 const MONTHS_PER_YEAR := 12
 const SECONDS_PER_DAY := MONTH_REAL_SECONDS / DAYS_PER_MONTH
 
-const SPEED_STEPS := [1.0, 2.0, 4.0, 8.0, 16.0]
+const SPEED_STEPS := [1.0, 10.0, 100.0, 1000.0]
 
 var current_day: int = 0
 var current_month: int = 0
@@ -28,25 +28,35 @@ func _process(delta: float) -> void:
 	if is_paused:
 		return
 	_accumulated += delta * speed_multiplier
-	while _accumulated >= SECONDS_PER_DAY:
+	# is_pausedもループ条件に含める: 1フレームのdeltaが大きい場合(重い_ready()直後の初回フレームなど)、
+	# ここでis_pausedをチェックしないと、_advance_day()が月末でis_paused=trueを立てても
+	# ループが止まらずそのまま次の月・その次の月まで一気に消化してしまい、月末の
+	# 自動一時停止(月末集計待ち)を素通りしてしまう。
+	while _accumulated >= SECONDS_PER_DAY and not is_paused:
 		_accumulated -= SECONDS_PER_DAY
 		_advance_day()
 
 func _advance_day() -> void:
 	current_day += 1
-	day_advanced.emit(current_day)
-	if current_day % DAYS_PER_MONTH == 0:
+	# day_advanced経由の日次オートセーブ(main.gdの_on_day_advanced)がis_pausedを正しく
+	# 保存できるよう、is_pausedはday_advanced.emit()より前に確定させておく(逆順だと、
+	# 月末の日だけ「一時停止する直前」の状態が保存されてしまい、次回起動時にis_paused=falseから
+	# 再開して月末停止がすり抜けてしまう不具合になる)。
+	var month_ending := current_day % DAYS_PER_MONTH == 0
+	if month_ending:
 		current_month += 1
 		is_paused = true
+	day_advanced.emit(current_day)
+	if month_ending:
 		month_ended.emit(current_month)
 
 func confirm_and_resume() -> void:
 	is_paused = false
 
-func cycle_speed() -> void:
-	var idx := SPEED_STEPS.find(speed_multiplier)
-	idx = (idx + 1) % SPEED_STEPS.size()
-	speed_multiplier = SPEED_STEPS[idx]
+func set_speed(multiplier: float) -> void:
+	if not SPEED_STEPS.has(multiplier):
+		return
+	speed_multiplier = multiplier
 	speed_changed.emit(speed_multiplier)
 
 func seconds_until_month_end() -> float:

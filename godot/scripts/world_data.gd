@@ -52,8 +52,8 @@ func _build_kingdom() -> void:
 	WorldMap.add_node("village", "始まりの村", ["forest_edge", "capital_road"], {}, "village_area")
 	WorldMap.add_node("forest_edge", "森の入口", ["village", "old_shrine", "cave", "forest_path", "border_path"], {}, "village_area")
 	WorldMap.add_node("old_shrine", "古い祠", ["forest_edge"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 2}, "village_area")
-	WorldMap.mark_passed("village")
-	WorldMap.mark_passed("forest_edge")
+	WorldMap.mark_passed("village", true)
+	WorldMap.mark_passed("forest_edge", true)
 
 	# --- 古い洞窟 ---
 	WorldMap.add_node("cave", "洞窟", ["forest_edge", "locked_vault"], {}, "old_cave_dungeon")
