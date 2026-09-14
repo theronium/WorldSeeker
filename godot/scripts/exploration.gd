@@ -54,9 +54,12 @@ func _on_month_ended(current_month: int) -> void:
 
 func _on_day_advanced(current_day: int) -> void:
 	for party in Parties.get_parties():
-		if party["status"] != Parties.Status.EXPLORING:
-			continue
+		# is_available()を先に呼ぶ: RECOVERING状態で回復期限を過ぎたパーティをEXPLORINGへ戻し
+		# HPを全回復させる処理はこの呼び出しの中にしかないため、statusチェックを先にすると
+		# RECOVERING中のパーティが永久にここへ到達できず、回復期限が来ても自動復帰しなくなる。
 		if not Parties.is_available(party["id"], current_day):
+			continue
+		if party["status"] != Parties.Status.EXPLORING:
 			continue
 		_claim_wild_progress(party)
 		_retry_gates(party, current_day)
@@ -250,7 +253,9 @@ func _check_section_cleared(section_id: String, current_day: int) -> void:
 		var next_section_name: String = WorldMap.sections[next_section]["name"]
 		Parties.assign_section(party["id"], next_section)
 		Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
-		ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], -1, "", next_section)
+		# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログのNPC別フィルタで、
+		# そのメンバーで絞り込んだ時にも配置転換イベントが見えるようにするため)。
+		ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], party["member_ids"][0], "", next_section)
 
 func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
@@ -308,6 +313,8 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 ## 抜けられる保証が無いため、この見積もりには含めない。
 func forecast_section(party_id: int, section_id: String) -> Dictionary:
 	var party := Parties.get_party(party_id)
+	if party.is_empty():
+		return {"base_income": 0, "predicted_income": 0, "retreat_probability": 0.0, "risk_node_name": ""}
 	var base_income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
 	var horizon := float(TimeSystem.DAYS_PER_MONTH)
 	var scout_id := _best_member_for_skill(party, SkillTypes.Skill.PERCEPTION)
@@ -344,6 +351,11 @@ func forecast_section(party_id: int, section_id: String) -> Dictionary:
 				passable = _effective_skill_level(_best_member_for_skill(party, gate["skill"]), gate["skill"]) >= gate["min_level"]
 			"innate_trait", "item":
 				passable = WorldMap.first_passing_member(node_id, party["member_ids"]) != -1
+			_:
+				# _attempt_gate()のdefault分岐と揃える(未知のゲート種別を「常に通過可能」と
+				# 誤って見積もらないようにする)。
+				if not gate.is_empty():
+					passable = WorldMap.first_passing_member(node_id, party["member_ids"]) != -1
 
 		if not passable:
 			continue # 今のスキル/所持品では今月中に抜けられる保証が無い

@@ -23,6 +23,7 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 		return {"result": "error"}
 
 	var any_defeated := false
+	var victor_id := -1
 
 	for npc_id in party["member_ids"]:
 		var npc := Npcs.get_npc(npc_id)
@@ -53,13 +54,23 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 		if retreated:
 			continue # 次のメンバーが、この時点のenemy_powerを引き継いで戦う
 
-		if enemy_power <= 0:
-			npc["hp"] = hp if hp > 0 else 1.0
-			return {"result": "victory", "npc_id": npc_id} # npc_id: 突破報酬アイテムの受け取り手(止めを刺したメンバー)
+		# hp<=0を先に判定する(同ラウンドでenemy_powerも<=0になる相殺の場合、このメンバー自身は
+		# 戦闘不能として扱う。次のメンバーがいれば、既に力尽きた敵を引き継ぐだけで勝利できる)。
+		if hp <= 0:
+			npc["hp"] = 1.0
+			any_defeated = true
+			continue
 
-		# hp <= 0(戦闘不能)。次のメンバーへ引き継ぐ
-		npc["hp"] = 1.0
-		any_defeated = true
+		npc["hp"] = hp
+		victor_id = npc_id # 突破報酬アイテムの受け取り手(止めを刺したメンバー)
+		break
+
+	if victor_id != -1:
+		if any_defeated:
+			# 勝利はしたが、途中で戦闘不能になったメンバーがいる。パーティ全体を短い療養に入れ、
+			# 次に動けるようになった時点でHPを全回復させる(回復の唯一の経路、Parties.is_available参照)。
+			Parties.retreat_and_recover(party_id, current_day, 3)
+		return {"result": "victory", "npc_id": victor_id}
 
 	var recovery_days := 5 if any_defeated else 3
 	Parties.retreat_and_recover(party_id, current_day, recovery_days)
@@ -95,8 +106,10 @@ func predict_party_result(party_id: int, enemy_power: int) -> String:
 
 		if retreated:
 			continue
-		if enemy_power <= 0:
-			return "victory"
-		any_defeated = true
+		# resolve_party_encounter()と同じ優先順位(hp<=0を先に判定)にしておく。
+		if hp <= 0:
+			any_defeated = true
+			continue
+		return "victory"
 
 	return "defeat" if any_defeated else "retreat"

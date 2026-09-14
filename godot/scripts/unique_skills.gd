@@ -109,9 +109,12 @@ const POOL := {
 	],
 }
 
+## const POOL内の辞書をそのまま返すと、同じ固有スキルを抽選/読込した全NPCが同一の
+## Dictionaryオブジェクト(POOL本体も含む)を参照してしまう。今は誰も書き込んでいないため
+## 実害は無いが、将来の書き込みが全NPC・POOL本体を静かに汚染しないよう、複製して返す。
 static func generate(job: int) -> Dictionary:
 	var pool: Array = POOL.get(job, [])
-	return pool[randi() % pool.size()] if not pool.is_empty() else {}
+	return pool[randi() % pool.size()].duplicate() if not pool.is_empty() else {}
 
 static func by_id(id: String) -> Dictionary:
 	if id == "":
@@ -119,5 +122,5 @@ static func by_id(id: String) -> Dictionary:
 	for job in POOL.keys():
 		for entry in POOL[job]:
 			if entry["id"] == id:
-				return entry
+				return entry.duplicate()
 	return {}

@@ -19,6 +19,11 @@ var sections: Dictionary = {} # section_id -> {id, name, area}
 var nodes: Dictionary = {} # id -> {name, connections, found, passed, found_by_employed, gate, section, event_script_pass, event_script_fail}
 var section_reward_claimed: Dictionary = {} # section_id -> true(攻略報酬を既に支給済みのセクション)
 
+## nodes_in_section()は日次探索処理(exploration.gd)から担当パーティ数×複数回呼ばれるが、
+## 毎回全ノードをフィルタし直すと世界全体のノード数に比例して重くなる。add_node()/reset()の
+## 時にだけ無効化するキャッシュを持たせ、ゲーム進行中の呼び出しはO(1)気味に保つ。
+var _section_nodes_cache: Dictionary = {} # section_id -> Array[String]
+
 func add_area(id: String, display_name: String) -> void:
 	areas[id] = {"id": id, "name": display_name}
 
@@ -39,6 +44,7 @@ func add_node(id: String, display_name: String, connections: Array, gate: Dictio
 		"event_script_pass": [],
 		"event_script_fail": [],
 	}
+	_section_nodes_cache.clear()
 
 func set_event_scripts(id: String, script_pass: Array, script_fail: Array) -> void:
 	if nodes.has(id):
@@ -49,7 +55,9 @@ func has_event(id: String) -> bool:
 	return nodes.has(id) and (not nodes[id]["event_script_pass"].is_empty() or not nodes[id]["event_script_fail"].is_empty())
 
 func nodes_in_section(section_id: String) -> Array:
-	return nodes.keys().filter(func(id): return nodes[id]["section"] == section_id)
+	if not _section_nodes_cache.has(section_id):
+		_section_nodes_cache[section_id] = nodes.keys().filter(func(id): return nodes[id]["section"] == section_id)
+	return _section_nodes_cache[section_id]
 
 func sections_in_area(area_id: String) -> Array:
 	return sections.keys().filter(func(id): return sections[id]["area"] == area_id)
@@ -161,6 +169,7 @@ func reset() -> void:
 	sections = {}
 	nodes = {}
 	section_reward_claimed = {}
+	_section_nodes_cache = {}
 
 ## セクションが所属するエリアの登場順(0始まり)+1を、収入・報酬計算用の倍率として使う。
 ## 後発エリアほど高倍率になり(design.md 8.1「後発エリアほど規模と難度を緩やかに引き上げる」方針と

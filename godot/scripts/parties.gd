@@ -20,7 +20,11 @@ var parties: Dictionary = {} # party_id -> party data
 func form_party(member_ids: Array, display_name: String = "") -> int:
 	if member_ids.is_empty() or member_ids.size() > MAX_PARTY_SIZE:
 		return -1
+	var seen: Dictionary = {}
 	for npc_id in member_ids:
+		if seen.has(npc_id):
+			return -1 # 同じNPCを2重に含めることはできない
+		seen[npc_id] = true
 		var npc := Npcs.get_npc(npc_id)
 		if npc.is_empty() or npc["party_id"] != -1:
 			return -1 # 既にどこかのパーティに所属しているNPCは含められない

@@ -82,6 +82,7 @@ var action_log_text: RichTextLabel
 
 var slot_panel: PanelContainer
 var slot_list: ItemList
+var slot_name_input: LineEdit
 var manual_save_status_label: Label
 var autosave_checkbox: CheckBox
 var new_game_confirm: ConfirmationDialog
@@ -105,16 +106,15 @@ func _ready() -> void:
 	_build_shop_ui()
 	_build_board_ui()
 	_build_node_detail_ui()
-	# アクティブなセーブスロットが、今のworld_data.gdより古いワールドスキーマで生成された
-	# ものであれば、そのバージョンでWorldMapを作り直してからUIを組み立てる(スキーマの
-	# 複数バージョン管理。design.md 8.2/11章)。ノードグラフのUI(_seed_demo_world)は
-	# 実際にWorldMapに読み込まれた内容を基準にする必要があるため、この判定は
-	# _seed_demo_world()より前に行う。
-	var pinned_version := SaveSystem.get_slot_schema_version(SaveSystem.current_slot_id)
-	if pinned_version != "" and pinned_version != WorldSchemaDb.active_version_id:
-		WorldSchemaDb.import_into_worldmap(pinned_version)
+	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめ、常に
+	# まっさらな新規プレイから始まるようにした(design.md 8.2節)。既存の進行を続けたい
+	# 場合は、セーブパネルから明示的に「このスロットをロードする」を選ぶ(一般的な
+	# ゲームの「ロードは明示的操作」という体験に合わせた。過去に診断作業が実セーブを
+	# 誤って上書きした事故の根本原因でもあったため、安全面でも狙い通り)。
+	# WorldMapはworld_data.gdの起動時ブートストラップで既に最新スキーマで構築済みのため、
+	# ここではスキーマの再構築は不要。
 	_seed_demo_world()
-	SaveSystem.load_game()
+	SaveSystem.start_fresh_session()
 	TimeSystem.day_advanced.connect(_on_day_advanced)
 	TimeSystem.month_ended.connect(_on_month_ended)
 	TimeSystem.speed_changed.connect(_on_speed_changed)
@@ -287,7 +287,7 @@ func _build_ui() -> void:
 	left.add_child(action_log_button)
 
 	var slot_button := Button.new()
-	slot_button.text = "セーブ"
+	slot_button.text = "セーブ/ロード"
 	slot_button.pressed.connect(_on_open_slots_pressed)
 	left.add_child(slot_button)
 
@@ -802,6 +802,7 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 	for job in Jobs.all_jobs():
 		reclass_option.add_item(Jobs.JOB_NAMES[job])
 		reclass_option.set_item_metadata(reclass_option.item_count - 1, job)
+	reclass_option.select(0) # ドロップダウンを一度も開かずに押された場合でもselectedが-1にならないようにする
 	reclass_row.add_child(reclass_option)
 
 	reclass_button = Button.new()
@@ -896,13 +897,9 @@ func _npc_status_text(npc: Dictionary) -> String:
 	if party_id == -1:
 		return "未所属"
 	var party := Parties.get_party(party_id)
-	match int(party.get("status", Parties.Status.IDLE)):
-		Parties.Status.RECOVERING:
-			return "回復中(あと%d日)" % max(0, party["recovering_until_day"] - TimeSystem.current_day)
-		Parties.Status.EXPLORING:
-			return "探索中"
-		_:
-			return "待機中(未割当)"
+	if party.is_empty() or int(party.get("status", Parties.Status.IDLE)) == Parties.Status.IDLE:
+		return "待機中(未割当)"
+	return _party_status_text(party) # RECOVERING/EXPLORINGの文言は_party_status_text()と共通化
 
 func _on_train_skill_pressed(skill: int) -> void:
 	if _selected_npc_id < 0:
@@ -920,9 +917,12 @@ func _on_train_skill_pressed(skill: int) -> void:
 func _on_reclass_pressed() -> void:
 	if _selected_npc_id < 0:
 		return
-	if not Items.consume(_selected_npc_id, "reclass_elixir"):
+	if reclass_option.selected < 0:
 		return
 	var new_job: int = reclass_option.get_item_metadata(reclass_option.selected)
+	# 選択内容を検証できてから初めてアイテムを消費する(検証失敗後にアイテムだけ失う事故を防ぐ)。
+	if not Items.consume(_selected_npc_id, "reclass_elixir"):
+		return
 	Npcs.change_job(_selected_npc_id, new_job)
 	_refresh_roster()
 	_refresh_npc_detail()
@@ -1224,6 +1224,8 @@ func _refresh_party_detail() -> void:
 	party_member_list.clear()
 	for npc_id in party["member_ids"]:
 		var npc := Npcs.get_npc(npc_id)
+		if npc.is_empty():
+			continue
 		party_member_list.add_item("%s(%s) HP:%d/%d" % [npc["name"], Jobs.JOB_NAMES[npc["job"]], int(npc["hp"]), int(npc["max_hp"])])
 
 	var behavior: int = party["post_clear_behavior"]
@@ -1246,11 +1248,13 @@ func _party_status_text(party: Dictionary) -> String:
 func _on_move_member_pressed(direction: int) -> void:
 	if _selected_party_id < 0:
 		return
+	var party := Parties.get_party(_selected_party_id)
+	if party.is_empty():
+		return
 	var selected := party_member_list.get_selected_items()
 	if selected.is_empty():
 		return
 	var index: int = selected[0]
-	var party := Parties.get_party(_selected_party_id)
 	var order: Array = party["member_ids"].duplicate()
 	var target := index + direction
 	if target < 0 or target >= order.size():
@@ -1424,7 +1428,7 @@ func _build_slot_ui() -> void:
 	var header := HBoxContainer.new()
 	col.add_child(header)
 	var title := Label.new()
-	title.text = "セーブスロット"
+	title.text = "セーブ/ロード"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	var close_button := Button.new()
@@ -1436,6 +1440,24 @@ func _build_slot_ui() -> void:
 	slot_list.custom_minimum_size = Vector2(0, 220)
 	slot_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(slot_list)
+
+	# スロットに名前を付けられるように(2026-09-14)。1つの入力欄を、選択中スロットの
+	# 「名前を変更する」と、次に「新規プレイを開始する」際の名前付けの両方で使い回す
+	# (どちらのボタンを押した時点のテキストを使うかは各ハンドラ側で決まる)。
+	var name_row := HBoxContainer.new()
+	col.add_child(name_row)
+	var name_label := Label.new()
+	name_label.text = "名前:"
+	name_row.add_child(name_label)
+	slot_name_input = LineEdit.new()
+	slot_name_input.placeholder_text = "スロット名(選択中の変更 / 次の新規プレイ用、省略可)"
+	slot_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_row.add_child(slot_name_input)
+	var rename_button := Button.new()
+	rename_button.text = "選択中の名前を変更"
+	rename_button.tooltip_text = "一覧で選択中のスロットの名前を、上の入力欄の内容に変更する"
+	rename_button.pressed.connect(_on_rename_slot_pressed)
+	name_row.add_child(rename_button)
 
 	# ボタンを全部縦に並べると数が増えるたびにパネルの下端からはみ出してしまっていたため、
 	# 2列に分けて縦の高さを抑える。左列は「今どのスロットに対しても行う」保存系の操作、
@@ -1507,6 +1529,7 @@ func _build_slot_ui() -> void:
 func _on_open_slots_pressed() -> void:
 	_refresh_slot_list()
 	manual_save_status_label.text = ""
+	slot_name_input.text = ""
 	autosave_checkbox.button_pressed = SaveSystem.autosave_enabled
 	_open_modal(slot_panel)
 
@@ -1514,9 +1537,10 @@ func _refresh_slot_list() -> void:
 	slot_list.clear()
 	for slot in SaveSystem.list_slots():
 		var active_mark := " (現在)" if slot["slot_id"] == SaveSystem.current_slot_id else ""
+		var label: String = slot["name"] if slot["name"] != "" else "スロット%d" % slot["slot_id"]
 		var idx := slot_list.item_count
-		slot_list.add_item("スロット%d%s — 資金%d / Day%d / NPC%d人" % [
-			slot["slot_id"], active_mark, slot["funds"], slot["day"], slot["npc_count"]])
+		slot_list.add_item("%s%s — 資金%d / Day%d / NPC%d人" % [
+			label, active_mark, slot["funds"], slot["day"], slot["npc_count"]])
 		slot_list.set_item_metadata(idx, slot["slot_id"])
 
 func _on_open_slot_pressed() -> void:
@@ -1532,9 +1556,21 @@ func _on_open_slot_pressed() -> void:
 	_close_modal(slot_panel)
 
 func _on_new_game_confirmed() -> void:
-	SaveSystem.create_new_slot()
+	SaveSystem.create_new_slot(slot_name_input.text.strip_edges())
 	_refresh_all()
 	_close_modal(slot_panel)
+
+func _on_rename_slot_pressed() -> void:
+	var selected := slot_list.get_selected_items()
+	if selected.is_empty():
+		manual_save_status_label.text = "名前を変更するスロットを一覧から選択してください"
+		return
+	var slot_id: int = slot_list.get_item_metadata(selected[0])
+	if SaveSystem.rename_slot(slot_id, slot_name_input.text.strip_edges()):
+		manual_save_status_label.text = "スロット%dの名前を変更しました" % slot_id
+		_refresh_slot_list()
+	else:
+		manual_save_status_label.text = "名前の変更に失敗しました"
 
 func _on_manual_save_pressed() -> void:
 	SaveSystem.save_game()
@@ -1624,9 +1660,9 @@ func _seed_demo_world() -> void:
 	for child in map_canvas.get_children():
 		child.queue_free()
 
-	if _active_area_id == "" and not WorldMap.areas.is_empty():
-		_active_area_id = WorldMap.areas.keys()[0]
-
+	# _active_area_idの既定選択は_build_ui()(最初にタブボタンを作る場所)で行う。
+	# _on_area_tab_pressed()もタブ切替時に呼ぶ前に自分で設定するため、この関数に来る時点では
+	# 常に設定済み。
 	var positions := _compute_node_positions()
 	node_labels.clear()
 	node_name_labels.clear()
@@ -2175,6 +2211,8 @@ func _on_day_advanced(_day: int) -> void:
 	_refresh_map()
 	_refresh_roster()
 	_refresh_npc_detail()
+	_refresh_party_roster()
+	_refresh_party_detail() # NPCパネルと同様、パーティパネルを開いたまま倍速で進めても情報が古くならないようにする
 	_refresh_funds() # セクション攻略の一時金は月末を待たずその日のうちに入るため、日次でも反映する
 	SaveSystem.autosave()
 
@@ -2190,6 +2228,8 @@ func _refresh_all() -> void:
 	_refresh_board()
 	_refresh_map()
 	_refresh_npc_detail()
+	_refresh_party_roster()
+	_refresh_party_detail()
 	_refresh_facility_button()
 	_on_speed_changed(TimeSystem.speed_multiplier) # ロード直後、実際の倍速にボタンの押下表示を合わせる
 	# next_month_buttonは元々month_endedシグナル(その場で月末になった瞬間)でのみ表示していたため、

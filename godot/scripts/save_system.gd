@@ -28,16 +28,26 @@ const TABLES := [
 	"world_progress", "section_rewards", "board_entries", "board_threads", "board_thread_entries",
 ]
 
-var current_slot_id: int = 1
+## current_slot_idがこの値の間は「起動直後のまっさらな新規プレイ」を表し、どのスロット
+## ファイルにも紐付いていない(design.md 8.2節、実セーブ誤上書き事故の再発防止)。
+## この状態でsave_game()が呼ばれた場合のみ、その場で新しいスロットを割り当てる。
+const NO_ACTIVE_SLOT := -1
+
+var current_slot_id: int = NO_ACTIVE_SLOT
+var current_slot_name: String = "" # 空文字なら一覧表示側が「スロットN」を代わりに使う
 ## オートセーブ(日次/終了時)を止めたい、という要望への対応(2026-09-13追加)。手動セーブ/
 ## 進行の複製機能があるので、オフにしても明示的な保存手段は残る。プレイヤー設定として
 ## worldseeker_meta.cfgに永続化する(スロットごとの値ではない)。
 var autosave_enabled: bool = true
 
 func _ready() -> void:
+	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめた(design.md
+	# 10章)。診断・検証作業や単なる再起動のたびに実セーブへ意図せず触れてしまうリスクの
+	# 根本原因だったため、「起動後は常に新規プレイから始まり、既存の進行を続けたい場合は
+	# セーブパネルから明示的にロードする」という一般的なゲームの体験に合わせた。そのため
+	# current_slot_idはworldseeker_meta.cfgから復元しない(autosave_enabledのみ復元する)。
 	var cfg := ConfigFile.new()
 	if cfg.load(META_PATH) == OK:
-		current_slot_id = int(cfg.get_value("state", "active_slot", 1))
 		autosave_enabled = bool(cfg.get_value("state", "autosave_enabled", true))
 
 func _slot_path(slot_id: int) -> String:
@@ -102,19 +112,20 @@ func _peek_slot(slot_id: int) -> Dictionary:
 		return {}
 	return {
 		"slot_id": slot_id,
+		"name": String(meta.get("slot_name", "")),
 		"funds": int(meta.get("funds", 0)),
 		"day": int(meta.get("current_day", 0)),
 		"month": int(meta.get("current_month", 0)),
 		"npc_count": npc_count,
 	}
 
-## 新規スロットを作成してアクティブにする(design.md 8.2「スキーマ再プレイ」)。
-## ワールドスキーマDB(world_schema_db.gd)経由でWorldMapを再構築するため、
-## GDScript直書き経路と同じ形の「まっさらな世界」から始まることをこの一手が保証する。
-## 新規プレイは常に最新のワールドスキーマ(WorldSchemaDb.current_version_id)を使う。
-func create_new_slot() -> int:
-	var next_id := _next_free_slot_id()
-	save_game() # 離れる前のスロットを保存
+## Economy/TimeSystem/Npcs/Parties等をまっさらな状態に戻し、design.md 4.7節の初期パーティ
+## (購入・募集不要の4人)を無償で組む。起動時ブートストラップ(main.gdの_ready())と
+## create_new_slot()の両方が使う共通処理。ディスクには一切触れない(スロットの作成/切替/
+## 保存は呼び出し側の責務)。WorldMapの再構築も呼び出し側の責務とする: 起動直後は
+## world_data.gdが起動時に既に最新スキーマで構築済みのため不要だが、既存スロットから
+## 新規プレイへ切り替える場合はWorldSchemaDb.import_into_worldmap()で作り直す必要がある。
+func start_fresh_session() -> void:
 	Economy.reset()
 	TimeSystem.reset()
 	Npcs.reset()
@@ -122,11 +133,21 @@ func create_new_slot() -> int:
 	Recruitment.reset()
 	Board.reset()
 	ActionLog.reset()
-	WorldSchemaDb.import_into_worldmap(WorldSchemaDb.current_version_id)
-	# design.md 4.7節: 購入・募集不要の初期パーティ(4人)を無償で用意する。
 	var starter_ids := Npcs.create_starter_roster()
 	Parties.form_party(starter_ids, "初期パーティ")
+
+## 新規スロットを作成してアクティブにする(design.md 8.2「スキーマ再プレイ」)。
+## ワールドスキーマDB(world_schema_db.gd)経由でWorldMapを再構築するため、
+## GDScript直書き経路と同じ形の「まっさらな世界」から始まることをこの一手が保証する。
+## 新規プレイは常に最新のワールドスキーマ(WorldSchemaDb.current_version_id)を使う。
+func create_new_slot(display_name: String = "") -> int:
+	var next_id := _next_free_slot_id()
+	if current_slot_id != NO_ACTIVE_SLOT:
+		save_game() # 離れる前のスロットを保存(起動直後でまだどのスロットにも属していなければ何もしない)
+	start_fresh_session()
+	WorldSchemaDb.import_into_worldmap(WorldSchemaDb.current_version_id)
 	_set_active_slot(next_id)
+	current_slot_name = display_name
 	save_game()
 	return next_id
 
@@ -170,7 +191,10 @@ func get_slot_schema_version(slot_id: int) -> String:
 ## (別スロットの発見/突破状態が混ざらないようにするため。スロットに記録がなければ
 ## 現行バージョンにフォールバックする)。
 func switch_to_slot(slot_id: int) -> bool:
-	if current_slot_id != slot_id:
+	# NO_ACTIVE_SLOT(起動直後のまっさらな新規プレイ)からロードする場合、保存すべき
+	# 既存の進行が無いため、ここでsave_game()を呼んではいけない(呼ぶと、この後すぐ
+	# 切り替える先とは無関係な「空のスロット」がその場で新規作成されてしまう)。
+	if current_slot_id != NO_ACTIVE_SLOT and current_slot_id != slot_id:
 		save_game()
 	var pinned_version := get_slot_schema_version(slot_id)
 	if pinned_version == "":
@@ -187,6 +211,27 @@ func delete_slot(slot_id: int) -> bool:
 	if not FileAccess.file_exists(path):
 		return false
 	return DirAccess.remove_absolute(path) == OK
+
+## スロット名を変更する。アクティブなスロットでなくても(一覧から選んだだけの状態でも)
+## 変更できるよう、対象がアクティブでなければそのスロットのDBを直接開いてmetaだけ書き換える
+## (他のテーブルには触れない。アクティブな他スロットの進行を巻き込まないため)。
+func rename_slot(slot_id: int, new_name: String) -> bool:
+	if slot_id == current_slot_id:
+		current_slot_name = new_name
+		save_game()
+		return true
+	var path := _slot_path(slot_id)
+	if not FileAccess.file_exists(path):
+		return false
+	var db := SQLite.new()
+	db.path = path
+	if not db.open_db():
+		return false
+	_ensure_schema(db)
+	db.query_with_bindings("DELETE FROM meta WHERE key = ?", ["slot_name"])
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["slot_name", new_name])
+	db.close_db()
+	return true
 
 ## 行動ログビューアー用: 現在のスロットのaction_logを取得する(npc_id<0で全NPC分)。
 func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
@@ -282,6 +327,12 @@ func _ensure_column(db: SQLite, table: String, column: String, column_def: Strin
 	db.query("ALTER TABLE %s ADD COLUMN %s %s" % [table, column, column_def])
 
 func save_game() -> void:
+	if current_slot_id == NO_ACTIVE_SLOT:
+		# 起動直後のまっさらな新規プレイで、スロットを明示的に選ぶ前に保存(手動セーブ/
+		# オートセーブ/終了時保存のいずれか)が呼ばれた。この時点で初めて新しいスロットを
+		# 割り当てる(「新規プレイの保存先は必ず新しいスロット」という方針を、
+		# 「新規プレイを開始する」ボタンを経由しない場合にも一貫させるための入り口)。
+		_set_active_slot(_next_free_slot_id())
 	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
 	var db := SQLite.new()
 	db.path = _slot_path(current_slot_id)
@@ -293,6 +344,7 @@ func save_game() -> void:
 		db.query("DELETE FROM %s" % table)
 
 	var meta := {
+		"slot_name": current_slot_name,
 		"funds": Economy.funds,
 		"employ_cap": Economy.employ_cap,
 		"facility_level": Economy.facility_level,
@@ -390,6 +442,7 @@ func load_game() -> bool:
 		db.close_db()
 		return false
 
+	current_slot_name = String(meta.get("slot_name", ""))
 	Economy.funds = int(meta.get("funds", Economy.funds))
 	Economy.employ_cap = int(meta.get("employ_cap", Economy.employ_cap))
 	Economy.facility_level = int(meta.get("facility_level", Economy.facility_level))
@@ -455,6 +508,10 @@ func load_game() -> bool:
 					best_job = job
 			npc["job"] = best_job
 			npc["unique_skill"] = UniqueSkills.generate(best_job)
+			# Npcs.hire()と同様、"max_hp_flat"固有スキルなら最大HPを底上げする(既存のhpは
+			# そのまま、最大値だけ引き上げる。負傷中のNPCを不当に全回復させないため)。
+			if npc["unique_skill"].get("effect_type", "") == "max_hp_flat":
+				npc["max_hp"] = float(npc["max_hp"]) + float(npc["unique_skill"]["value"])
 		# 2026-09-14追加: portrait==""は旧セーブ由来(または移行直後でまだ未割り当て)の印。
 		# 血筋に応じた肖像を新規抽選する。
 		if npc["portrait"] == "":
