@@ -24,7 +24,7 @@ const SLOT_DIR := "user://saves"
 const META_PATH := "user://worldseeker_meta.cfg"
 
 const TABLES := [
-	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory",
+	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory", "parties", "party_members",
 	"world_progress", "section_rewards", "board_entries", "board_threads", "board_thread_entries",
 ]
 
@@ -118,10 +118,14 @@ func create_new_slot() -> int:
 	Economy.reset()
 	TimeSystem.reset()
 	Npcs.reset()
+	Parties.reset()
 	Recruitment.reset()
 	Board.reset()
 	ActionLog.reset()
 	WorldSchemaDb.import_into_worldmap(WorldSchemaDb.current_version_id)
+	# design.md 4.7節: 購入・募集不要の初期パーティ(4人)を無償で用意する。
+	var starter_ids := Npcs.create_starter_roster()
+	Parties.form_party(starter_ids, "初期パーティ")
 	_set_active_slot(next_id)
 	save_game()
 	return next_id
@@ -243,7 +247,22 @@ func _ensure_schema(db: SQLite) -> void:
 	# found_by_employed/post_clear_behaviorは後から追加した列。既存スロット(旧スキーマ)には
 	# まだ無いことがあるため、CREATE TABLE IF NOT EXISTSでは反映されない分をここで補う。
 	_ensure_column(db, "world_progress", "found_by_employed", "INTEGER DEFAULT 0")
-	_ensure_column(db, "npcs", "post_clear_behavior", "INTEGER DEFAULT %d" % Npcs.PostClearBehavior.MOVE_ON)
+	# 2026-09-14のパーティ制導入: status/assigned_section/recovering_until_day/post_clear_behaviorは
+	# パーティ側(parties table)に移ったため、npcsテーブルには以後書き込まない(列自体は旧セーブ
+	# 互換のため残置)。代わりにジョブ・固有スキル・装備の列を追加する。job=-1は「旧セーブ由来で
+	# 未設定」を表し、load_game()側で移行処理(job割り当て+固有スキル生成)の対象になる。
+	_ensure_column(db, "npcs", "job", "INTEGER DEFAULT -1")
+	_ensure_column(db, "npcs", "unique_skill_id", "TEXT DEFAULT ''")
+	_ensure_column(db, "npcs", "equipped_weapon_tier", "INTEGER DEFAULT -1")
+	_ensure_column(db, "npcs", "equipped_armor_tier", "INTEGER DEFAULT -1")
+	# 2026-09-14追加。空文字は「旧セーブ由来で未割り当て」を表し、load_game()側の移行処理で
+	# 血筋に応じたportraitを新規抽選する(job=-1の移行と同じ考え方)。
+	_ensure_column(db, "npcs", "portrait_id", "TEXT DEFAULT ''")
+	db.query("""CREATE TABLE IF NOT EXISTS parties (
+		id INTEGER PRIMARY KEY, name TEXT, assigned_section TEXT, status INTEGER,
+		recovering_until_day INTEGER, post_clear_behavior INTEGER
+	)""")
+	db.query("CREATE TABLE IF NOT EXISTS party_members (party_id INTEGER, npc_id INTEGER, order_index INTEGER, PRIMARY KEY (party_id, npc_id))")
 	db.query("CREATE TABLE IF NOT EXISTS section_rewards (section_id TEXT PRIMARY KEY)")
 	db.query("CREATE TABLE IF NOT EXISTS board_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_threads (thread_id TEXT PRIMARY KEY, title TEXT)")
@@ -297,11 +316,14 @@ func save_game() -> void:
 	var roster: Dictionary = npc_data["roster"]
 	for npc_id in roster.keys():
 		var npc: Dictionary = roster[npc_id]
+		var weapon_tier: int = npc["equipped_weapon"]["tier"] if npc["equipped_weapon"].has("tier") else -1
+		var armor_tier: int = npc["equipped_armor"]["tier"] if npc["equipped_armor"].has("tier") else -1
 		db.query_with_bindings(
-			"""INSERT INTO npcs (id, name, hp, max_hp, status, assigned_section, combat_hp_threshold, combat_action, recovering_until_day, post_clear_behavior)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-			[npc_id, npc["name"], npc["hp"], npc["max_hp"], npc["status"], npc["assigned_section"],
-				npc["combat_policy"]["hp_threshold"], npc["combat_policy"]["action"], npc["recovering_until_day"], npc["post_clear_behavior"]])
+			"""INSERT INTO npcs (id, name, hp, max_hp, combat_hp_threshold, combat_action, job, unique_skill_id, equipped_weapon_tier, equipped_armor_tier, portrait_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+			[npc_id, npc["name"], npc["hp"], npc["max_hp"],
+				npc["combat_policy"]["hp_threshold"], npc["combat_policy"]["action"],
+				npc["job"], npc["unique_skill"].get("id", ""), weapon_tier, armor_tier, npc.get("portrait", "")])
 		for trait_key in npc["innate_traits"].keys():
 			db.query_with_bindings("INSERT INTO npc_traits (npc_id, trait_key, trait_value) VALUES (?, ?, ?)",
 				[npc_id, trait_key, npc["innate_traits"][trait_key]])
@@ -311,6 +333,18 @@ func save_game() -> void:
 				[npc_id, skill, entry["level"], entry["exp"]])
 		for item_id in npc["inventory"]:
 			db.query_with_bindings("INSERT INTO npc_inventory (npc_id, item_id) VALUES (?, ?)", [npc_id, item_id])
+
+	var party_data: Dictionary = Parties.save_state()
+	# metaのINSERTループは既に上で実行済みのため、ここは単独のINSERTで追記する。
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["party_next_id", party_data["next_id"]])
+	for party_id in party_data["parties"].keys():
+		var party: Dictionary = party_data["parties"][party_id]
+		db.query_with_bindings(
+			"INSERT INTO parties (id, name, assigned_section, status, recovering_until_day, post_clear_behavior) VALUES (?, ?, ?, ?, ?, ?)",
+			[party_id, party["name"], party["assigned_section"], party["status"], party["recovering_until_day"], party["post_clear_behavior"]])
+		for i in range(party["member_ids"].size()):
+			db.query_with_bindings("INSERT INTO party_members (party_id, npc_id, order_index) VALUES (?, ?, ?)",
+				[party_id, party["member_ids"][i], i])
 
 	var progress: Dictionary = WorldMap.save_progress()
 	for node_id in progress.keys():
@@ -372,15 +406,19 @@ func load_game() -> bool:
 	db.query("SELECT * FROM npcs")
 	for row in db.query_result:
 		var npc_id: int = int(row["id"])
+		var weapon_tier: int = int(row.get("equipped_weapon_tier", -1))
+		var armor_tier: int = int(row.get("equipped_armor_tier", -1))
 		roster[npc_id] = {
 			"name": String(row["name"]),
 			"hp": row["hp"],
 			"max_hp": row["max_hp"],
-			"status": int(row["status"]),
-			"assigned_section": String(row["assigned_section"]),
+			"job": int(row.get("job", -1)),
+			"unique_skill": UniqueSkills.by_id(String(row.get("unique_skill_id", ""))),
+			"portrait": String(row.get("portrait_id", "")),
+			"equipped_weapon": {"tier": weapon_tier} if weapon_tier >= 0 else {},
+			"equipped_armor": {"tier": armor_tier} if armor_tier >= 0 else {},
+			"party_id": -1, # party_membersテーブルから後で復元する
 			"combat_policy": {"hp_threshold": row["combat_hp_threshold"], "action": int(row["combat_action"])},
-			"recovering_until_day": int(row["recovering_until_day"]),
-			"post_clear_behavior": int(row.get("post_clear_behavior", Npcs.PostClearBehavior.MOVE_ON)),
 			"innate_traits": {},
 			"skills": {},
 			"inventory": [],
@@ -401,6 +439,66 @@ func load_game() -> bool:
 		if roster.has(npc_id):
 			roster[npc_id]["inventory"].append(String(row["item_id"]))
 	Npcs.load_state({"next_id": int(meta.get("npc_next_id", 1)), "roster": roster})
+
+	# 2026-09-14パーティ制導入前のセーブ移行: job==-1は旧セーブ由来でジョブ未設定という印。
+	# 5スキルのうち最も高いものに対応するジョブを割り当て、固有スキルを新規生成する
+	# (design.md 11章に記載した移行方針)。
+	for npc_id in Npcs.roster.keys():
+		var npc: Dictionary = Npcs.roster[npc_id]
+		if npc["job"] == -1:
+			var best_job: int = Jobs.Job.WARRIOR
+			var best_level := -1
+			for job in Jobs.all_jobs():
+				var level := Npcs.skill_level(npc_id, Jobs.JOB_SKILL_AFFINITY[job])
+				if level > best_level:
+					best_level = level
+					best_job = job
+			npc["job"] = best_job
+			npc["unique_skill"] = UniqueSkills.generate(best_job)
+		# 2026-09-14追加: portrait==""は旧セーブ由来(または移行直後でまだ未割り当て)の印。
+		# 血筋に応じた肖像を新規抽選する。
+		if npc["portrait"] == "":
+			npc["portrait"] = PortraitLibrary.generate(npc["innate_traits"].get("bloodline", ""))
+
+	var parties_data := {}
+	db.query("SELECT * FROM parties")
+	for row in db.query_result:
+		var party_id: int = int(row["id"])
+		parties_data[party_id] = {
+			"id": party_id,
+			"name": String(row["name"]),
+			"assigned_section": String(row["assigned_section"]),
+			"status": int(row["status"]),
+			"recovering_until_day": int(row["recovering_until_day"]),
+			"post_clear_behavior": int(row["post_clear_behavior"]),
+			"member_ids": [],
+		}
+	var had_saved_parties := not parties_data.is_empty()
+	db.query("SELECT * FROM party_members ORDER BY party_id, order_index")
+	for row in db.query_result:
+		var party_id: int = int(row["party_id"])
+		if parties_data.has(party_id):
+			parties_data[party_id]["member_ids"].append(int(row["npc_id"]))
+	Parties.load_state({"next_id": int(meta.get("party_next_id", 1)), "parties": parties_data})
+	for party_id in Parties.parties.keys():
+		for npc_id in Parties.parties[party_id]["member_ids"]:
+			Npcs.set_party(npc_id, party_id)
+
+	# 旧セーブ(パーティ制導入前)は誰もパーティに所属していない。NPCをid順に4人ずつ
+	# グループ化して新規パーティを組む。旧モデルでは1NPC=1セクションの個別割り当てだった
+	# ため、4人纏めた際にどのセクションを継承すべきか一意に決まらない。安全側に倒し、
+	# 各パーティのassigned_sectionは空のまま(プレイヤーに手動で再割り当てしてもらう)にする。
+	if not had_saved_parties and not Npcs.roster.is_empty():
+		var ids: Array = Npcs.roster.keys()
+		ids.sort()
+		var chunk := []
+		for npc_id in ids:
+			chunk.append(npc_id)
+			if chunk.size() == Parties.MAX_PARTY_SIZE:
+				Parties.form_party(chunk)
+				chunk = []
+		if not chunk.is_empty():
+			Parties.form_party(chunk)
 
 	var progress := {}
 	db.query("SELECT * FROM world_progress")

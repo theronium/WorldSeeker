@@ -19,6 +19,14 @@ func grant(npc_id: int, item_id: String) -> void:
 func has_item(npc_id: int, item_id: String) -> bool:
 	return Npcs.get_npc(npc_id).get("inventory", []).has(item_id)
 
+## 転職(design.md 4.8節)などの消費アイテム用。所持していなければ何もせずfalseを返す。
+func consume(npc_id: int, item_id: String) -> bool:
+	var npc := Npcs.get_npc(npc_id)
+	if npc.is_empty() or not npc["inventory"].has(item_id):
+		return false
+	npc["inventory"].erase(item_id)
+	return true
+
 ## ワールドスキーマの再構築前に呼ぶ(world_schema_db.gdのimport_into_worldmap())。
 ## define()は上書きのみで削除はしないため、これを呼ばずに別バージョンを読み込むと、
 ## 前のバージョンにしかないアイテム定義が残ってしまう。

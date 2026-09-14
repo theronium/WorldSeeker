@@ -88,6 +88,14 @@ func is_area_entered(area_id: String) -> bool:
 			return true
 	return false
 
+## マップのエリアタブ表示用(design.md 5.1節): そのエリアの中に到達可能なセクションが
+## 1つでもあれば選べる。is_section_reachable()のエリア単位版。
+func is_area_reachable(area_id: String) -> bool:
+	for section_id in sections_in_area(area_id):
+		if is_section_reachable(section_id):
+			return true
+	return false
+
 ## NPCの担当割り当て先として選べるセクションかどうか。既に誰か(雇用/野良問わず)が
 ## 足を踏み入れているか、まだ誰も入っていなくても隣接する突破済みノードから
 ## 発見を試みられる状態(frontier_for_sectionが空でない)なら選べる。どちらでもない
@@ -116,6 +124,16 @@ func can_pass_gate(id: String, npc_id: int) -> bool:
 			return Items.has_item(npc_id, gate["item"])
 		_:
 			return true
+
+## パーティ版のゲート判定(design.md 4.7節): skill/innate_trait/itemゲートいずれも、
+## パーティ内の誰か1人が満たしていれば通過できる(パーティ内OR判定)。既存のcan_pass_gate()を
+## メンバーごとに呼ぶだけで、ゲート種別ごとの判定ロジック自体は変更しない。並び順で最初に
+## 満たしたメンバーのidを返す(突破報酬アイテムの受け取り手を決めるのに使う)。誰も満たさなければ-1。
+func first_passing_member(id: String, member_ids: Array) -> int:
+	for npc_id in member_ids:
+		if can_pass_gate(id, npc_id):
+			return npc_id
+	return -1
 
 func save_progress() -> Dictionary:
 	var result := {}

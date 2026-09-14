@@ -38,6 +38,11 @@ func _define_items() -> void:
 	Items.define("obsidian_shard", "黒曜石の欠片")
 	Items.define("emberforged_ingot", "業火で鍛えた鋼塊")
 	Items.define("heart_of_inferno", "業火の心臓")
+	# design.md 4.8節「転職」用の消費アイテム。後半〜終盤の各エリア(4〜9番目)の
+	# 手強い戦闘ゲート6箇所(いずれも既存の報酬チェーンに含まれない箇所)にそれぞれ設置し、
+	# 同じアイテムIDなので複数箇所から繰り返し入手できる(1体のNPCが同時に複数個は持てない、
+	# Items.grant()の仕様どおり)。消費すると任意のジョブへ転職できる(NPC管理パネル)。
+	Items.define("reclass_elixir", "転職の秘薬")
 
 func _build_kingdom() -> void:
 	WorldMap.add_area("kingdom", "小さな王国")
@@ -58,7 +63,7 @@ func _build_kingdom() -> void:
 	# --- 古い洞窟 ---
 	WorldMap.add_node("cave", "洞窟", ["forest_edge", "locked_vault"], {}, "old_cave_dungeon")
 	WorldMap.add_node("locked_vault", "封印の小部屋", ["cave", "boss_lair"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 2}, "old_cave_dungeon")
-	WorldMap.add_node("boss_lair", "ゴブリンキングの間", ["locked_vault", "goblin_treasury"], {"type": "combat", "enemy_power": 40}, "old_cave_dungeon", "goblin_amulet")
+	WorldMap.add_node("boss_lair", "ゴブリンキングの間", ["locked_vault", "goblin_treasury"], {"type": "combat", "enemy_power": 180}, "old_cave_dungeon", "goblin_amulet")
 	WorldMap.add_node("goblin_treasury", "秘密の宝物庫", ["boss_lair"], {"type": "item", "item": "goblin_amulet"}, "old_cave_dungeon")
 
 	# --- ささやきの森 ---
@@ -67,7 +72,7 @@ func _build_kingdom() -> void:
 	WorldMap.add_node("old_well", "古井戸", ["mossy_clearing", "well_shaft"], {}, "whispering_forest")
 	WorldMap.add_node("fallen_log", "倒木の道", ["mossy_clearing", "deep_thicket"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 2}, "whispering_forest")
 	WorldMap.add_node("deep_thicket", "深い茂み", ["fallen_log", "wolf_den"], {}, "whispering_forest")
-	WorldMap.add_node("wolf_den", "狼の巣穴", ["deep_thicket"], {"type": "combat", "enemy_power": 25}, "whispering_forest")
+	WorldMap.add_node("wolf_den", "狼の巣穴", ["deep_thicket"], {"type": "combat", "enemy_power": 140}, "whispering_forest")
 
 	# --- 国境の道 ---
 	WorldMap.add_node("border_path", "国境へ続く道", ["forest_edge", "border_checkpoint"], {}, "border_road")
@@ -133,7 +138,7 @@ func _build_kingdom() -> void:
 	WorldMap.add_node("royal_library", "王立図書館の禁書区画", ["archive_room"], {"type": "item", "item": "old_expedition_map"}, "capital_district")
 	WorldMap.add_node("market_district", "商業区", ["capital_plaza", "back_alley"], {}, "capital_district")
 	WorldMap.add_node("back_alley", "裏路地", ["market_district", "thieves_den"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 2}, "capital_district")
-	WorldMap.add_node("thieves_den", "盗賊団のアジト", ["back_alley"], {"type": "combat", "enemy_power": 35}, "capital_district", "thief_signet")
+	WorldMap.add_node("thieves_den", "盗賊団のアジト", ["back_alley"], {"type": "combat", "enemy_power": 160}, "capital_district", "thief_signet")
 
 	WorldMap.set_event_scripts("archive_room",
 		[
@@ -201,7 +206,7 @@ func _build_reinvale() -> void:
 	WorldMap.add_node("sunken_path", "水没した小道", ["riverside", "ruin_entrance"], {}, "sunken_ruins")
 	WorldMap.add_node("ruin_entrance", "遺跡の入口", ["sunken_path", "ruin_hall"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 3}, "sunken_ruins")
 	WorldMap.add_node("ruin_hall", "遺跡の大広間", ["ruin_entrance", "throne_room"], {}, "sunken_ruins")
-	WorldMap.add_node("throne_room", "沈める王の間", ["ruin_hall", "depths_stair"], {"type": "combat", "enemy_power": 70}, "sunken_ruins")
+	WorldMap.add_node("throne_room", "沈める王の間", ["ruin_hall", "depths_stair"], {"type": "combat", "enemy_power": 200}, "sunken_ruins")
 
 	WorldMap.set_event_scripts("old_watchtower",
 		[
@@ -228,7 +233,7 @@ func _build_reinvale() -> void:
 	WorldMap.add_node("elf_ward", "森の結界", ["market_road", "elder_grove"], {"type": "innate_trait", "trait": "bloodline", "value": "森人の血"}, "elven_woods")
 	WorldMap.add_node("elder_grove", "長老の木立", ["elf_ward", "spirit_shrine", "moonwell_guardian"], {}, "elven_woods")
 	WorldMap.add_node("spirit_shrine", "精霊の祠", ["elder_grove", "threshold_rift"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 4}, "elven_woods")
-	WorldMap.add_node("moonwell_guardian", "月の泉の守護者", ["elder_grove", "lake_path"], {"type": "combat", "enemy_power": 55}, "elven_woods")
+	WorldMap.add_node("moonwell_guardian", "月の泉の守護者", ["elder_grove", "lake_path"], {"type": "combat", "enemy_power": 180}, "elven_woods")
 
 	WorldMap.set_event_scripts("elf_ward",
 		[
@@ -254,7 +259,7 @@ func _build_reinvale() -> void:
 	# 沈める王の間(throne_room)を突破すると、さらに奥へ続く階段が見つかる。
 	WorldMap.add_node("depths_stair", "深層へ続く階段", ["throne_room", "flooded_crypt"], {}, "sunken_depths")
 	WorldMap.add_node("flooded_crypt", "水没した墓所", ["depths_stair", "drowned_throne"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 4}, "sunken_depths")
-	WorldMap.add_node("drowned_throne", "溺れし玉座の間", ["flooded_crypt", "treasure_hall"], {"type": "combat", "enemy_power": 90}, "sunken_depths", "crown_of_the_deep")
+	WorldMap.add_node("drowned_throne", "溺れし玉座の間", ["flooded_crypt", "treasure_hall"], {"type": "combat", "enemy_power": 240}, "sunken_depths", "crown_of_the_deep")
 	WorldMap.add_node("treasure_hall", "王冠の間", ["drowned_throne"], {"type": "item", "item": "crown_of_the_deep"}, "sunken_depths")
 
 	WorldMap.set_event_scripts("drowned_throne",
@@ -335,8 +340,8 @@ func _build_ashen_peaks() -> void:
 	WorldMap.add_node("collapsed_tunnel", "崩れた坑道", ["mine_entrance", "deep_shaft"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 2}, "abandoned_mine")
 	WorldMap.add_node("deep_shaft", "深部立坑", ["collapsed_tunnel", "crystal_cavern", "goblin_outpost"], {}, "abandoned_mine")
 	WorldMap.add_node("crystal_cavern", "結晶洞", ["deep_shaft", "descent_path"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 4}, "abandoned_mine")
-	WorldMap.add_node("goblin_outpost", "ゴブリンの前哨基地", ["deep_shaft", "mine_boss_chamber"], {"type": "combat", "enemy_power": 50}, "abandoned_mine")
-	WorldMap.add_node("mine_boss_chamber", "坑道主の間", ["goblin_outpost", "mine_vault"], {"type": "combat", "enemy_power": 75}, "abandoned_mine", "warden_key")
+	WorldMap.add_node("goblin_outpost", "ゴブリンの前哨基地", ["deep_shaft", "mine_boss_chamber"], {"type": "combat", "enemy_power": 220}, "abandoned_mine")
+	WorldMap.add_node("mine_boss_chamber", "坑道主の間", ["goblin_outpost", "mine_vault"], {"type": "combat", "enemy_power": 260}, "abandoned_mine", "warden_key")
 	WorldMap.add_node("mine_vault", "坑道の宝物庫", ["mine_boss_chamber"], {"type": "item", "item": "warden_key"}, "abandoned_mine")
 
 	WorldMap.set_event_scripts("crystal_cavern",
@@ -383,10 +388,10 @@ func _build_ashen_peaks() -> void:
 	# 断崖の祠(cliff_shrine)を突破すると隣接フロアとして開ける。
 	WorldMap.add_node("spire_trail", "尖塔への隠し道", ["cliff_shrine", "spire_base"], {}, "dragon_spire")
 	WorldMap.add_node("spire_base", "尖塔の麓", ["spire_trail", "ash_chamber", "spire_ascent"], {}, "dragon_spire")
-	WorldMap.add_node("ash_chamber", "灰塵の間", ["spire_base", "rim_path"], {"type": "combat", "enemy_power": 60}, "dragon_spire")
+	WorldMap.add_node("ash_chamber", "灰塵の間", ["spire_base", "rim_path"], {"type": "combat", "enemy_power": 240}, "dragon_spire")
 	WorldMap.add_node("spire_ascent", "尖塔の階段", ["spire_base", "sealed_gate"], {}, "dragon_spire")
 	WorldMap.add_node("sealed_gate", "封印の大扉", ["spire_ascent", "dragon_throne"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 5}, "dragon_spire")
-	WorldMap.add_node("dragon_throne", "竜の玉座", ["sealed_gate", "dragon_hoard"], {"type": "combat", "enemy_power": 110}, "dragon_spire", "ashen_dragon_scale")
+	WorldMap.add_node("dragon_throne", "竜の玉座", ["sealed_gate", "dragon_hoard"], {"type": "combat", "enemy_power": 300}, "dragon_spire", "ashen_dragon_scale")
 	WorldMap.add_node("dragon_hoard", "竜の財宝", ["dragon_throne"], {"type": "item", "item": "ashen_dragon_scale"}, "dragon_spire")
 
 	WorldMap.set_event_scripts("ash_chamber",
@@ -447,8 +452,8 @@ func _build_forgotten_catacombs() -> void:
 	WorldMap.add_node("bone_corridor", "白骨の回廊", ["crypt_hall", "whispering_alcove", "cracked_sarcophagus", "rattling_alcove", "ossuary_depths"], {}, "bone_ossuary")
 	WorldMap.add_node("whispering_alcove", "囁きの窪み", ["bone_corridor"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "bone_ossuary")
 	WorldMap.add_node("cracked_sarcophagus", "罅割れた石棺", ["bone_corridor"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 2}, "bone_ossuary", "silver_reliquary")
-	WorldMap.add_node("rattling_alcove", "骨の鳴る窪み", ["bone_corridor"], {"type": "combat", "enemy_power": 45}, "bone_ossuary")
-	WorldMap.add_node("ossuary_depths", "骸骨兵の間", ["bone_corridor", "chapel_stairs", "sealed_crypt_gate"], {"type": "combat", "enemy_power": 65}, "bone_ossuary")
+	WorldMap.add_node("rattling_alcove", "骨の鳴る窪み", ["bone_corridor"], {"type": "combat", "enemy_power": 280}, "bone_ossuary")
+	WorldMap.add_node("ossuary_depths", "骸骨兵の間", ["bone_corridor", "chapel_stairs", "sealed_crypt_gate"], {"type": "combat", "enemy_power": 300}, "bone_ossuary")
 	WorldMap.add_node("sealed_crypt_gate", "封じられた墓所の門", ["ossuary_depths", "lich_antechamber"], {"type": "item", "item": "silver_reliquary"}, "bone_ossuary")
 
 	WorldMap.set_event_scripts("whispering_alcove",
@@ -511,9 +516,9 @@ func _build_forgotten_catacombs() -> void:
 
 	# --- リッチの聖域 ---
 	WorldMap.add_node("lich_antechamber", "リッチの前室", ["sealed_crypt_gate", "restless_guardian", "warding_circle"], {}, "lich_sanctum")
-	WorldMap.add_node("restless_guardian", "彷徨う守護者", ["lich_antechamber"], {"type": "combat", "enemy_power": 70}, "lich_sanctum")
+	WorldMap.add_node("restless_guardian", "彷徨う守護者", ["lich_antechamber"], {"type": "combat", "enemy_power": 320}, "lich_sanctum", "reclass_elixir")
 	WorldMap.add_node("warding_circle", "結界の間", ["lich_antechamber", "lich_throne"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 4}, "lich_sanctum")
-	WorldMap.add_node("lich_throne", "リッチの玉座", ["warding_circle", "lich_vault"], {"type": "combat", "enemy_power": 100}, "lich_sanctum", "phylactery_shard")
+	WorldMap.add_node("lich_throne", "リッチの玉座", ["warding_circle", "lich_vault"], {"type": "combat", "enemy_power": 360}, "lich_sanctum", "phylactery_shard")
 	WorldMap.add_node("lich_vault", "秘宝の間", ["lich_throne"], {"type": "item", "item": "phylactery_shard"}, "lich_sanctum")
 
 	WorldMap.set_event_scripts("restless_guardian",
@@ -575,8 +580,8 @@ func _build_spirit_plane() -> void:
 	WorldMap.add_node("wind_shrine", "風の祠", ["floating_garden"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 4}, "drifting_isles")
 	WorldMap.add_node("star_pool", "星映す泉", ["floating_garden", "sealed_garden_vault"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 4}, "drifting_isles", "starlight_fragment")
 	WorldMap.add_node("sealed_garden_vault", "封じられた庭園の蔵", ["star_pool"], {"type": "item", "item": "starlight_fragment"}, "drifting_isles")
-	WorldMap.add_node("sky_serpent_nest", "空竜蛇の巣", ["floating_garden"], {"type": "combat", "enemy_power": 40}, "drifting_isles")
-	WorldMap.add_node("isle_depths", "島影の奥", ["floating_garden", "sanctum_bridge"], {"type": "combat", "enemy_power": 65}, "drifting_isles")
+	WorldMap.add_node("sky_serpent_nest", "空竜蛇の巣", ["floating_garden"], {"type": "combat", "enemy_power": 340}, "drifting_isles")
+	WorldMap.add_node("isle_depths", "島影の奥", ["floating_garden", "sanctum_bridge"], {"type": "combat", "enemy_power": 380}, "drifting_isles", "reclass_elixir")
 
 	WorldMap.set_event_scripts("star_pool",
 		[
@@ -622,7 +627,7 @@ func _build_spirit_plane() -> void:
 	# 漂う小道(drifting_path)から分岐する、進行に必須ではない支線。
 	WorldMap.add_node("hollow_mist", "霧のくぼ地", ["drifting_path", "mirror_maze"], {}, "mirror_hollow")
 	WorldMap.add_node("mirror_maze", "鏡の迷路", ["hollow_mist", "echo_chamber", "false_reflection", "silent_pool"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 3}, "mirror_hollow")
-	WorldMap.add_node("echo_chamber", "谺の間", ["mirror_maze"], {"type": "combat", "enemy_power": 50}, "mirror_hollow")
+	WorldMap.add_node("echo_chamber", "谺の間", ["mirror_maze"], {"type": "combat", "enemy_power": 360}, "mirror_hollow")
 	WorldMap.add_node("false_reflection", "偽りの鏡像", ["mirror_maze"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "mirror_hollow")
 	WorldMap.add_node("silent_pool", "静寂の水底", ["mirror_maze"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 3}, "mirror_hollow")
 
@@ -650,7 +655,7 @@ func _build_spirit_plane() -> void:
 	WorldMap.add_node("sanctum_bridge", "星幽への橋", ["isle_depths", "sanctum_gate"], {}, "astral_sanctum")
 	WorldMap.add_node("sanctum_gate", "聖域の門", ["sanctum_bridge", "sanctum_inner"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 5}, "astral_sanctum")
 	WorldMap.add_node("sanctum_inner", "聖域の内殿", ["sanctum_gate", "astral_guardian"], {}, "astral_sanctum")
-	WorldMap.add_node("astral_guardian", "星幽の守護者", ["sanctum_inner", "astral_heart"], {"type": "combat", "enemy_power": 105}, "astral_sanctum", "astral_core")
+	WorldMap.add_node("astral_guardian", "星幽の守護者", ["sanctum_inner", "astral_heart"], {"type": "combat", "enemy_power": 420}, "astral_sanctum", "astral_core")
 	WorldMap.add_node("astral_heart", "星幽の中心", ["astral_guardian"], {"type": "item", "item": "astral_core"}, "astral_sanctum")
 
 	WorldMap.set_event_scripts("sanctum_gate",
@@ -695,7 +700,7 @@ func _build_moonlit_lake() -> void:
 	WorldMap.add_node("lake_path", "湖への小道", ["moonwell_guardian", "lake_dock"], {}, "lake_shore")
 	WorldMap.add_node("lake_dock", "湖畔の桟橋", ["lake_path", "village_gate", "reed_entrance", "sunken_bell", "drift_wraith"], {}, "lake_shore")
 	WorldMap.add_node("sunken_bell", "沈んだ鐘", ["lake_dock"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "lake_shore")
-	WorldMap.add_node("drift_wraith", "漂う亡霊", ["lake_dock"], {"type": "combat", "enemy_power": 30}, "lake_shore")
+	WorldMap.add_node("drift_wraith", "漂う亡霊", ["lake_dock"], {"type": "combat", "enemy_power": 400}, "lake_shore")
 
 	WorldMap.set_event_scripts("sunken_bell",
 		[
@@ -723,7 +728,7 @@ func _build_moonlit_lake() -> void:
 	WorldMap.add_node("flooded_house", "水没した家", ["drowned_square"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 3}, "sunken_village", "moonpearl")
 	WorldMap.add_node("moonlit_altar", "月光の祭壇", ["drowned_square"], {"type": "item", "item": "moonpearl"}, "sunken_village")
 	WorldMap.add_node("hidden_cellar", "隠された地下室", ["drowned_square"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "sunken_village")
-	WorldMap.add_node("village_depths", "里の奥", ["drowned_square", "palace_stairs"], {"type": "combat", "enemy_power": 60}, "sunken_village")
+	WorldMap.add_node("village_depths", "里の奥", ["drowned_square", "palace_stairs"], {"type": "combat", "enemy_power": 440}, "sunken_village", "reclass_elixir")
 
 	WorldMap.set_event_scripts("flooded_house",
 		[
@@ -759,7 +764,7 @@ func _build_moonlit_lake() -> void:
 	# 湖畔の桟橋(lake_dock)から分岐する、進行に必須ではない支線。
 	WorldMap.add_node("reed_entrance", "葦原の入口", ["lake_dock", "reed_paths"], {}, "reed_maze")
 	WorldMap.add_node("reed_paths", "葦の小道", ["reed_entrance", "will_o_wisp", "hidden_skiff", "reed_depths"], {}, "reed_maze")
-	WorldMap.add_node("will_o_wisp", "鬼火の群れ", ["reed_paths"], {"type": "combat", "enemy_power": 35}, "reed_maze")
+	WorldMap.add_node("will_o_wisp", "鬼火の群れ", ["reed_paths"], {"type": "combat", "enemy_power": 420}, "reed_maze")
 	WorldMap.add_node("hidden_skiff", "隠された小舟", ["reed_paths"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "reed_maze")
 	WorldMap.add_node("reed_depths", "葦の最奥", ["reed_paths"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 3}, "reed_maze")
 
@@ -776,7 +781,7 @@ func _build_moonlit_lake() -> void:
 	# --- 月宮 ---
 	WorldMap.add_node("palace_stairs", "月宮への階段", ["village_depths", "palace_hall"], {}, "moon_palace")
 	WorldMap.add_node("palace_hall", "月宮の広間", ["palace_stairs", "moon_throne"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 5}, "moon_palace")
-	WorldMap.add_node("moon_throne", "月姫の玉座", ["palace_hall", "palace_vault"], {"type": "combat", "enemy_power": 108}, "moon_palace", "moonsoul_crown")
+	WorldMap.add_node("moon_throne", "月姫の玉座", ["palace_hall", "palace_vault"], {"type": "combat", "enemy_power": 480}, "moon_palace", "moonsoul_crown")
 	WorldMap.add_node("palace_vault", "秘宝の間", ["moon_throne"], {"type": "item", "item": "moonsoul_crown"}, "moon_palace")
 
 	WorldMap.set_event_scripts("palace_hall",
@@ -821,7 +826,7 @@ func _build_fae_hollow() -> void:
 	WorldMap.add_node("well_shaft", "井戸の縦坑", ["old_well", "hollow_floor"], {}, "hollow_entrance")
 	WorldMap.add_node("hollow_floor", "隠れ里の床", ["well_shaft", "glade_path", "maze_path", "sleeping_pixie", "moss_ring"], {}, "hollow_entrance")
 	WorldMap.add_node("sleeping_pixie", "眠るピクシー", ["hollow_floor"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 2}, "hollow_entrance")
-	WorldMap.add_node("moss_ring", "苔の輪", ["hollow_floor"], {"type": "combat", "enemy_power": 20}, "hollow_entrance")
+	WorldMap.add_node("moss_ring", "苔の輪", ["hollow_floor"], {"type": "combat", "enemy_power": 460}, "hollow_entrance")
 
 	WorldMap.set_event_scripts("sleeping_pixie",
 		[
@@ -848,7 +853,7 @@ func _build_fae_hollow() -> void:
 	WorldMap.add_node("glade_clearing", "茸の群生地", ["glade_path", "giant_toadstool", "toadstool_ring", "glade_depths"], {}, "mushroom_glade")
 	WorldMap.add_node("giant_toadstool", "巨大な茸", ["glade_clearing"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 2}, "mushroom_glade", "fae_dust")
 	WorldMap.add_node("toadstool_ring", "茸の輪", ["glade_clearing"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 2}, "mushroom_glade")
-	WorldMap.add_node("glade_depths", "群生地の奥", ["glade_clearing", "court_gate"], {"type": "combat", "enemy_power": 45}, "mushroom_glade")
+	WorldMap.add_node("glade_depths", "群生地の奥", ["glade_clearing", "court_gate"], {"type": "combat", "enemy_power": 500}, "mushroom_glade", "reclass_elixir")
 
 	WorldMap.set_event_scripts("giant_toadstool",
 		[
@@ -891,7 +896,7 @@ func _build_fae_hollow() -> void:
 	# --- 妖精の宮廷 ---
 	WorldMap.add_node("court_gate", "宮廷の門", ["glade_depths", "court_hall"], {}, "fae_court")
 	WorldMap.add_node("court_hall", "妖精の宮廷", ["court_gate", "fae_queen"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 4}, "fae_court")
-	WorldMap.add_node("fae_queen", "妖精女王", ["court_hall", "court_treasury"], {"type": "combat", "enemy_power": 75}, "fae_court", "queens_favor")
+	WorldMap.add_node("fae_queen", "妖精女王", ["court_hall", "court_treasury"], {"type": "combat", "enemy_power": 540}, "fae_court", "queens_favor")
 	WorldMap.add_node("court_treasury", "宮廷の宝物庫", ["fae_queen"], {"type": "item", "item": "queens_favor"}, "fae_court")
 
 	WorldMap.set_event_scripts("court_hall",
@@ -936,7 +941,7 @@ func _build_crystalline_depths() -> void:
 	WorldMap.add_node("descent_path", "降下路", ["crystal_cavern", "crystal_floor"], {}, "crystal_descent")
 	WorldMap.add_node("crystal_floor", "結晶の床", ["descent_path", "geode_path", "resonance_path", "glowing_vein", "faint_tremor"], {}, "crystal_descent")
 	WorldMap.add_node("glowing_vein", "光る鉱脈", ["crystal_floor"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "crystal_descent")
-	WorldMap.add_node("faint_tremor", "微かな震え", ["crystal_floor"], {"type": "combat", "enemy_power": 25}, "crystal_descent")
+	WorldMap.add_node("faint_tremor", "微かな震え", ["crystal_floor"], {"type": "combat", "enemy_power": 520}, "crystal_descent")
 
 	WorldMap.set_event_scripts("glowing_vein",
 		[
@@ -962,7 +967,7 @@ func _build_crystalline_depths() -> void:
 	WorldMap.add_node("geode_path", "晶洞への道", ["crystal_floor", "geode_chamber"], {}, "geode_hollows")
 	WorldMap.add_node("geode_chamber", "晶洞の間", ["geode_path", "cracked_geode", "crystal_spiders", "prismatic_pool", "geode_depths"], {}, "geode_hollows")
 	WorldMap.add_node("cracked_geode", "割れた晶洞", ["geode_chamber"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 3}, "geode_hollows", "resonant_shard")
-	WorldMap.add_node("crystal_spiders", "結晶蜘蛛の巣", ["geode_chamber"], {"type": "combat", "enemy_power": 55}, "geode_hollows")
+	WorldMap.add_node("crystal_spiders", "結晶蜘蛛の巣", ["geode_chamber"], {"type": "combat", "enemy_power": 560}, "geode_hollows", "reclass_elixir")
 	WorldMap.add_node("prismatic_pool", "虹色の水溜まり", ["geode_chamber"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 3}, "geode_hollows")
 	WorldMap.add_node("geode_depths", "晶洞の奥", ["geode_chamber", "throne_path"], {"type": "item", "item": "resonant_shard"}, "geode_hollows")
 
@@ -1001,7 +1006,7 @@ func _build_crystalline_depths() -> void:
 	WorldMap.add_node("resonance_path", "共鳴への道", ["crystal_floor", "resonance_hall"], {}, "resonance_halls")
 	WorldMap.add_node("resonance_hall", "共鳴の回廊", ["resonance_path", "humming_crystal", "shattering_echo", "resonance_depths"], {}, "resonance_halls")
 	WorldMap.add_node("humming_crystal", "唸る結晶", ["resonance_hall"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 3}, "resonance_halls")
-	WorldMap.add_node("shattering_echo", "砕ける谺", ["resonance_hall"], {"type": "combat", "enemy_power": 50}, "resonance_halls")
+	WorldMap.add_node("shattering_echo", "砕ける谺", ["resonance_hall"], {"type": "combat", "enemy_power": 540}, "resonance_halls")
 	WorldMap.add_node("resonance_depths", "共鳴の最奥", ["resonance_hall"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "resonance_halls")
 
 	WorldMap.set_event_scripts("shattering_echo",
@@ -1017,7 +1022,7 @@ func _build_crystalline_depths() -> void:
 	# --- 結晶の玉座 ---
 	WorldMap.add_node("throne_path", "玉座への道", ["geode_depths", "throne_hall"], {}, "crystal_throne")
 	WorldMap.add_node("throne_hall", "結晶の広間", ["throne_path", "crystal_monarch"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 4}, "crystal_throne")
-	WorldMap.add_node("crystal_monarch", "結晶の王", ["throne_hall", "throne_vault"], {"type": "combat", "enemy_power": 100}, "crystal_throne", "heart_of_crystal")
+	WorldMap.add_node("crystal_monarch", "結晶の王", ["throne_hall", "throne_vault"], {"type": "combat", "enemy_power": 600}, "crystal_throne", "heart_of_crystal")
 	WorldMap.add_node("throne_vault", "王の秘宝庫", ["crystal_monarch"], {"type": "item", "item": "heart_of_crystal"}, "crystal_throne")
 
 	WorldMap.set_event_scripts("throne_hall",
@@ -1063,7 +1068,7 @@ func _build_inferno_crater() -> void:
 	WorldMap.add_node("rim_path", "火口縁への道", ["ash_chamber", "rim_overlook"], {}, "caldera_rim")
 	WorldMap.add_node("rim_overlook", "火口を見渡す岸", ["rim_path", "obsidian_path", "ember_path", "heat_shimmer", "ash_drift", "cracked_ridge"], {}, "caldera_rim")
 	WorldMap.add_node("heat_shimmer", "陽炎の揺らぎ", ["rim_overlook"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 4}, "caldera_rim")
-	WorldMap.add_node("ash_drift", "灰の吹き溜まり", ["rim_overlook"], {"type": "combat", "enemy_power": 45}, "caldera_rim")
+	WorldMap.add_node("ash_drift", "灰の吹き溜まり", ["rim_overlook"], {"type": "combat", "enemy_power": 540}, "caldera_rim")
 	WorldMap.add_node("cracked_ridge", "罅割れた尾根", ["rim_overlook"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 3}, "caldera_rim")
 
 	WorldMap.set_event_scripts("heat_shimmer",
@@ -1092,7 +1097,7 @@ func _build_inferno_crater() -> void:
 	WorldMap.add_node("shattered_pillar", "砕けた石柱", ["obsidian_field", "sealed_kiln"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 3}, "obsidian_flats", "obsidian_shard")
 	WorldMap.add_node("sealed_kiln", "封じられた窯", ["shattered_pillar"], {"type": "item", "item": "obsidian_shard"}, "obsidian_flats")
 	WorldMap.add_node("glass_maze", "硝子の迷路", ["obsidian_field"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 3}, "obsidian_flats")
-	WorldMap.add_node("field_depths", "平原の奥", ["obsidian_field"], {"type": "combat", "enemy_power": 70}, "obsidian_flats")
+	WorldMap.add_node("field_depths", "平原の奥", ["obsidian_field"], {"type": "combat", "enemy_power": 600}, "obsidian_flats")
 	WorldMap.add_node("forge_path", "溶鉱への道", ["obsidian_field", "forge_floor"], {}, "obsidian_flats")
 
 	WorldMap.set_event_scripts("shattered_pillar",
@@ -1129,7 +1134,7 @@ func _build_inferno_crater() -> void:
 	# 火口を見渡す岸(rim_overlook)から分岐する、進行に必須ではない支線。
 	WorldMap.add_node("ember_path", "燠火への道", ["rim_overlook", "ember_hollow"], {}, "ember_tunnels")
 	WorldMap.add_node("ember_hollow", "燠火の窪み", ["ember_path", "cinder_wisps", "buried_cache", "ember_depths"], {}, "ember_tunnels")
-	WorldMap.add_node("cinder_wisps", "燠火の精", ["ember_hollow"], {"type": "combat", "enemy_power": 40}, "ember_tunnels")
+	WorldMap.add_node("cinder_wisps", "燠火の精", ["ember_hollow"], {"type": "combat", "enemy_power": 560}, "ember_tunnels")
 	WorldMap.add_node("buried_cache", "埋もれた蓄え", ["ember_hollow"], {"type": "skill", "skill": SkillTypes.Skill.LOCKPICKING, "min_level": 3}, "ember_tunnels")
 	WorldMap.add_node("ember_depths", "燠火の最奥", ["ember_hollow"], {"type": "skill", "skill": SkillTypes.Skill.PERCEPTION, "min_level": 3}, "ember_tunnels")
 
@@ -1146,8 +1151,8 @@ func _build_inferno_crater() -> void:
 	# --- 溶鉱の鍛冶場 ---
 	WorldMap.add_node("forge_floor", "溶鉱の鍛冶場", ["forge_path", "molten_anvil", "salamander_den", "slag_heap", "forge_depths"], {}, "molten_forge")
 	WorldMap.add_node("molten_anvil", "溶鉱の鉄床", ["forge_floor"], {"type": "skill", "skill": SkillTypes.Skill.DESTRUCTION, "min_level": 3}, "molten_forge", "emberforged_ingot")
-	WorldMap.add_node("salamander_den", "火蜥蜴の巣", ["forge_floor"], {"type": "combat", "enemy_power": 65}, "molten_forge")
-	WorldMap.add_node("slag_heap", "鉱滓の山", ["forge_floor"], {"type": "combat", "enemy_power": 30}, "molten_forge")
+	WorldMap.add_node("salamander_den", "火蜥蜴の巣", ["forge_floor"], {"type": "combat", "enemy_power": 580}, "molten_forge")
+	WorldMap.add_node("slag_heap", "鉱滓の山", ["forge_floor"], {"type": "combat", "enemy_power": 520}, "molten_forge")
 	WorldMap.add_node("forge_depths", "鍛冶場の奥", ["forge_floor", "caldera_gate"], {"type": "item", "item": "emberforged_ingot"}, "molten_forge")
 
 	WorldMap.set_event_scripts("molten_anvil",
@@ -1183,9 +1188,9 @@ func _build_inferno_crater() -> void:
 	# --- 業火の中心 ---
 	WorldMap.add_node("caldera_gate", "火口への門", ["forge_depths", "caldera_floor"], {}, "inferno_heart")
 	WorldMap.add_node("caldera_floor", "火口の底", ["caldera_gate", "molten_serpent", "caldera_hall"], {}, "inferno_heart")
-	WorldMap.add_node("molten_serpent", "溶岩の大蛇", ["caldera_floor"], {"type": "combat", "enemy_power": 85}, "inferno_heart")
+	WorldMap.add_node("molten_serpent", "溶岩の大蛇", ["caldera_floor"], {"type": "combat", "enemy_power": 620}, "inferno_heart", "reclass_elixir")
 	WorldMap.add_node("caldera_hall", "火口の内殿", ["caldera_floor", "inferno_lord"], {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 5}, "inferno_heart")
-	WorldMap.add_node("inferno_lord", "業火の王", ["caldera_hall", "inferno_vault"], {"type": "combat", "enemy_power": 120}, "inferno_heart", "heart_of_inferno")
+	WorldMap.add_node("inferno_lord", "業火の王", ["caldera_hall", "inferno_vault"], {"type": "combat", "enemy_power": 660}, "inferno_heart", "heart_of_inferno")
 	WorldMap.add_node("inferno_vault", "業火の秘宝庫", ["inferno_lord"], {"type": "item", "item": "heart_of_inferno"}, "inferno_heart")
 
 	WorldMap.set_event_scripts("molten_serpent",

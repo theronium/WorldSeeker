@@ -13,16 +13,20 @@ func post_recruitment() -> bool:
 
 func _generate_candidates(count: int) -> Array:
 	var candidates := []
+	var jobs := Jobs.all_jobs()
 	for i in range(count):
 		var quality := randf()
 		var skills := {}
 		for skill in SkillTypes.all_skills():
 			skills[skill] = randi_range(0, 2) + int(quality * 3)
 		var bloodline: String = BLOODLINES[randi() % BLOODLINES.size()]
+		var job: int = jobs[randi() % jobs.size()]
 		candidates.append({
 			"name": NameGenerator.generate(bloodline),
 			"quality": quality,
 			"innate_traits": {"bloodline": bloodline},
+			"job": job,
+			"portrait": PortraitLibrary.generate(bloodline), # 雇用パネルのプレビューに使う(2026-09-14)
 			"skills": skills,
 			"cost": Economy.hire_cost(quality),
 		})
@@ -36,7 +40,7 @@ func hire_candidate(index: int) -> int:
 	var candidate: Dictionary = current_candidates[index]
 	if not Economy.spend(candidate["cost"]):
 		return -1
-	var id := Npcs.hire(candidate["name"], candidate["innate_traits"], candidate["skills"])
+	var id := Npcs.hire(candidate["name"], candidate["innate_traits"], candidate["skills"], candidate["job"], candidate["portrait"])
 	current_candidates.remove_at(index)
 	return id
 

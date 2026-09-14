@@ -1,11 +1,19 @@
 extends Node
-# 担当セクションに割り当てられた雇用NPCの自動探索を日次で処理する。
+# 担当セクションに割り当てられたパーティの自動探索を日次で処理する。design.md 4.7/5.4節。
 #
-# 1日ごとに各NPCは:
-#   1. 発見済みだが未突破のゲートを、現在のスキル値/戦闘力で無音に再判定する
-#      (戦闘ゲートは実際にcombat.gdで解決され、敗北/撤退時はNPCが一時的に離脱する)
-#   2. 担当セクションの未発見の隣接ノード全てに、知覚スキルに応じた確率で発見を試みる
-#      (発見に成功した瞬間だけ、そのノードにイベント台本があれば会話を再生する)
+# 1日ごとに各パーティは:
+#   1. 発見済みだが未突破のゲートを、パーティ内の該当メンバーの現在のスキル値/戦力で
+#      無音に再判定する(戦闘ゲートは実際にcombat.gdで解決され、敗北/撤退時はパーティ全体が
+#      一時的に離脱する)
+#   2. 担当セクションの未発見の隣接ノード全てに、パーティ内最高知覚メンバーの知覚スキルに
+#      応じた確率で発見を試みる(発見に成功した瞬間だけ、そのノードにイベント台本があれば
+#      会話を再生する)
+#
+# ゲート種別ごとに「どのメンバーが判定を担うか」は以下の方針(design.md 4.7節):
+#   スキルゲート: パーティ内で該当スキルが最も高い(固有スキルの実効Lv込み)メンバー。
+#     経験値もそのメンバーへ入る
+#   血筋/所持品ゲート: パーティ内の誰か1人が満たせば通過(WorldMap.first_passing_member)
+#   戦闘ゲート: combat.gdが並び順で解決し、止めを刺したメンバーを返す
 #
 # 掲示板には、フロア単位の発見は所属セクションのスレッドにのみ記録し、
 # セクション/エリアへの初到達やイベントだけを全体フィードに載せる(wild_npcs.gdも本モジュールを利用する)。
@@ -15,9 +23,9 @@ const DISCOVERY_PER_PERCEPTION := 0.1
 const DISCOVERY_MAX_CHANCE := 0.9
 
 # 月次収入・攻略報酬(design.md 6章「経済」で構想されていたが未実装だった資金獲得経路。
-# 2026-09-13に実装): ワーカー配置型。担当NPCがいるセクションだけ、そのセクションの
-# 累計突破フロア数×セクション倍率(WorldMap.section_multiplier、エリアの登場順で自動算出)を
-# 毎月の収入として得る。配置転換すると元のセクションからの収入は失われる。
+# 2026-09-13に実装、2026-09-14にパーティ単位へ変更): ワーカー配置型。担当パーティがいる
+# セクションだけ、そのセクションの累計突破フロア数×セクション倍率(WorldMap.section_multiplier、
+# エリアの登場順で自動算出)を毎月の収入として得る。配置転換すると元のセクションからの収入は失われる。
 const MONTHLY_INCOME_PER_POINT := 5
 # セクションを完全攻略(全フロア突破)した瞬間に入る一時金。1フロアあたりの基礎額×セクション倍率×
 # フロア数。同一プレイで本当に最初に完全攻略したセクションだけ、さらに固定ボーナスが乗る。
@@ -28,12 +36,12 @@ func _ready() -> void:
 	TimeSystem.day_advanced.connect(_on_day_advanced)
 	TimeSystem.month_ended.connect(_on_month_ended)
 
-## 月末の集計タイムで、担当NPCがいる全セクション分の収入をまとめて資金化する。
+## 月末の集計タイムで、担当パーティがいる全セクション分の収入をまとめて資金化する。
 func _on_month_ended(current_month: int) -> void:
 	var current_day := TimeSystem.current_day
 	var total_income := 0
-	for npc in Npcs.get_roster():
-		var section_id: String = npc["assigned_section"]
+	for party in Parties.get_parties():
+		var section_id: String = party["assigned_section"]
 		if section_id == "" or not WorldMap.sections.has(section_id):
 			continue
 		var income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
@@ -45,57 +53,93 @@ func _on_month_ended(current_month: int) -> void:
 		ActionLog.record(current_day, "monthly_income", text)
 
 func _on_day_advanced(current_day: int) -> void:
-	for npc in Npcs.get_roster():
-		if npc["status"] != Npcs.Status.EXPLORING:
+	for party in Parties.get_parties():
+		if party["status"] != Parties.Status.EXPLORING:
 			continue
-		if not Npcs.is_available(npc["id"], current_day):
+		if not Parties.is_available(party["id"], current_day):
 			continue
-		_claim_wild_progress(npc)
-		_retry_gates(npc, current_day)
-		if Npcs.is_available(npc["id"], current_day):
-			_attempt_discovery(npc, current_day)
+		_claim_wild_progress(party)
+		_retry_gates(party, current_day)
+		if Parties.is_available(party["id"], current_day):
+			_attempt_discovery(party, current_day)
 
 ## 野良NPC(wild_npcs.gd)がゲート無しのフロアを先に発見・突破してしまうと、found=trueに
 ## なった時点でfrontier_for_section/_retry_gatesのどちらの対象からも永久に外れてしまい、
-## そのフロアを実際に担当している雇用NPCが常駐していても「誰か(灰色)」表示のまま二度と
+## そのフロアを実際に担当しているパーティが常駐していても「誰か(灰色)」表示のまま二度と
 ## 「自身(青)」に塗り替わらなかった(ささやきの森「森の小道」で報告された不具合)。
-## 担当NPCが稼働している間は、既に突破済みだが自分の踏破扱いになっていないフロアを
+## 担当パーティが稼働している間は、既に突破済みだが自分の踏破扱いになっていないフロアを
 ## 日次でここに合流させる。
-func _claim_wild_progress(npc: Dictionary) -> void:
-	for node_id in WorldMap.nodes_in_section(npc["assigned_section"]):
+func _claim_wild_progress(party: Dictionary) -> void:
+	for node_id in WorldMap.nodes_in_section(party["assigned_section"]):
 		var node: Dictionary = WorldMap.nodes[node_id]
 		if node["passed"] and not node["found_by_employed"]:
 			WorldMap.mark_passed(node_id, true)
 
-func _retry_gates(npc: Dictionary, current_day: int) -> void:
-	for node_id in WorldMap.nodes_in_section(npc["assigned_section"]):
-		if not Npcs.is_available(npc["id"], current_day):
+func _retry_gates(party: Dictionary, current_day: int) -> void:
+	for node_id in WorldMap.nodes_in_section(party["assigned_section"]):
+		if not Parties.is_available(party["id"], current_day):
 			return # 戦闘で撤退し離脱した場合、この日はもう動けない
 		var node: Dictionary = WorldMap.nodes[node_id]
 		if node["found"] and not node["passed"]:
-			if _attempt_gate(npc["id"], node_id, current_day):
+			var result := _attempt_gate(party, node_id, current_day)
+			if result["passed"]:
 				WorldMap.mark_passed(node_id, true)
-				_grant_item_reward(npc["id"], node)
-				_post_floor(npc["name"], node_id, current_day, "%sが「%s」を突破した" % [npc["name"], node["name"]], "gate_pass", npc["id"])
-				_check_section_cleared(npc["assigned_section"], current_day)
+				_grant_item_reward(result["npc_id"], node)
+				var actor_name: String = Npcs.get_npc(result["npc_id"]).get("name", party["name"])
+				_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"])
+				_check_section_cleared(party["assigned_section"], current_day)
 
-func discovery_chance(npc_id: int) -> float:
+## パーティ内で該当スキルが最も高い(固有スキルの実効Lv込み)メンバーを返す。
+func _effective_skill_level(npc_id: int, skill: int) -> int:
+	var level := Npcs.skill_level(npc_id, skill)
+	var unique: Dictionary = Npcs.get_npc(npc_id).get("unique_skill", {})
+	if unique.get("effect_type", "") == "gate_level_bonus" and unique.get("skill", -1) == skill:
+		level += int(unique["value"])
+	return level
+
+## 同レベルの場合、そのスキルを得意とするジョブ(job_types.gd)のメンバーを優先する。
+## そうしないと、全員Lv0の序盤は並び順が先頭のメンバーが常に「最高」判定を独占してしまい、
+## 他メンバーが自分の得意スキルで経験値を積む機会を得られず、design.md 4.7節が意図した
+## 「パーティ内で自然に役割分担が育っていく」という効果が起きない。
+func _best_member_for_skill(party: Dictionary, skill: int) -> int:
+	var best_id := -1
+	var best_level := -1
+	var best_is_specialist := false
+	for npc_id in party["member_ids"]:
+		var level := _effective_skill_level(npc_id, skill)
+		var is_specialist: bool = Jobs.JOB_SKILL_AFFINITY.get(Npcs.get_npc(npc_id)["job"], -1) == skill
+		if level > best_level or (level == best_level and is_specialist and not best_is_specialist):
+			best_level = level
+			best_id = npc_id
+			best_is_specialist = is_specialist
+	return best_id
+
+## 知覚スキルによる発見確率。パーティ内最高知覚メンバー基準(固有スキルの発見確率ボーナス込み)。
+func discovery_chance_for_member(npc_id: int) -> float:
 	var perception := Npcs.skill_level(npc_id, SkillTypes.Skill.PERCEPTION)
-	return min(DISCOVERY_MAX_CHANCE, DISCOVERY_BASE_CHANCE + perception * DISCOVERY_PER_PERCEPTION)
+	var chance := DISCOVERY_BASE_CHANCE + perception * DISCOVERY_PER_PERCEPTION
+	var unique: Dictionary = Npcs.get_npc(npc_id).get("unique_skill", {})
+	if unique.get("effect_type", "") == "discovery_pct":
+		chance += float(unique["value"])
+	return min(DISCOVERY_MAX_CHANCE, chance)
 
-func _attempt_discovery(npc: Dictionary, current_day: int) -> void:
+func _attempt_discovery(party: Dictionary, current_day: int) -> void:
 	# 担当セクションの未発見の隣接ノード全てに、並列で1回ずつ発見を試みる
-	var frontier := WorldMap.frontier_for_section(npc["assigned_section"])
-	var chance := discovery_chance(npc["id"])
+	var frontier := WorldMap.frontier_for_section(party["assigned_section"])
+	var scout_id := _best_member_for_skill(party, SkillTypes.Skill.PERCEPTION)
+	if scout_id == -1:
+		return
+	var chance := discovery_chance_for_member(scout_id)
+	var scout_name: String = Npcs.get_npc(scout_id)["name"]
 
 	for node_id in frontier:
-		if not Npcs.is_available(npc["id"], current_day):
+		if not Parties.is_available(party["id"], current_day):
 			return
-		Npcs.grant_skill_exp(npc["id"], SkillTypes.Skill.PERCEPTION, 1)
+		Npcs.grant_skill_exp(scout_id, SkillTypes.Skill.PERCEPTION, 1)
 		if randf() < chance:
-			_on_node_found(npc["name"], npc["id"], node_id, current_day)
+			_on_node_found(scout_name, scout_id, party, node_id, current_day)
 
-func _on_node_found(discoverer_name: String, npc_id: int, node_id: String, current_day: int) -> void:
+func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, node_id: String, current_day: int) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
 
 	if WorldMap.has_event(node_id):
@@ -103,20 +147,23 @@ func _on_node_found(discoverer_name: String, npc_id: int, node_id: String, curre
 			return # 今日は既に別の会話中なので見送り、翌日また発見を試みる
 		var milestone := _capture_milestone_state(node_id)
 		WorldMap.mark_found(node_id, true)
-		var passed := _attempt_gate(npc_id, node_id, current_day)
-		var script: Array = node["event_script_pass"] if passed else node["event_script_fail"]
+		var gate_result := _attempt_gate(party, node_id, current_day)
+		var script: Array = node["event_script_pass"] if gate_result["passed"] else node["event_script_fail"]
+		var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 		EventDialogue.finished.connect(
-			func(outcome: String): _finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, npc_id),
+			func(outcome: String): _finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
 			CONNECT_ONE_SHOT)
 		EventDialogue.play(script)
 		return
 
 	var milestone := _capture_milestone_state(node_id)
 	WorldMap.mark_found(node_id, true)
-	_finalize_discovery(discoverer_name, node_id, _attempt_gate(npc_id, node_id, current_day), current_day, milestone, npc_id)
+	var gate_result := _attempt_gate(party, node_id, current_day)
+	var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
+	_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
 
 ## 野良NPC(wild_npcs.gd)からも使う、ステータス不問の簡易発見処理。
-## ゲートがあるノードは「発見済みだが進めない」までしか進められない(実際の突破は雇用NPCの役目)。
+## ゲートがあるノードは「発見済みだが進めない」までしか進められない(実際の突破は雇用パーティの役目)。
 func wild_discover(node_id: String, current_day: int) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
 	if node["found"]:
@@ -160,15 +207,15 @@ func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool,
 
 func _grant_item_reward(npc_id: int, node: Dictionary) -> void:
 	var item_id: String = node.get("item_reward", "")
-	if item_id == "":
+	if item_id == "" or npc_id == -1:
 		return
 	Items.grant(npc_id, item_id)
 
 ## セクション内の全フロアが今まさに突破されたかを確認し、完全攻略済みなら一時金(初回のみ追加
-## ボーナス込み)を支給する。さらに、そのセクションを担当している雇用NPCそれぞれについて、
+## ボーナス込み)を支給する。さらに、そのセクションを担当しているパーティそれぞれについて、
 ## post_clear_behaviorの設定に従い「そのまま留まる」か「次の未踏破セクションへ自動再配置」かを
-## 適用する(design.mdの「1人のプレイヤーが雇用する複数NPCはセクションを分担」方針に合わせ、
-## 既に他のNPCが担当中のセクションへは再配置しない)。
+## 適用する(design.mdの「複数パーティが並列でセクションを分担」方針に合わせ、既に他のパーティが
+## 担当中のセクションへは再配置しない)。
 func _check_section_cleared(section_id: String, current_day: int) -> void:
 	if section_id == "" or WorldMap.is_section_reward_claimed(section_id):
 		return
@@ -192,18 +239,18 @@ func _check_section_cleared(section_id: String, current_day: int) -> void:
 	Board.post(current_day, text, Board.Importance.MAJOR, "section_clear")
 	ActionLog.record(current_day, "section_clear", text, -1, "", section_id)
 
-	for npc in Npcs.get_roster():
-		if npc["assigned_section"] != section_id:
+	for party in Parties.get_parties():
+		if party["assigned_section"] != section_id:
 			continue
-		if npc["post_clear_behavior"] != Npcs.PostClearBehavior.MOVE_ON:
+		if party["post_clear_behavior"] != Parties.PostClearBehavior.MOVE_ON:
 			continue
 		var next_section := WorldMap.next_section_to_explore(section_id)
 		if next_section == "":
 			continue
 		var next_section_name: String = WorldMap.sections[next_section]["name"]
-		Npcs.assign_section(npc["id"], next_section)
-		Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [npc["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
-		ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [npc["name"], next_section_name], npc["id"], "", next_section)
+		Parties.assign_section(party["id"], next_section)
+		Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
+		ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], -1, "", next_section)
 
 func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
@@ -211,34 +258,60 @@ func _post_floor(discoverer_name: String, node_id: String, current_day: int, tex
 	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "exploration")
 	ActionLog.record(current_day, event_type, text, npc_id, node_id, section_id)
 
-func _attempt_gate(npc_id: int, node_id: String, current_day: int) -> bool:
+## ゲートを判定し、{"passed": bool, "npc_id": int}を返す。npc_idは判定を担った(=突破報酬アイテムを
+## 受け取る)メンバー。誰も満たさない/敗北した場合は-1。
+func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dictionary:
 	var gate: Dictionary = WorldMap.nodes[node_id]["gate"]
 	match gate.get("type", ""):
 		"combat":
-			var result: Dictionary = Combat.resolve_encounter(npc_id, gate["enemy_power"], current_day)
-			return result["result"] == "victory"
+			var result: Dictionary = Combat.resolve_party_encounter(party["id"], gate["enemy_power"], current_day)
+			if result["result"] == "victory":
+				return {"passed": true, "npc_id": result["npc_id"]}
+			_post_retreat_help(party, node_id, current_day, result["result"], gate["enemy_power"])
+			return {"passed": false, "npc_id": -1}
 		"skill":
-			# 挑戦するたびに、たとえ突破できなくても該当スキルの経験値が入る
+			# 挑戦するたびに、たとえ突破できなくても該当スキルの経験値が(判定を担ったメンバーに)入る
 			# (5.2節: 試行を重ねることでいつか開ける、という思想を全スキルに適用)
-			Npcs.grant_skill_exp(npc_id, gate["skill"], 1)
-			return WorldMap.can_pass_gate(node_id, npc_id)
+			var member_id := _best_member_for_skill(party, gate["skill"])
+			if member_id == -1:
+				return {"passed": false, "npc_id": -1}
+			Npcs.grant_skill_exp(member_id, gate["skill"], 1)
+			var passed: bool = _effective_skill_level(member_id, gate["skill"]) >= gate["min_level"]
+			return {"passed": passed, "npc_id": member_id if passed else -1}
 		_:
-			return WorldMap.can_pass_gate(node_id, npc_id)
+			var member_id := WorldMap.first_passing_member(node_id, party["member_ids"])
+			return {"passed": member_id != -1, "npc_id": member_id}
 
-## NPC管理パネルの「予測」ボタン用: 指定NPCを指定セクションに置いた場合の、実際には
+## 戦闘での撤退/敗北時、プレイヤーが次に何をすればよいか分かるよう掲示板(セクションスレッド)に
+## ヒントを投稿する(design.md 6.2節の「即死の壁」構造を踏まえた対応策の案内)。敗北・撤退した
+## パーティはParties.retreat_and_recover()により数日は再挑戦できないため、この投稿も実質
+## 「回復サイクルごとに1回程度」の頻度に自然と収まる(毎日スパムにはならない)。
+func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, result: String, enemy_power: int) -> void:
+	var node: Dictionary = WorldMap.nodes[node_id]
+	var verb := "力及ばず敗れて撤退した" if result == "defeat" else "苦戦して撤退した"
+	var text := "%sは「%s」で%s(相手の戦闘力: %d)。突破のヒント: ①武器防具屋で装備を強化する ②NPC管理パネルで「戦闘力」スキルを訓練する ③このまま何度も挑み続ければ、戦闘の経験値で自然に強くなる。いずれか(または組み合わせ)を試してみてください。" % [
+		party["name"], node["name"], verb, enemy_power]
+	var section_id: String = node["section"]
+	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
+	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "combat_retreat")
+	ActionLog.record(current_day, "combat_retreat", text, -1, node_id, section_id)
+
+## NPC管理パネルの「予測」ボタン用: 指定パーティを指定セクションに置いた場合の、実際には
 ## 配置転換しない今月(TimeSystem.DAYS_PER_MONTH日)の見込みだけを計算する。
 ##
 ## セクション内の未突破ノードを、現在到達済みの場所から辿れる順に「発見にかかる予想日数」
-## (1/発見確率、を経路に沿って積み上げたもの)で並べ、月内に到達しうる範囲でNPCが
-## 実際に戦えない(撤退/敗北になる)戦闘ゲートが無いかをCombat.predict_result(実際の
+## (1/発見確率、を経路に沿って積み上げたもの)で並べ、月内に到達しうる範囲でパーティが
+## 実際に戦えない(撤退/敗北になる)戦闘ゲートが無いかをCombat.predict_party_result(実際の
 ## HP/経験値には触れない非破壊シミュレーション)で調べる。見つかった場合、その戦闘に
 ## 月内に行き着く確率分だけ予測報酬を割り引く(=撤退が先に来れば、その分の報酬は無いもの
 ## として扱う期待値化)。スキル/所持品/血筋のゲートで現状塞がれている先は、今月中に
 ## 抜けられる保証が無いため、この見積もりには含めない。
-func forecast_section(npc_id: int, section_id: String) -> Dictionary:
+func forecast_section(party_id: int, section_id: String) -> Dictionary:
+	var party := Parties.get_party(party_id)
 	var base_income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
 	var horizon := float(TimeSystem.DAYS_PER_MONTH)
-	var chance := discovery_chance(npc_id)
+	var scout_id := _best_member_for_skill(party, SkillTypes.Skill.PERCEPTION)
+	var chance := discovery_chance_for_member(scout_id) if scout_id != -1 else DISCOVERY_BASE_CHANCE
 
 	var eta_days: Dictionary = {} # node_id -> float(このノードの発見が見込まれる日数)
 	var queue: Array = WorldMap.frontier_for_section(section_id).duplicate()
@@ -262,15 +335,15 @@ func forecast_section(npc_id: int, section_id: String) -> Dictionary:
 		match gate.get("type", ""):
 			"combat":
 				if eta <= horizon:
-					var result := Combat.predict_result(npc_id, gate["enemy_power"])
+					var result := Combat.predict_party_result(party_id, gate["enemy_power"])
 					if result != "victory":
 						risk_node_id = node_id
 						risk_eta = eta
 						break # BFSはeta昇順に訪れるため、最初に見つかった撤退/敗北が最短の危険地点
 			"skill":
-				passable = Npcs.skill_level(npc_id, gate["skill"]) >= gate["min_level"]
+				passable = _effective_skill_level(_best_member_for_skill(party, gate["skill"]), gate["skill"]) >= gate["min_level"]
 			"innate_trait", "item":
-				passable = WorldMap.can_pass_gate(node_id, npc_id)
+				passable = WorldMap.first_passing_member(node_id, party["member_ids"]) != -1
 
 		if not passable:
 			continue # 今のスキル/所持品では今月中に抜けられる保証が無い
@@ -298,3 +371,13 @@ func forecast_section(npc_id: int, section_id: String) -> Dictionary:
 		"retreat_probability": retreat_probability,
 		"risk_node_name": risk_node_name,
 	}
+
+## design.md 6.2節「推奨戦力」: セクション内で最も敵戦闘力(enemy_power)が高い戦闘ゲートの値。
+## 戦闘ゲートが無いセクションは0を返す。
+func recommended_power_for_section(section_id: String) -> int:
+	var highest := 0
+	for node_id in WorldMap.nodes_in_section(section_id):
+		var gate: Dictionary = WorldMap.nodes[node_id].get("gate", {})
+		if gate.get("type", "") == "combat":
+			highest = max(highest, int(gate["enemy_power"]))
+	return highest
