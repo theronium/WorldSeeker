@@ -16,9 +16,9 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # ubuntu-latestは2026-10-19にUbuntu 26へ切り替わる予定のため、動作確認済みの版に固定
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Godot本体を取得
         run: |
@@ -31,7 +31,7 @@ jobs:
       # テンプレート全体は1.2GBあるが、Androidに必要なのは一部だけなのでそれだけ展開してキャッシュする
       - name: エクスポートテンプレートのキャッシュ
         id: templates-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_CHANNEL }}
           key: godot-templates-android-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
@@ -83,7 +83,7 @@ jobs:
           echo "APK_NAME=WorldSeeker-${name}.apk" >> "$GITHUB_ENV"
 
       # Godot 4.7はAPKの署名にJava SDKとAndroid SDK(adb / apksigner)を必須とする(公式ドキュメントの
-      # 「不要」という記述は当てにならず、実機ビルドで確認済み)。ubuntu-latestに入っているものを使い、
+      # 「不要」という記述は当てにならず、実機ビルドで確認済み)。ubuntu-24.04に入っているものを使い、
       # build-toolsだけ手元で動作確認した版を入れる。パスはエディタ設定ファイル経由でしか渡せない。
       - name: Android SDKとGodotのエディタ設定
         run: |
@@ -115,7 +115,7 @@ jobs:
           "$RUNNER_TEMP/godot" --headless --path godot --export-release "Android" "../build/${APK_NAME}"
           ls -l build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_NAME }}
           path: build/${{ env.APK_NAME }}
