@@ -78,6 +78,22 @@ var _map_panning: bool = false
 var _map_zoom: float = 1.0
 var _active_area_id: String = "" # マップのエリアタブ(design.md 5.1節)で今表示中のエリア
 var area_tab_buttons: Dictionary = {} # area_id -> Button(選択状態・🔒表示の更新に使う)
+var area_option: OptionButton # タッチUI時のエリア選択プルダウン(area_tab_buttonsの代わりに使う)
+var area_prev_button: Button
+var area_next_button: Button
+
+## タッチ操作向けのUI(指で押せる高さのボタン、エリア切替のプルダウン等)を使うか。
+## Android/iOSでは常にtrue。デスクトップでは通常falseだが、`-- --touch-ui`(ユーザー引数)で
+## 確認用に有効にできる。デスクトップ版の見た目・挙動は変えない(_touch_uiがfalseなら従来どおり)。
+var _touch_ui: bool = false
+
+const TOUCH_BUTTON_MARGIN_V := 16 # タッチUI時のボタン上下の内側余白(通常は6)。ボタン高さが約50pxになる
+const TOUCH_LIST_ROW_MARGIN := 10 # タッチUI時のTree行の上下余白
+const TOUCH_DIALOGUE_HEIGHT := 270 # タッチUI時の会話ウィンドウの高さ(通常は200)
+
+const BACK_EXIT_WINDOW_MSEC := 2000 # 戻るキーを続けて押して終了するまでの猶予(何も開いていない時)
+var _last_back_press_msec: int = -100000
+var back_hint_panel: PanelContainer # 「もう一度戻るキーを押すと終了します」の一時表示
 var _node_style_self: StyleBoxFlat
 var _node_style_someone: StyleBoxFlat
 var _node_style_unexplored: StyleBoxFlat
@@ -116,7 +132,7 @@ var modal_blocker: ColorRect
 const INTRO_TUTORIAL_PART1_SCRIPT: Array = [
 	{"side": "none", "name": "案内人", "text": "ようこそ。ここは、雇ったNPCたちに代わりに世界を探索させ、その稼ぎで暮らしを立てていく土地だ。"},
 	{"side": "none", "name": "案内人", "text": "既に「初期パーティ」が1つ、無償で用意されている。まずはこれをどこかのセクション(区画)に割り当てて、探索を始めよう。"},
-	{"side": "none", "name": "案内人", "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)をクリックしてみるといい。そこにパーティを割り当てられる。", "outcome": "ok"},
+	{"side": "none", "name": "案内人", "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)を押してみるといい。そこにパーティを割り当てられる。", "outcome": "ok"},
 ]
 
 ## 導入会話・後編。初めて実際にパーティ割り当てを行った直後に再生する(マップのセクション名
@@ -141,6 +157,7 @@ const PARTY_TUTORIAL_SCRIPT: Array = [
 ]
 
 func _ready() -> void:
+	_touch_ui = OS.has_feature("mobile") or "--touch-ui" in OS.get_cmdline_user_args()
 	_build_theme()
 	_build_node_styles()
 	_build_ui()
@@ -154,6 +171,7 @@ func _ready() -> void:
 	_build_board_ui()
 	_build_node_detail_ui()
 	_build_section_assign_ui()
+	_build_back_hint_ui()
 	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめ、常に
 	# まっさらな新規プレイから始まるようにした(design.md 8.2節)。既存の進行を続けたい
 	# 場合は、セーブパネルから明示的に「このスロットをロードする」を選ぶ(一般的な
@@ -188,8 +206,68 @@ func _process(_delta: float) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST:
-		SaveSystem.autosave()
-		get_tree().quit()
+		_save_and_quit()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_on_go_back_requested()
+
+func _save_and_quit() -> void:
+	SaveSystem.autosave()
+	get_tree().quit()
+
+## Androidの戻るキー/戻るジェスチャー。project.godotで`quit_on_go_back=false`にしてあり、
+## Godot既定の「即アプリ終了」は行われない(以前はポップアップを閉じるつもりで押すとゲームが
+## 終了してしまった)。内側から順に、閉じられるものを1つだけ閉じる。何も開いていなければ
+## 「もう一度押すと終了」を出し、猶予内にもう一度押されたときだけ終了する(誤操作対策)。
+func _on_go_back_requested() -> void:
+	for dialog in [new_game_confirm, delete_slot_confirm]:
+		if dialog.visible:
+			dialog.hide()
+			return
+	if npc_panel.visible and npc_detail_view.visible:
+		_on_npc_detail_back_pressed() # 詳細画面からは、パネルごと閉じずに一覧へ戻る
+		return
+	if party_panel.visible and party_detail_view.visible:
+		_on_party_detail_back_pressed()
+		return
+	if modal_blocker.visible:
+		_close_any_modal()
+		return
+	if dialogue_panel.visible:
+		return # 会話中は誤って終了しないよう何もしない(「次へ」で進める)
+	var now: int = Time.get_ticks_msec()
+	if now - _last_back_press_msec <= BACK_EXIT_WINDOW_MSEC:
+		_save_and_quit()
+		return
+	_last_back_press_msec = now
+	back_hint_panel.visible = true
+	get_tree().create_timer(BACK_EXIT_WINDOW_MSEC / 1000.0).timeout.connect(func(): back_hint_panel.visible = false)
+
+func _build_back_hint_ui() -> void:
+	back_hint_panel = PanelContainer.new()
+	back_hint_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	back_hint_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	back_hint_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	back_hint_panel.offset_left = -150
+	back_hint_panel.offset_right = 150
+	back_hint_panel.offset_top = -100
+	back_hint_panel.offset_bottom = -40
+	back_hint_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE # 表示中もその下の操作を邪魔しない
+	back_hint_panel.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.07, 0.95)
+	style.border_color = Color(1, 1, 1, 0.35)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(8)
+	style.content_margin_left = 20
+	style.content_margin_right = 20
+	style.content_margin_top = 12
+	style.content_margin_bottom = 12
+	back_hint_panel.add_theme_stylebox_override("panel", style)
+	var hint := Label.new()
+	hint.text = "もう一度戻るキーを押すと終了します"
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back_hint_panel.add_child(hint)
+	add_child(back_hint_panel) # 最後に追加して、他のパネル・会話の手前に表示する
 
 ## アプリ全体に1枚だけ適用する共通テーマ。「押せる/選べるもの」と「ただの文字」が
 ## 見た目でほとんど区別できない(押せるのに素の文字にしか見えない、選択してもわずかにしか
@@ -206,8 +284,9 @@ func _build_theme() -> void:
 	btn_normal.set_corner_radius_all(4)
 	btn_normal.content_margin_left = 10
 	btn_normal.content_margin_right = 10
-	btn_normal.content_margin_top = 6
-	btn_normal.content_margin_bottom = 6
+	var margin_v: int = TOUCH_BUTTON_MARGIN_V if _touch_ui else 6
+	btn_normal.content_margin_top = margin_v
+	btn_normal.content_margin_bottom = margin_v
 
 	var btn_hover := btn_normal.duplicate()
 	btn_hover.bg_color = Color(0.28, 0.31, 0.4, 1.0)
@@ -220,8 +299,8 @@ func _build_theme() -> void:
 	btn_pressed.set_corner_radius_all(4)
 	btn_pressed.content_margin_left = 10
 	btn_pressed.content_margin_right = 10
-	btn_pressed.content_margin_top = 6
-	btn_pressed.content_margin_bottom = 6
+	btn_pressed.content_margin_top = margin_v
+	btn_pressed.content_margin_bottom = margin_v
 
 	var btn_hover_pressed := btn_pressed.duplicate()
 	btn_hover_pressed.bg_color = Color(0.2, 0.54, 0.92, 1.0)
@@ -229,6 +308,13 @@ func _build_theme() -> void:
 	var btn_disabled := StyleBoxFlat.new()
 	btn_disabled.bg_color = Color(0.13, 0.13, 0.15, 0.6)
 	btn_disabled.set_corner_radius_all(4)
+	if _touch_ui:
+		# disabledスタイルには元々内側余白が無く、押せない状態のボタンだけ他より低くなってしまうため、
+		# タッチUIでは通常ボタンと同じ余白を持たせて高さを揃える(デスクトップは従来どおり)。
+		btn_disabled.content_margin_left = 10
+		btn_disabled.content_margin_right = 10
+		btn_disabled.content_margin_top = margin_v
+		btn_disabled.content_margin_bottom = margin_v
 
 	var btn_focus := StyleBoxFlat.new()
 	btn_focus.draw_center = false
@@ -258,7 +344,39 @@ func _build_theme() -> void:
 		ui_theme.set_stylebox("selected", type_name, selected_row)
 		ui_theme.set_stylebox("selected_focus", type_name, selected_row)
 
+	if _touch_ui:
+		# プルダウン(OptionButtonのポップアップ)・Tree・ItemListの1行を指で押せる高さにする。
+		ui_theme.set_constant("v_separation", "PopupMenu", 22)
+		ui_theme.set_font_size("font_size", "PopupMenu", 18)
+		ui_theme.set_constant("inner_item_margin_top", "Tree", TOUCH_LIST_ROW_MARGIN)
+		ui_theme.set_constant("inner_item_margin_bottom", "Tree", TOUCH_LIST_ROW_MARGIN)
+		ui_theme.set_constant("v_separation", "ItemList", 14)
+
+	var cjk_font := _load_system_cjk_font()
+	if cjk_font != null:
+		var default_font := FontVariation.new()
+		default_font.base_font = ThemeDB.fallback_font
+		default_font.fallbacks = [cjk_font]
+		ui_theme.default_font = default_font
+
 	theme = ui_theme # rootのControl(このシーン自身)に設定するだけで、以降add_childする全子孫に伝播する
+
+## Android用: 端末に入っている日本語(CJK)フォントを、既定フォントのフォールバックとして返す。
+## 「[Day 1] 「古い洞窟」…」のように、英数字の直後に来る「「」などの記号が豆腐(□)になる問題への
+## 対策(2026-09-19)。Godotは英字の並びの直後にあるCJK記号を「英字」として扱い、CJKに対応しない
+## フォントをシステムのフォールバックに選んでしまう(Labelのlanguage指定やSystemFontの名前指定を
+## 試したが直らなかった)。フォントを同梱せず、端末のNoto Sans CJKを直接読み込んで登録することで、
+## アプリサイズを増やさずに直す(この端末で読み込み約34ms・メモリ約32MB)。ttcの先頭の顔(face 0)が
+## 日本語版なのはAndroid標準の並び(fonts.xmlでlang="ja"がindex=0)。ファイルが無い端末では
+## nullを返し、従来どおりシステムのフォールバックに任せる。デスクトップは対象外。
+func _load_system_cjk_font() -> Font:
+	const FONT_PATH := "/system/fonts/NotoSansCJK-Regular.ttc"
+	if not OS.has_feature("android") or not FileAccess.file_exists(FONT_PATH):
+		return null
+	var font := FontFile.new()
+	if font.load_dynamic_font(FONT_PATH) != OK:
+		return null
+	return font
 
 ## マップのセクション名ボタン専用のスタイル(2026-09-14、「セクション名が押せると直感的に
 ## 分からない」という指摘への対応)。共有Theme([[godot_install_path]]の通常ボタン(青系)とは
@@ -482,23 +600,64 @@ func _build_ui() -> void:
 	area_nav_panel.add_theme_stylebox_override("panel", area_nav_style)
 	map_area.add_child(area_nav_panel)
 
-	var area_nav_scroll := ScrollContainer.new()
-	area_nav_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	area_nav_panel.add_child(area_nav_scroll)
-
-	var area_nav_row := HBoxContainer.new()
-	area_nav_scroll.add_child(area_nav_row)
-	var area_tab_group := ButtonGroup.new()
 	area_tab_buttons.clear()
-	for area_id in WorldMap.areas.keys():
-		var area_button := Button.new()
-		area_button.toggle_mode = true
-		area_button.button_group = area_tab_group
-		area_button.pressed.connect(_on_area_tab_pressed.bind(area_id))
-		area_nav_row.add_child(area_button)
-		area_tab_buttons[area_id] = area_button
+	if _touch_ui:
+		_build_area_nav_touch(area_nav_panel)
+	else:
+		var area_nav_scroll := ScrollContainer.new()
+		area_nav_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		area_nav_panel.add_child(area_nav_scroll)
+
+		var area_nav_row := HBoxContainer.new()
+		area_nav_scroll.add_child(area_nav_row)
+		var area_tab_group := ButtonGroup.new()
+		for area_id in WorldMap.areas.keys():
+			var area_button := Button.new()
+			area_button.toggle_mode = true
+			area_button.button_group = area_tab_group
+			area_button.pressed.connect(_on_area_tab_pressed.bind(area_id))
+			area_nav_row.add_child(area_button)
+			area_tab_buttons[area_id] = area_button
 	if _active_area_id == "" and not WorldMap.areas.is_empty():
 		_active_area_id = WorldMap.areas.keys()[0] # 既定は最初のエリア(王国)
+
+## タッチUI用のエリア選択(2026-09-19)。横スクロールのタブ列は、指でなぞるとバー自体が動いてしまい
+## 押し辛かったため、「◀ [現在のエリア ▼] ▶」に置き換えた。中央のプルダウンで任意のエリアへ一発で
+## 移動でき、両脇の矢印で隣のエリアへ1タップで移れる。デスクトップ版は従来のタブ列のまま。
+func _build_area_nav_touch(panel: PanelContainer) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
+
+	area_prev_button = Button.new()
+	area_prev_button.text = "◀"
+	area_prev_button.custom_minimum_size = Vector2(72, 0)
+	area_prev_button.pressed.connect(_on_area_step_pressed.bind(-1))
+	row.add_child(area_prev_button)
+
+	area_option = OptionButton.new()
+	area_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for area_id in WorldMap.areas.keys():
+		area_option.add_item(WorldMap.areas[area_id]["name"])
+		area_option.set_item_metadata(area_option.item_count - 1, area_id)
+	area_option.item_selected.connect(_on_area_option_selected)
+	row.add_child(area_option)
+
+	area_next_button = Button.new()
+	area_next_button.text = "▶"
+	area_next_button.custom_minimum_size = Vector2(72, 0)
+	area_next_button.pressed.connect(_on_area_step_pressed.bind(1))
+	row.add_child(area_next_button)
+
+func _on_area_option_selected(index: int) -> void:
+	_on_area_tab_pressed(area_option.get_item_metadata(index))
+
+## 矢印ボタン: 現在のエリアから見て前(-1)/次(1)のエリアへ移る(端では押せない状態にしてある)。
+func _on_area_step_pressed(direction: int) -> void:
+	var area_ids: Array = WorldMap.areas.keys()
+	var current: int = area_ids.find(_active_area_id)
+	var target: int = clampi(current + direction, 0, area_ids.size() - 1)
+	_on_area_tab_pressed(area_ids[target])
 
 ## 雇用/NPC管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
@@ -516,7 +675,11 @@ func _close_modal(panel: PanelContainer) -> void:
 func _build_dialogue_ui() -> void:
 	dialogue_panel = PanelContainer.new()
 	dialogue_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	dialogue_panel.offset_top = -200 # BOTTOM_WIDEはtop/bottomアンカーが同値になり高さ0になるため、明示的に高さを確保する
+	var dialogue_height := TOUCH_DIALOGUE_HEIGHT if _touch_ui else 200
+	dialogue_panel.offset_top = -dialogue_height # BOTTOM_WIDEはtop/bottomアンカーが同値になり高さ0になるため、明示的に高さを確保する
+	if _touch_ui:
+		# 選択肢が増えて内容が高さを超えても、画面の外(下)ではなく上へ伸びるようにする。
+		dialogue_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	dialogue_panel.visible = false
 	add_child(dialogue_panel) # rootの後に追加することで手前に重ねて表示する
 
@@ -528,7 +691,7 @@ func _build_dialogue_ui() -> void:
 
 	var center := VBoxContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	center.custom_minimum_size = Vector2(0, 200)
+	center.custom_minimum_size = Vector2(0, dialogue_height)
 	row.add_child(center)
 
 	speaker_name_label = Label.new()
@@ -545,6 +708,8 @@ func _build_dialogue_ui() -> void:
 
 	advance_hint = Button.new()
 	advance_hint.text = "▼ 次へ"
+	if _touch_ui:
+		advance_hint.custom_minimum_size = Vector2(0, 72) # 会話は何度も連打するボタンなので、特に大きくする
 	advance_hint.pressed.connect(func(): EventDialogue.advance())
 	center.add_child(advance_hint)
 
@@ -1036,8 +1201,20 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 	back_button.pressed.connect(_on_npc_detail_back_pressed)
 	npc_detail_view.add_child(back_button)
 
+	# タッチUIはボタンが高く、身元+スキル訓練6行+転職欄が画面の高さ(論理648px)に収まらず、転職欄が
+	# 画面外に切れていた(2026-09-19、実機で発見)。「戻る」は常に押せるよう固定し、それ以外を
+	# スクロールできる領域に入れる。デスクトップでは収まるのでスクロールバーは出ない。
+	var detail_scroll := ScrollContainer.new()
+	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	npc_detail_view.add_child(detail_scroll)
+
+	var detail_body := VBoxContainer.new()
+	detail_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_scroll.add_child(detail_body)
+
 	var identity_row := HBoxContainer.new()
-	npc_detail_view.add_child(identity_row)
+	detail_body.add_child(identity_row)
 
 	npc_detail_portrait = PanelContainer.new()
 	npc_detail_portrait.custom_minimum_size = Vector2(PORTRAIT_SIZE, PORTRAIT_SIZE)
@@ -1059,12 +1236,12 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 
 	var skill_label := Label.new()
 	skill_label.text = "スキル訓練"
-	npc_detail_view.add_child(skill_label)
+	detail_body.add_child(skill_label)
 
 	skill_level_labels.clear()
 	for skill in SkillTypes.all_skills():
 		var row := HBoxContainer.new()
-		npc_detail_view.add_child(row)
+		detail_body.add_child(row)
 
 		var name_col := VBoxContainer.new()
 		name_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1094,7 +1271,7 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 	# 有効/無効を切り替える)。転職すると装備は自動で外れる(Npcs.change_job参照)ため、
 	# 武器防具屋で新ジョブに合った装備を買い直す前提。
 	var reclass_row := HBoxContainer.new()
-	npc_detail_view.add_child(reclass_row)
+	detail_body.add_child(reclass_row)
 
 	reclass_option = OptionButton.new()
 	for job in Jobs.all_jobs():
@@ -1807,7 +1984,9 @@ func _build_slot_ui() -> void:
 	header.add_child(close_button)
 
 	slot_list = ItemList.new()
-	slot_list.custom_minimum_size = Vector2(0, 220)
+	# タッチUIはボタンが高い分、パネル全体が画面の高さ(約650px)を超えてしまうため、一覧の最小高を詰める
+	# (一覧自体はスクロールできるので、スロットが多くても操作はできる)。
+	slot_list.custom_minimum_size = Vector2(0, 110 if _touch_ui else 220)
 	slot_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(slot_list)
 
@@ -2209,7 +2388,7 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	# 到達状況が変わるたびに_refresh_mapで行うので、ここでは作るだけ(常時mapに常駐させ、
 	# ダブルクリック判定は_on_map_double_clickでこの位置を直接ヒットテストする)。
 	var lock_icon := Label.new()
-	lock_icon.text = "🔒 未到達(ダブルクリックで詳細)"
+	lock_icon.text = "🔒 未到達(%sで詳細)" % ("ダブルタップ" if _touch_ui else "ダブルクリック")
 	lock_icon.add_theme_font_size_override("font_size", max(9, roundi(12 * _map_zoom)))
 	lock_icon.modulate = Color(1, 0.82, 0.35, 0.95)
 	lock_icon.position = bounds.position + Vector2(6, bounds.size.y + 4 * _map_zoom)
@@ -2559,6 +2738,16 @@ func _refresh_area_tabs() -> void:
 		var name: String = WorldMap.areas[area_id]["name"]
 		button.text = name if WorldMap.is_area_reachable(area_id) else "🔒 %s" % name
 		button.button_pressed = (area_id == _active_area_id)
+	if area_option != null:
+		var area_ids: Array = WorldMap.areas.keys()
+		for i in area_ids.size():
+			var area_name: String = WorldMap.areas[area_ids[i]]["name"]
+			area_option.set_item_text(i, area_name if WorldMap.is_area_reachable(area_ids[i]) else "🔒 %s" % area_name)
+		var current: int = area_ids.find(_active_area_id)
+		if current >= 0:
+			area_option.select(current)
+		area_prev_button.disabled = current <= 0
+		area_next_button.disabled = current >= area_ids.size() - 1
 
 func _on_recruit_pressed() -> void:
 	if not Economy.can_afford(Economy.recruitment_post_cost()):
@@ -2735,6 +2924,14 @@ func _create_candidate_card(candidate: Dictionary, index: int, group: ButtonGrou
 	info_label.add_theme_font_size_override("font_size", 10)
 	info_label.modulate = Color(1, 1, 1, 0.75)
 	vbox.add_child(info_label)
+
+	# 素のButtonは子の必要サイズを最小サイズに含めないため、上の「ポートレート+60」は文字の高さの
+	# 見積もりでしかなく、CJKフォールバックフォント(行が少し高い)を入れたら「コスト」の行が
+	# カード下端で切れた(2026-09-19、実機で発見)。ツリーに入ってテーマ(=実際に使うフォント)が
+	# 反映されてから、中身の実測値に合わせて高さを広げる(見積もりより小さくはしない)。
+	card.ready.connect(func():
+		var needed: float = vbox.get_combined_minimum_size().y + 8.0 # 上下のmargin(4+4)
+		card.custom_minimum_size.y = maxf(card.custom_minimum_size.y, needed))
 
 	return card
 

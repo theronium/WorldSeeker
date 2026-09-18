@@ -2,4 +2,10 @@ sandbox/
 
 # Godot
 godot/.godot/
-godot/export_presets.cfg
+
+# エクスポート成果物(CIとローカルビルドの出力先)
+build/
+
+# 署名用keystoreは絶対にコミットしない(CIではGitHub Secretsから復元する)
+*.keystore
+*.jks

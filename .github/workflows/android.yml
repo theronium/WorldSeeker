@@ -1,0 +1,128 @@
+name: Android APK
+
+# v* タグをpushするとAPKをビルドしてGitHub Releasesに添付する。
+# 手動実行(workflow_dispatch)ではReleaseは作らず、Artifactとして保存するだけ。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # Releaseの作成に必要
+
+env:
+  GODOT_VERSION: "4.7"
+  GODOT_CHANNEL: "stable"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Godot本体を取得
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}"
+          curl -fsSL -o godot.zip "${base}/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64.zip"
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot"
+
+      # テンプレート全体は1.2GBあるが、Androidに必要なのは一部だけなのでそれだけ展開してキャッシュする
+      - name: エクスポートテンプレートのキャッシュ
+        id: templates-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_CHANNEL }}
+          key: godot-templates-android-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+
+      - name: エクスポートテンプレートを取得
+        if: steps.templates-cache.outputs.cache-hit != 'true'
+        run: |
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_CHANNEL}"
+          mkdir -p "$dest"
+          curl -fsSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_export_templates.tpz"
+          unzip -q -j templates.tpz "templates/version.txt" "templates/android_*" -d "$dest"
+          rm templates.tpz
+          ls -l "$dest"
+
+      # 署名キーが未登録でもテストビルドできるよう、その場合は使い捨てキーで署名する。
+      # ただし使い捨てキーで署名したAPKは、別の署名のAPKへ上書きインストールできない。
+      - name: 署名キーを準備
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          ks="$RUNNER_TEMP/release.keystore"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$ks"
+            echo "alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
+            echo "password=$KEYSTORE_PASSWORD" >> "$GITHUB_OUTPUT"
+            echo "temporary=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 が未登録のため使い捨てキーで署名します。このAPKは更新インストールに使えません。"
+            pw="temporary-$(openssl rand -hex 8)"
+            echo "::add-mask::$pw"
+            keytool -genkeypair -keystore "$ks" -storepass "$pw" -keypass "$pw" \
+              -alias temp -keyalg RSA -keysize 2048 -validity 30 -dname "CN=WorldSeeker temporary"
+            echo "alias=temp" >> "$GITHUB_OUTPUT"
+            echo "password=$pw" >> "$GITHUB_OUTPUT"
+            echo "temporary=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "path=$ks" >> "$GITHUB_OUTPUT"
+
+      # versionCodeは更新インストールの新旧判定に使われるため、単調増加するrun_numberを使う。
+      - name: バージョンを設定
+        run: |
+          name="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || name="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+          sed -i "s|^version/code=.*|version/code=${GITHUB_RUN_NUMBER}|; s|^version/name=.*|version/name=\"${name}\"|" godot/export_presets.cfg
+          grep -E '^version/' godot/export_presets.cfg
+          echo "APK_NAME=WorldSeeker-${name}.apk" >> "$GITHUB_ENV"
+
+      # Godot 4.7はAPKの署名にJava SDKとAndroid SDK(adb / apksigner)を必須とする(公式ドキュメントの
+      # 「不要」という記述は当てにならず、実機ビルドで確認済み)。ubuntu-latestに入っているものを使い、
+      # build-toolsだけ手元で動作確認した版を入れる。パスはエディタ設定ファイル経由でしか渡せない。
+      - name: Android SDKとGodotのエディタ設定
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "platform-tools" "build-tools;36.1.0"
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-${GODOT_VERSION}.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/java_sdk_path = "${JAVA_HOME_17_X64:-$JAVA_HOME}"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          EOF
+          cat "$HOME/.config/godot/editor_settings-${GODOT_VERSION}.tres"
+
+      # 新しいクローンには.godot/が無いので、先にアセットのインポートとGDExtensionの登録を済ませる
+      - name: プロジェクトをインポート
+        run: |
+          "$RUNNER_TEMP/godot" --headless --path godot --import
+
+      - name: APKをエクスポート
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ steps.keystore.outputs.path }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: ${{ steps.keystore.outputs.alias }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ steps.keystore.outputs.password }}
+        run: |
+          mkdir -p build
+          "$RUNNER_TEMP/godot" --headless --path godot --export-release "Android" "../build/${APK_NAME}"
+          ls -l build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: build/${{ env.APK_NAME }}
+
+      - name: GitHub Releaseに添付
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "build/${APK_NAME}" --title "$GITHUB_REF_NAME" --generate-notes
