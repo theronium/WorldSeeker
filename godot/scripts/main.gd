@@ -1218,6 +1218,7 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 
 	npc_detail_portrait = PanelContainer.new()
 	npc_detail_portrait.custom_minimum_size = Vector2(PORTRAIT_SIZE, PORTRAIT_SIZE)
+	npc_detail_portrait.size_flags_vertical = Control.SIZE_SHRINK_BEGIN # 隣の文章の高さに合わせて縦に伸びず、正方形のままにする
 	npc_detail_portrait.clip_contents = true
 	identity_row.add_child(npc_detail_portrait)
 
@@ -2900,6 +2901,7 @@ func _create_candidate_card(candidate: Dictionary, index: int, group: ButtonGrou
 	var portrait := PanelContainer.new()
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	portrait.custom_minimum_size = Vector2(CANDIDATE_PORTRAIT_SIZE, CANDIDATE_PORTRAIT_SIZE)
+	portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER # 正方形のまま中央に置く(カード幅に伸ばさない)
 	portrait.clip_contents = true
 	var portrait_style := StyleBoxFlat.new()
 	portrait_style.bg_color = _bloodline_color(candidate["innate_traits"].get("bloodline", ""))
@@ -2973,6 +2975,10 @@ func _npc_status_via_party(npc: Dictionary) -> int:
 	return int(Parties.get_party(party_id).get("status", Parties.Status.IDLE))
 
 const PORTRAIT_SIZE := 96.0
+# ロースターカードの肖像の一辺。肖像画像が正方形になった(2026-09-19)ので、画像枠も正方形のまま
+# カード中央に置いて全体を見せる(以前は枠がカード幅いっぱいの横長に伸びており、縦長の画像なら
+# 中央の顔だけ見えていたが、正方形だと上下が大きく切れて帽子や耳の先が見えなかった)。
+const ROSTER_PORTRAIT_SIZE := 132.0
 # カードの横幅は「名前ラベル+状態バッジを横並びで収める」ために必要な幅から逆算する
 # べきところを、ポートレート(96px)基準の当て推量(+24px)で決め打ちしていたため、
 # 「アーチボルド」のような長めの名前だとinfo_row(名前+バッジ)がこの幅に収まらず、
@@ -2986,7 +2992,7 @@ const CARD_WIDTH := 190.0
 
 # 雇用パネルの候補カード用(2026-09-14)。ロースターカードより一回り小さい縮小表示にする
 # (雇用パネル自体がポップアップとして小さめのため)。
-const CANDIDATE_PORTRAIT_SIZE := 64.0
+const CANDIDATE_PORTRAIT_SIZE := 96.0 # 正方形の肖像を上下を切らずに見せるため、64から拡大(2026-09-19)
 const CANDIDATE_CARD_WIDTH := 130.0
 
 ## ロースターの正方形ポートレートカード1枚: [画像(正方形)]の下に[名前][状態]を並べる。
@@ -3020,7 +3026,7 @@ func _create_roster_card(npc: Dictionary, group: ButtonGroup) -> Button:
 	var card := Button.new()
 	card.toggle_mode = true
 	card.button_group = group
-	card.custom_minimum_size = Vector2(CARD_WIDTH, PORTRAIT_SIZE + 56)
+	card.custom_minimum_size = Vector2(CARD_WIDTH, ROSTER_PORTRAIT_SIZE + 56)
 	card.tooltip_text = npc["name"] # 名前が省略表示された場合でもホバーでフルネームを確認できる
 	card.pressed.connect(_on_roster_card_pressed.bind(npc["id"]))
 
@@ -3038,7 +3044,8 @@ func _create_roster_card(npc: Dictionary, group: ButtonGroup) -> Button:
 
 	var portrait := PanelContainer.new()
 	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	portrait.custom_minimum_size = Vector2(PORTRAIT_SIZE, PORTRAIT_SIZE)
+	portrait.custom_minimum_size = Vector2(ROSTER_PORTRAIT_SIZE, ROSTER_PORTRAIT_SIZE)
+	portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER # カード幅いっぱいに伸ばさず、正方形のまま中央に置く
 	portrait.clip_contents = true
 	var portrait_style := StyleBoxFlat.new()
 	portrait_style.bg_color = _bloodline_color(npc["innate_traits"].get("bloodline", ""))

@@ -9,3 +9,6 @@ build/
 # 署名用keystoreは絶対にコミットしない(CIではGitHub Secretsから復元する)
 *.keystore
 *.jks
+
+# Python
+__pycache__/
