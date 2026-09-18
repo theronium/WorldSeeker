@@ -40,6 +40,14 @@ var current_slot_name: String = "" # 空文字なら一覧表示側が「スロ�
 ## worldseeker_meta.cfgに永続化する(スロットごとの値ではない)。
 var autosave_enabled: bool = true
 
+## 説明用イベント会話(design.md参照)を既に見せたかどうか。プレイヤー個人の既知情報であり
+## セーブスロットの進行状態ではないため、autosave_enabledと同じくworldseeker_meta.cfgへ
+## スロット非依存で永続化する(新しいスロットを作るたびに毎回見せ直さないため)。
+var tutorial_intro_seen: bool = false
+var tutorial_party_seen: bool = false
+var tutorial_retreat_seen: bool = false
+var tutorial_assignment_followup_seen: bool = false
+
 func _ready() -> void:
 	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめた(design.md
 	# 10章)。診断・検証作業や単なる再起動のたびに実セーブへ意図せず触れてしまうリスクの
@@ -49,6 +57,48 @@ func _ready() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(META_PATH) == OK:
 		autosave_enabled = bool(cfg.get_value("state", "autosave_enabled", true))
+		tutorial_intro_seen = bool(cfg.get_value("state", "tutorial_intro_seen", false))
+		tutorial_party_seen = bool(cfg.get_value("state", "tutorial_party_seen", false))
+		tutorial_retreat_seen = bool(cfg.get_value("state", "tutorial_retreat_seen", false))
+		tutorial_assignment_followup_seen = bool(cfg.get_value("state", "tutorial_assignment_followup_seen", false))
+
+func _mark_tutorial_seen(key: String) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(META_PATH)
+	cfg.set_value("state", key, true)
+	cfg.save(META_PATH)
+
+func mark_tutorial_intro_seen() -> void:
+	tutorial_intro_seen = true
+	_mark_tutorial_seen("tutorial_intro_seen")
+
+func mark_tutorial_party_seen() -> void:
+	tutorial_party_seen = true
+	_mark_tutorial_seen("tutorial_party_seen")
+
+func mark_tutorial_retreat_seen() -> void:
+	tutorial_retreat_seen = true
+	_mark_tutorial_seen("tutorial_retreat_seen")
+
+func mark_tutorial_assignment_followup_seen() -> void:
+	tutorial_assignment_followup_seen = true
+	_mark_tutorial_seen("tutorial_assignment_followup_seen")
+
+## 「イベント確認が出来ない」という要望への対応(2026-09-14)。一度見ると二度と出ない
+## 説明用イベント会話4種を、すべて未視聴の状態に戻す(セーブスロットパネルの「イベント会話を
+## リセットする」ボタンから呼ぶ、main.gd参照)。進行中のセーブデータ自体には触れない。
+func reset_tutorial_flags() -> void:
+	tutorial_intro_seen = false
+	tutorial_party_seen = false
+	tutorial_retreat_seen = false
+	tutorial_assignment_followup_seen = false
+	var cfg := ConfigFile.new()
+	cfg.load(META_PATH)
+	cfg.set_value("state", "tutorial_intro_seen", false)
+	cfg.set_value("state", "tutorial_party_seen", false)
+	cfg.set_value("state", "tutorial_retreat_seen", false)
+	cfg.set_value("state", "tutorial_assignment_followup_seen", false)
+	cfg.save(META_PATH)
 
 func _slot_path(slot_id: int) -> String:
 	return "%s/slot_%d.sqlite" % [SLOT_DIR, slot_id]
@@ -307,6 +357,8 @@ func _ensure_schema(db: SQLite) -> void:
 		id INTEGER PRIMARY KEY, name TEXT, assigned_section TEXT, status INTEGER,
 		recovering_until_day INTEGER, post_clear_behavior INTEGER
 	)""")
+	# 2026-09-15追加。完全踏破済みセクションでの周回(ループ)機能の開始日(exploration.gd参照)。
+	_ensure_column(db, "parties", "lap_start_day", "INTEGER DEFAULT -1")
 	db.query("CREATE TABLE IF NOT EXISTS party_members (party_id INTEGER, npc_id INTEGER, order_index INTEGER, PRIMARY KEY (party_id, npc_id))")
 	db.query("CREATE TABLE IF NOT EXISTS section_rewards (section_id TEXT PRIMARY KEY)")
 	db.query("CREATE TABLE IF NOT EXISTS board_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
@@ -392,8 +444,8 @@ func save_game() -> void:
 	for party_id in party_data["parties"].keys():
 		var party: Dictionary = party_data["parties"][party_id]
 		db.query_with_bindings(
-			"INSERT INTO parties (id, name, assigned_section, status, recovering_until_day, post_clear_behavior) VALUES (?, ?, ?, ?, ?, ?)",
-			[party_id, party["name"], party["assigned_section"], party["status"], party["recovering_until_day"], party["post_clear_behavior"]])
+			"INSERT INTO parties (id, name, assigned_section, status, recovering_until_day, post_clear_behavior, lap_start_day) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			[party_id, party["name"], party["assigned_section"], party["status"], party["recovering_until_day"], party["post_clear_behavior"], party.get("lap_start_day", -1)])
 		for i in range(party["member_ids"].size()):
 			db.query_with_bindings("INSERT INTO party_members (party_id, npc_id, order_index) VALUES (?, ?, ?)",
 				[party_id, party["member_ids"][i], i])
@@ -528,6 +580,7 @@ func load_game() -> bool:
 			"status": int(row["status"]),
 			"recovering_until_day": int(row["recovering_until_day"]),
 			"post_clear_behavior": int(row["post_clear_behavior"]),
+			"lap_start_day": int(row.get("lap_start_day", -1)),
 			"member_ids": [],
 		}
 	var had_saved_parties := not parties_data.is_empty()

@@ -39,12 +39,14 @@ func form_party(member_ids: Array, display_name: String = "") -> int:
 		"status": Status.IDLE,
 		"recovering_until_day": -1,
 		"post_clear_behavior": PostClearBehavior.MOVE_ON,
+		"lap_start_day": -1, # 完全踏破済みセクションでの周回(ループ)開始日。exploration.gd参照
 	}
 	for npc_id in member_ids:
 		Npcs.set_party(npc_id, id)
 	return id
 
-## 今回UIからは呼ばないが、対称性のため用意(解散すると全メンバーが未所属に戻る)。
+## パーティ解散(main.gdのパーティ詳細パネル「パーティを解散する」ボタンから呼ばれる)。
+## 全メンバーが未所属に戻る。スキル/ジョブ/装備/固有スキルはNPC個体側が持つため失われない。
 func disband(party_id: int) -> void:
 	if not parties.has(party_id):
 		return
@@ -76,11 +78,23 @@ func assign_section(party_id: int, section_id: String) -> bool:
 		return false
 	parties[party_id]["assigned_section"] = section_id
 	parties[party_id]["status"] = Status.EXPLORING
+	parties[party_id]["lap_start_day"] = -1 # 配置転換したら周回の進み具合もリセット(exploration.gdが再開始する)
 	return true
 
 func set_post_clear_behavior(party_id: int, behavior: int) -> void:
 	if parties.has(party_id):
 		parties[party_id]["post_clear_behavior"] = behavior
+
+## 完全踏破済みセクションでの周回(ループ)管理(design.md「ループ」設定参照)。
+## start_lap()は1周の起点となる日を記録し、reset_lap()は周回対象外(未踏破区間がまだ残っている
+## 等)になった時に、次に対象になった時点から改めて1周目を始められるようにクリアする。
+func start_lap(party_id: int, current_day: int) -> void:
+	if parties.has(party_id):
+		parties[party_id]["lap_start_day"] = current_day
+
+func reset_lap(party_id: int) -> void:
+	if parties.has(party_id) and parties[party_id]["lap_start_day"] != -1:
+		parties[party_id]["lap_start_day"] = -1
 
 func retreat_and_recover(party_id: int, current_day: int, recovery_days: int) -> void:
 	if not parties.has(party_id):
@@ -127,6 +141,7 @@ func load_state(data: Dictionary) -> void:
 		party["status"] = int(party["status"])
 		party["recovering_until_day"] = int(party["recovering_until_day"])
 		party["post_clear_behavior"] = int(party.get("post_clear_behavior", PostClearBehavior.MOVE_ON))
+		party["lap_start_day"] = int(party.get("lap_start_day", -1))
 		parties[id] = party
 		max_id = max(max_id, id)
 	_next_id = max(int(data.get("next_id", 1)), max_id + 1)

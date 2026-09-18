@@ -137,6 +137,13 @@ func load_state(data: Dictionary) -> void:
 		for skill_key in npc["skills"].keys():
 			var entry: Dictionary = npc["skills"][skill_key]
 			skills[int(skill_key)] = {"level": int(entry["level"]), "exp": int(entry["exp"])}
+		# 旧セーブ(スキル追加前に保存されたもの)には、後から追加されたスキル(例: 2026-09-15の
+		# HEALING)の行がnpc_skillsテーブルに一切無い。ここで補わないと、skill_level()等の
+		# roster[id]["skills"][skill]アクセスがキー不在でエラーになる(Lv0からのスタートとして
+		# 補完すれば、新スキルも既存NPCが後から普通に鍛えられる)。
+		for skill in SkillTypes.all_skills():
+			if not skills.has(skill):
+				skills[skill] = {"level": 0, "exp": 0}
 		npc["skills"] = skills
 		roster[id] = npc
 		max_id = max(max_id, id)

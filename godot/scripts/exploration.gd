@@ -32,17 +32,79 @@ const MONTHLY_INCOME_PER_POINT := 5
 const SECTION_CLEAR_REWARD_PER_FLOOR := 20
 const FIRST_SECTION_CLEAR_BONUS := 200
 
+## 「回復」スキル(SkillTypes.Skill.HEALING、2026-09-15追加)による日次のパーティ内HP回復。
+## 「復帰後HP回復手段がないため1のまま挑んでしまう」というバグ報告への対応。それまではHPが
+## 回復するのはParties.retreat_and_recover()経由の療養明け(Parties.is_available参照)だけで、
+## 勝利はしたが個別に撤退したメンバー(combat.gdのRETREAT方針)はそのままHP1付近で放置され、
+## 翌日以降も平然と次の戦闘に挑んでしまっていた(combat.gd側は別途any_setbackで修正済み)。
+## スキルLv0でも最低限の回復(HEALING_BASE)は起きるようにし(無課金プレイでも詰まりきらない、
+## design.md 4.3節の方針)、Lvが上がるほど回復量が伸びる。
+const HEALING_BASE := 5
+const HEALING_PER_LEVEL := 3
+
+## 完全踏破済みセクションでの周回(ループ)収入(2026-09-15、「ループでループしない」という
+## バグ報告への対応。design.md上「ループ=そのまま留まって収入源として維持する」だったのを
+## 実際に周回する仕組みへ変更した)。完全踏破後のセクションは、月次収入の対象から外れる代わりに、
+## 1周(セクションのフロア数に応じた日数で最初のフロアから最後のフロアまで再度進む)ごとに
+## 月次収入と同じ単価で収入を得る。月内に何周もできれば、その分だけ収入も増える
+## (_process_lap参照)。マップ上のパーティアイコンも、周回の進み具合に応じて最初のフロアから
+## 動かし、1周し終えるたびに最初のフロアへ戻す(main.gdの_current_node_for_party参照)。
+const LAP_INCOME_PER_POINT := MONTHLY_INCOME_PER_POINT
+
+## 初めて戦闘で撤退した直後だけ再生する説明会話。「ループ」「先へ進む」(design.md 4.7節の
+## post_clear_behavior)は今まさに阻まれている状況には関係なく、セクションを完全に突破し
+## 終えたあとの挙動を決める設定だと誤解されやすいため、その区別を説明する。
+## SaveSystem.tutorial_retreat_seenで一度きりに制御する(_post_retreat_help()/
+## _maybe_show_retreat_tutorial()参照)。
+const RETREAT_TUTORIAL_SCRIPT: Array = [
+	{"side": "none", "name": "案内人", "text": "撤退か……無理はしないのが一番だ。"},
+	{"side": "none", "name": "案内人", "text": "撤退したパーティはしばらく休息が必要だが、休息が終われば自動でまた同じ場所に挑んでくれる。装備を整えたりスキルを鍛えたりして、気長に構えるといい。"},
+	{"side": "none", "name": "案内人", "text": "ちなみに、パーティパネルの「ループ」「先へ進む」の設定は、今のように手強い相手に阻まれている間には関係ない。これはセクションを完全に突破し終えたあとの話だ――「ループ」ならそこに留まって稼ぎ続け、「先へ進む」なら次の未踏破セクションへ自動的に移動する。", "outcome": "ok"},
+]
+
+## 撤退説明会話の予約フラグ: _post_retreat_help()が立て、EventDialogue.finished(または
+## その場)から_maybe_show_retreat_tutorial()が消化する。true→実際に再生完了までの間、
+## trueのままになりうる(既に別の会話が開いている間は待つ)。
+var _retreat_tutorial_pending: bool = false
+
 func _ready() -> void:
 	TimeSystem.day_advanced.connect(_on_day_advanced)
 	TimeSystem.month_ended.connect(_on_month_ended)
+	# 撤退説明会話(下記_post_retreat_help参照)を、既に開いている別の会話(フロア発見時の
+	# VN等)を横取りせずに安全なタイミングで出すための待ち受け。
+	EventDialogue.finished.connect(_on_any_dialogue_finished)
+
+## 撤退の瞬間、_post_retreat_help()はまだ「発見イベントの本編VN」を再生する前(_on_node_found
+## 参照)のことがあり、その場でEventDialogue.play()すると直後に本編VNのplay()で即座に
+## 上書きされてしまう(EventDialogue.play()はis_active判定なしに強制的に現在の会話を
+## 差し替えるため)。call_deferred()で1フレーム後に回すことで、同一フレーム内で起きる
+## その後続のplay()呼び出しが全て終わってから安全に判定できるようにする。
+func _on_any_dialogue_finished(_outcome: String) -> void:
+	if _retreat_tutorial_pending:
+		call_deferred("_maybe_show_retreat_tutorial")
+
+func _maybe_show_retreat_tutorial() -> void:
+	if not _retreat_tutorial_pending or EventDialogue.is_active:
+		return
+	_retreat_tutorial_pending = false
+	# 「見た」フラグは再生開始時ではなく、実際に最後まで進めてfinishedが発火した時点で
+	# 永続化する(main.gdのINTRO_TUTORIAL_SCRIPT再生箇所のコメント参照。同じ理由で、
+	# 日数を進めるだけの診断がたまたま撤退を発生させても、会話を進めない限り実ファイルは
+	# 汚れない)。
+	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_retreat_seen(), CONNECT_ONE_SHOT)
+	EventDialogue.play(RETREAT_TUTORIAL_SCRIPT)
 
 ## 月末の集計タイムで、担当パーティがいる全セクション分の収入をまとめて資金化する。
+## 完全踏破済みのセクションは対象外(_process_lapによる周回収入に置き換わっている。
+## 両方から支給すると二重取りになるため)。
 func _on_month_ended(current_month: int) -> void:
 	var current_day := TimeSystem.current_day
 	var total_income := 0
 	for party in Parties.get_parties():
 		var section_id: String = party["assigned_section"]
 		if section_id == "" or not WorldMap.sections.has(section_id):
+			continue
+		if WorldMap.is_section_cleared(section_id):
 			continue
 		var income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
 		total_income += income
@@ -59,12 +121,75 @@ func _on_day_advanced(current_day: int) -> void:
 		# RECOVERING中のパーティが永久にここへ到達できず、回復期限が来ても自動復帰しなくなる。
 		if not Parties.is_available(party["id"], current_day):
 			continue
+		# 未割当(IDLE、担当セクションから外れている/まだ一度も割り当てていない)のパーティは
+		# 「ホームに留まっている」ものとして扱い、毎日その場でHPを全回復させる(2026-09-15、
+		# 「ホーム帰還時もフルに回復を」という要望への対応)。以前はEXPLORING以外を丸ごと
+		# skipしていたため、IDLEのパーティは(RECOVERING明けの全回復はおろか、EXPLORING中の
+		# 「回復」スキルによる緩やかな回復すら)一切回復手段が無いまま放置されていた。
+		if party["status"] == Parties.Status.IDLE:
+			_heal_idle_party(party)
+			continue
 		if party["status"] != Parties.Status.EXPLORING:
 			continue
+		_apply_daily_healing(party)
 		_claim_wild_progress(party)
 		_retry_gates(party, current_day)
 		if Parties.is_available(party["id"], current_day):
 			_attempt_discovery(party, current_day)
+		_process_lap(party, current_day)
+
+## 完全踏破済みセクションでの周回(ループ)処理。対象外(まだ未踏破区間が残っている)なら
+## 周回状態をリセットしておき、対象になった時点から1周目を始められるようにする。
+## 対象で、まだ周回を始めていなければ今日を起点として開始する。1周分の日数が経過したら
+## 月次収入と同じ単価で収入を得て、今日を起点に次の周を開始する(=月内に何周もできれば、
+## その分だけ収入も増える)。
+func _process_lap(party: Dictionary, current_day: int) -> void:
+	var section_id: String = party["assigned_section"]
+	if section_id == "" or not WorldMap.sections.has(section_id) or not WorldMap.is_section_cleared(section_id):
+		Parties.reset_lap(party["id"])
+		return
+	if party["lap_start_day"] < 0:
+		Parties.start_lap(party["id"], current_day)
+		return
+	var lap_days: int = max(1, WorldMap.nodes_in_section(section_id).size())
+	if current_day - party["lap_start_day"] < lap_days:
+		return
+	var income: int = LAP_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
+	Economy.earn(income)
+	var section_name: String = WorldMap.sections[section_id]["name"]
+	var text := "%sが「%s」を1周し、%d資金を得た" % [party["name"], section_name, income]
+	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "lap_income")
+	ActionLog.record(current_day, "lap_income", text, -1, "", section_id)
+	Parties.start_lap(party["id"], current_day)
+
+## 「回復」スキル(HEALING_BASE/HEALING_PER_LEVEL参照)によるパーティ内の日次HP回復。
+## パーティ内で最も「回復」スキルが高いメンバー(_best_member_for_skill、同値ならその職の
+## 適性者優先)が、その日の担当者としてHP満タンでないメンバー全員を回復させる。実際に誰かを
+## 回復させた日だけ、その担当者へ経験値を1入れる(5.2節「試行を重ねることで育つ」の考え方を
+## 踏襲。回復対象がいない日に経験値だけ積み上がる不自然さを避ける)。
+func _apply_daily_healing(party: Dictionary) -> void:
+	var healer_id := _best_member_for_skill(party, SkillTypes.Skill.HEALING)
+	if healer_id == -1:
+		return
+	var heal_amount := float(HEALING_BASE + HEALING_PER_LEVEL * _effective_skill_level(healer_id, SkillTypes.Skill.HEALING))
+	var healed_anyone := false
+	for npc_id in party["member_ids"]:
+		var npc := Npcs.get_npc(npc_id)
+		if npc.is_empty() or npc["hp"] >= npc["max_hp"]:
+			continue
+		npc["hp"] = min(float(npc["max_hp"]), float(npc["hp"]) + heal_amount)
+		healed_anyone = true
+	if healed_anyone:
+		Npcs.grant_skill_exp(healer_id, SkillTypes.Skill.HEALING, 1)
+
+## 未割当(IDLE)のパーティを毎日全回復させる(_on_day_advanced参照)。「回復」スキルによる
+## 緩やかな回復(_apply_daily_healing、探索中のみ)とは別に、担当から明示的に外して
+## 休ませれば早く全快する、という分かりやすい手段をプレイヤーに提供する。
+func _heal_idle_party(party: Dictionary) -> void:
+	for npc_id in party["member_ids"]:
+		var npc := Npcs.get_npc(npc_id)
+		if not npc.is_empty():
+			npc["hp"] = npc["max_hp"]
 
 ## 野良NPC(wild_npcs.gd)がゲート無しのフロアを先に発見・突破してしまうと、found=trueに
 ## なった時点でfrontier_for_section/_retry_gatesのどちらの対象からも永久に外れてしまい、
@@ -301,6 +426,10 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "combat_retreat")
 	ActionLog.record(current_day, "combat_retreat", text, -1, node_id, section_id)
 
+	if not SaveSystem.tutorial_retreat_seen and not _retreat_tutorial_pending:
+		_retreat_tutorial_pending = true
+		call_deferred("_maybe_show_retreat_tutorial")
+
 ## NPC管理パネルの「予測」ボタン用: 指定パーティを指定セクションに置いた場合の、実際には
 ## 配置転換しない今月(TimeSystem.DAYS_PER_MONTH日)の見込みだけを計算する。
 ##
@@ -321,9 +450,28 @@ func forecast_section(party_id: int, section_id: String) -> Dictionary:
 	var chance := discovery_chance_for_member(scout_id) if scout_id != -1 else DISCOVERY_BASE_CHANCE
 
 	var eta_days: Dictionary = {} # node_id -> float(このノードの発見が見込まれる日数)
-	var queue: Array = WorldMap.frontier_for_section(section_id).duplicate()
-	for node_id in queue:
-		eta_days[node_id] = 1.0 / chance
+	var queue: Array = []
+
+	# 既に発見済みだが未突破のゲート(野良NPCの先行発見や、前回このセクションを担当していた
+	# 時に見つけたがまだ突破できていないもの)は、_retry_gates()により配置初日から毎日無条件で
+	# 再挑戦される。以前はfrontier_for_section()が返す未発見ノードしか見ておらず(BFSも
+	# neighbor["found"]を弾く作り)、こうした「既発見だが未突破」のノードが予測から漏れて
+	# いた(=そこが最初のゲートでも撤退リスクが常に0扱いになっていた)。eta=0(即座に
+	# リスクがある)として、他のどの未発見フロアよりも先にキューへ積む。
+	# 下のBFSは「先に積んだノードほどetaが小さい」前提でeta昇順に処理される(通常のBFSは
+	# 均一な辺コストの下でこの前提を保つ性質がある)ため、eta=0のノードを混ぜる際もこの順序
+	# (小さいeta→大きいeta)を保つ必要がある。frontier(eta=1/chance)を先に積んでしまうと、
+	# より遠いリスクを「最短の危険地点」と誤判定しかねない。
+	for node_id in WorldMap.nodes_in_section(section_id):
+		var existing_node: Dictionary = WorldMap.nodes[node_id]
+		if existing_node["found"] and not existing_node["passed"]:
+			eta_days[node_id] = 0.0
+			queue.append(node_id)
+
+	for node_id in WorldMap.frontier_for_section(section_id):
+		if not eta_days.has(node_id):
+			eta_days[node_id] = 1.0 / chance
+			queue.append(node_id)
 
 	var visited: Dictionary = {}
 	var risk_node_id := ""

@@ -23,6 +23,12 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 		return {"result": "error"}
 
 	var any_defeated := false
+	# any_setback: any_defeated(hp<=0)に加え、個別にRETREAT方針で戦線離脱した(hpが1付近まで
+	# 減っている)メンバーも含む。以前はany_defeatedだけを見て回復要否を判定していたため、
+	# 「勝利はしたが誰かが個別に撤退してHP1付近まで減った」ケースでパーティ全体の療養が
+	# 一切トリガーされず、そのメンバーがHP1のまま翌日以降の戦闘に平然と挑んでしまう不具合が
+	# あった(2026-09-15、「復帰後HP回復手段がないため1のまま挑んでしまう」というバグ報告)。
+	var any_setback := false
 	var victor_id := -1
 
 	for npc_id in party["member_ids"]:
@@ -44,6 +50,7 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 				if policy["action"] == Npcs.CombatAction.RETREAT:
 					npc["hp"] = max(hp, 1.0)
 					retreated = true
+					any_setback = true
 					break
 				else:
 					hp += npc["max_hp"] * 0.3 # アイテム使用による回復
@@ -59,6 +66,7 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 		if hp <= 0:
 			npc["hp"] = 1.0
 			any_defeated = true
+			any_setback = true
 			continue
 
 		npc["hp"] = hp
@@ -66,9 +74,10 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 		break
 
 	if victor_id != -1:
-		if any_defeated:
-			# 勝利はしたが、途中で戦闘不能になったメンバーがいる。パーティ全体を短い療養に入れ、
-			# 次に動けるようになった時点でHPを全回復させる(回復の唯一の経路、Parties.is_available参照)。
+		if any_setback:
+			# 勝利はしたが、途中で戦闘不能または個別撤退になったメンバーがいる。パーティ全体を
+			# 短い療養に入れ、次に動けるようになった時点でHPを全回復させる
+			# (ホーム帰還時のフル回復、Parties.is_available参照)。
 			Parties.retreat_and_recover(party_id, current_day, 3)
 		return {"result": "victory", "npc_id": victor_id}
 

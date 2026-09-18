@@ -2,7 +2,12 @@ extends Node
 # 単一の資金プールと、雇用/訓練/施設拡張のコスト計算。
 
 var funds: int = 300
-var employ_cap: int = 3
+# 無償の初期パーティ(design.md 4.7節)が既に4人いるため、上限は最低でもそれを上回っている
+# 必要がある。旧デフォルト(3)は、この4人パーティが導入される前の値が更新されないまま
+# 残っていたもので、新規プレイ開始直後から「雇用上限に達しています」と表示され、施設拡張
+# (初期資金300を丸ごと使い切る額)をしない限り1人も追加雇用できないという実質詰みの
+# 状態になっていた(初雇用時のパーティ編成チュートリアルを検証中に発覚・修正)。
+var employ_cap: int = 5
 var facility_level: int = 0
 
 func can_afford(amount: int) -> bool:
@@ -43,5 +48,5 @@ func upgrade_facility() -> bool:
 ## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
 func reset() -> void:
 	funds = 300
-	employ_cap = 3
+	employ_cap = 5
 	facility_level = 0

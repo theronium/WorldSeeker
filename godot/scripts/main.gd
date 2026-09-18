@@ -29,6 +29,19 @@ var section_tree: Tree
 var section_forecast_label: Label
 var post_clear_behavior_buttons: Dictionary = {} # Parties.PostClearBehavior:int -> Button
 var _selected_party_id: int = -1
+var disband_confirm: ConfirmationDialog
+var _pending_disband_party_id: int = -1
+var party_button: Button # サイドバー。未割当パーティがある間は赤字で警告表示する(_refresh_party_roster参照)
+
+# セクションへパーティを割り当てる小さなモーダル(マップのセクション名ボタンから開く)。
+# パーティ管理パネルの「パーティを選ぶ→担当セクションを選ぶ」の逆順(「セクションを選ぶ→
+# パーティを選ぶ」)を提供する。
+var section_assign_panel: PanelContainer
+var section_assign_title: Label
+var section_assign_list: VBoxContainer
+var section_assign_status_label: Label
+var _section_assign_target_id: String = ""
+var _pending_assignment_followup: bool = false # INTRO_TUTORIAL_PART2_SCRIPT予約フラグ
 
 # 武器防具屋パネル(design.md 6.2節)。
 var shop_panel: PanelContainer
@@ -44,6 +57,7 @@ var node_centers: Dictionary = {} # node_id -> Vector2(map_canvas内での中心
 var node_icon_rows: Dictionary = {} # node_id -> HBoxContainer(担当NPCアイコンを現在フロアに表示)
 var section_bounds_cache: Dictionary = {} # section_id -> Rect2(エリア選択ボタンのスクロール先計算用)
 var section_lock_icons: Dictionary = {} # section_id -> Control(未到達セクションの鍵アイコン)
+var section_title_buttons: Dictionary = {} # section_id -> Button(セクション名ボタン。到達状況でdisabledを更新)
 var facility_info_label: Label
 var funds_label: Label
 var date_label: Label
@@ -93,6 +107,39 @@ var hire_panel: PanelContainer
 var npc_panel: PanelContainer
 var modal_blocker: ColorRect
 
+## 初回起動時だけ再生する導入会話・前編(design.md参照、2026-09-14に前後編へ分割)。
+## 「チュートリアルのマップ割り当てまでが分かりにくい」という指摘への対応として、
+## 情報を詰め込みすぎず、まずマップでの割り当て操作そのものへ誘導することだけに絞った。
+## SaveSystem.tutorial_intro_seenで一度きりに制御する(_ready()参照)。後編は
+## INTRO_TUTORIAL_PART2_SCRIPT(初めて実際に割り当てを行った直後に再生。
+## _maybe_show_assignment_followup_tutorial()参照)。
+const INTRO_TUTORIAL_PART1_SCRIPT: Array = [
+	{"side": "none", "name": "案内人", "text": "ようこそ。ここは、雇ったNPCたちに代わりに世界を探索させ、その稼ぎで暮らしを立てていく土地だ。"},
+	{"side": "none", "name": "案内人", "text": "既に「初期パーティ」が1つ、無償で用意されている。まずはこれをどこかのセクション(区画)に割り当てて、探索を始めよう。"},
+	{"side": "none", "name": "案内人", "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)をクリックしてみるといい。そこにパーティを割り当てられる。", "outcome": "ok"},
+]
+
+## 導入会話・後編。初めて実際にパーティ割り当てを行った直後に再生する(マップのセクション名
+## ボタン経由/パーティパネルの「割り当て」ボタン経由、どちらでも良い)。前編で触れなかった
+## 収入の仕組み/行ける場所の増やし方/進行速度について説明する。
+## SaveSystem.tutorial_assignment_followup_seenで一度きりに制御する。
+const INTRO_TUTORIAL_PART2_SCRIPT: Array = [
+	{"side": "none", "name": "案内人", "text": "よし、これで探索が始まった。割り当てたパーティが、毎日自動で発見・突破に挑んでくれる。"},
+	{"side": "none", "name": "案内人", "text": "資金は、担当セクションで突破したフロアの数に応じて毎月自動的に入る。フロアを突破するほど、そしてセクションを完全に突破しきるほど、実入りは大きくなる。"},
+	{"side": "none", "name": "案内人", "text": "セクションを突破しきれば、その先の新しいセクションやエリアへの道も開ける。行ける場所を増やしたいなら、目の前を突破し続けるのが一番の近道だ。"},
+	{"side": "none", "name": "案内人", "text": "進行速度は画面左上の「1x/10x/100x/1000x」でいつでも変えられる。月末には自動で一時停止するので、収支を確かめてから次の月へ進めるといい。"},
+	{"side": "none", "name": "案内人", "text": "困ったら、NPC管理やパーティのパネルを開いて様子を見るといい。……それでは、健闘を祈る。", "outcome": "ok"},
+]
+
+## 初めてNPCを雇用した直後だけ再生する説明会話。雇っただけではまだ働けず、パーティ編成
+## (1人でも組める)が必要なことを教える。SaveSystem.tutorial_party_seenで一度きりに制御する
+## (_on_hire_pressed()参照)。
+const PARTY_TUTORIAL_SCRIPT: Array = [
+	{"side": "none", "name": "案内人", "text": "新しい仲間が加わった。……とはいえ、雇っただけではまだ働けない。"},
+	{"side": "none", "name": "案内人", "text": "「パーティ」パネルを開いて、雇ったNPCを選び、パーティを編成しよう。1人だけでもパーティは組める――まずは1人で始めて、あとから仲間を増やしても構わない。"},
+	{"side": "none", "name": "案内人", "text": "パーティが組めたら、担当セクションを割り当てるといい。あとは毎日自動で探索に挑んでくれる。", "outcome": "ok"},
+]
+
 func _ready() -> void:
 	_build_theme()
 	_build_node_styles()
@@ -106,6 +153,7 @@ func _ready() -> void:
 	_build_shop_ui()
 	_build_board_ui()
 	_build_node_detail_ui()
+	_build_section_assign_ui()
 	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめ、常に
 	# まっさらな新規プレイから始まるようにした(design.md 8.2節)。既存の進行を続けたい
 	# 場合は、セーブパネルから明示的に「このスロットをロードする」を選ぶ(一般的な
@@ -121,6 +169,18 @@ func _ready() -> void:
 	EventDialogue.line_shown.connect(_on_dialogue_line_shown)
 	EventDialogue.finished.connect(_on_dialogue_finished)
 	_refresh_all()
+	# 初回起動時だけ、遊び方(NPCの配置/稼ぎ方/行ける場所の増やし方/進行速度)を説明する
+	# 導入会話を挟む。スロットに紐付かず(SaveSystem.tutorial_intro_seen)、新規プレイを
+	# 何度始めても一度見せたら二度と出さない。この時点ではまだ他の会話は動いていないので、
+	# そのまま直接EventDialogue.play()してよい(節末の「イベント会話まわりの実装メモ」参照)。
+	# 「見た」フラグは再生開始時ではなく、実際にプレイヤーが最後まで進めてEventDialogue.finished
+	# が発火した時点でONE_SHOT接続で永続化する。開始時点で即座に書き込むと、`--headless --quit`
+	# のようなコンパイル確認だけの起動(誰も会話を進めない)でも実ファイル(worldseeker_meta.cfg)
+	# に「見た」と書き込まれてしまい、次回以降の本当のプレイでチュートリアルが二度と出なくなる
+	# 事故につながる(実際に一度発生させて修正した)。
+	if not SaveSystem.tutorial_intro_seen:
+		EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_intro_seen(), CONNECT_ONE_SHOT)
+		EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT)
 	TimeSystem.mark_boot_complete()
 
 func _process(_delta: float) -> void:
@@ -200,6 +260,77 @@ func _build_theme() -> void:
 
 	theme = ui_theme # rootのControl(このシーン自身)に設定するだけで、以降add_childする全子孫に伝播する
 
+## マップのセクション名ボタン専用のスタイル(2026-09-14、「セクション名が押せると直感的に
+## 分からない」という指摘への対応)。共有Theme([[godot_install_path]]の通常ボタン(青系)とは
+## 明確に別系統の暖色(アンバー)にし、「ここが目印/行き先」という意味合いを持たせる。
+## disabled状態は個別に上書きしない(共有Themeの薄暗いdisabledスタイルへ自然にフォールバック
+## させ、到達不可能なセクションは「押せない」ことも見た目で伝わるようにする)。
+func _apply_section_title_button_style(button: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.55, 0.38, 0.08, 0.9)
+	normal.border_color = Color(1.0, 0.78, 0.3, 1.0)
+	normal.set_border_width_all(2)
+	normal.set_corner_radius_all(3)
+	normal.content_margin_left = 6
+	normal.content_margin_right = 6
+	normal.content_margin_top = 3
+	normal.content_margin_bottom = 3
+	var hover := normal.duplicate()
+	hover.bg_color = Color(0.7, 0.48, 0.1, 0.95)
+	var pressed := normal.duplicate()
+	pressed.bg_color = Color(0.4, 0.28, 0.05, 0.95)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_color_override("font_color", Color(1, 0.95, 0.85))
+	button.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+
+## 「ここに割り当てる」系の主要アクションボタンを、同じ並びの他ボタン(ログ/予測等)より
+## 視覚的に強調する(2026-09-14、「割り当てボタンを目立たせる」という要望への対応)。
+## 彩度の高い緑を専用に割り当て、共有Theme(_build_theme())の通常ボタン(青系)と
+## 明確に見分けが付くようにする。
+func _apply_primary_button_style(button: Button) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.16, 0.5, 0.22, 1.0)
+	normal.border_color = Color(0.45, 0.85, 0.5, 1.0)
+	normal.set_border_width_all(2)
+	normal.set_corner_radius_all(4)
+	normal.content_margin_left = 12
+	normal.content_margin_right = 12
+	normal.content_margin_top = 8
+	normal.content_margin_bottom = 8
+	var hover := normal.duplicate()
+	hover.bg_color = Color(0.2, 0.62, 0.28, 1.0)
+	var pressed := normal.duplicate()
+	pressed.bg_color = Color(0.12, 0.4, 0.18, 1.0)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_color_override("font_color", Color(1, 1, 1))
+	button.add_theme_color_override("font_hover_color", Color(1, 1, 1))
+
+## パーティカード(_create_party_card)/セクション割り当てモーダルの行、どちらでも使う
+## 「未割当」の赤い強調スタイル(2026-09-14、「未割当のパーティが赤く光る」という要望への
+## 対応)。選択中(toggle_mode押下時)は共有Themeの青いpressedスタイルに任せたいため、
+## "pressed"は上書きしない。
+func _apply_unassigned_warning_style(control: Control) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = Color(0.5, 0.13, 0.1, 0.85)
+	normal.border_color = Color(1.0, 0.35, 0.3, 1.0)
+	normal.set_border_width_all(2)
+	normal.set_corner_radius_all(4)
+	normal.content_margin_left = 10
+	normal.content_margin_right = 10
+	normal.content_margin_top = 6
+	normal.content_margin_bottom = 6
+	var hover := normal.duplicate()
+	hover.bg_color = Color(0.6, 0.18, 0.14, 0.95)
+	if control is Button:
+		control.add_theme_stylebox_override("normal", normal)
+		control.add_theme_stylebox_override("hover", hover)
+	else:
+		control.add_theme_stylebox_override("panel", normal)
+
 func _build_ui() -> void:
 	var root := HBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -271,7 +402,7 @@ func _build_ui() -> void:
 	npc_button.pressed.connect(_on_open_npc_panel_pressed)
 	left.add_child(npc_button)
 
-	var party_button := Button.new()
+	party_button = Button.new()
 	party_button.text = "パーティ"
 	party_button.pressed.connect(_on_open_party_panel_pressed)
 	left.add_child(party_button)
@@ -372,7 +503,7 @@ func _build_ui() -> void:
 ## 雇用/NPC管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel]:
 		p.visible = (p == panel)
 	modal_blocker.visible = true
 	move_child(modal_blocker, get_child_count() - 1)
@@ -473,6 +604,41 @@ func _on_dialogue_finished(_outcome: String) -> void:
 	dialogue_panel.visible = false
 	_refresh_board()
 	_refresh_map()
+	# 導入会話・後編(INTRO_TUTORIAL_PART2_SCRIPT)の予約消化。他の会話(フロア発見時のVN等)
+	# が終わるたびにここでも確認する(下のコメント参照)。
+	if _pending_assignment_followup:
+		call_deferred("_try_show_assignment_followup_tutorial")
+
+## パーティ割り当て(_assign_party_to_section)の直後に呼ぶ。導入会話・後編を、
+## 初めて割り当てを行った時だけ再生する。割り当てはプレイヤーの明示的なクリック操作なので
+## 基本的に他の会話と衝突しないはずだが、フロア発見時のVN(exploration.gdの_on_node_found)は
+## dialogue_panelがモーダル扱いではないため、理論上は同時に開いていた状態のまま
+## 別パネルを操作してこの割り当てクリックに至ることもありえる。exploration.gdの
+## RETREAT_TUTORIAL_SCRIPT(撤退説明会話)と同じ「安全になるまでcall_deferredで
+## 先送りし続ける」方式で対応する。
+func _maybe_show_assignment_followup_tutorial() -> void:
+	if SaveSystem.tutorial_assignment_followup_seen or _pending_assignment_followup:
+		return
+	_pending_assignment_followup = true
+	call_deferred("_try_show_assignment_followup_tutorial")
+
+func _try_show_assignment_followup_tutorial() -> void:
+	if not _pending_assignment_followup or EventDialogue.is_active:
+		return
+	_pending_assignment_followup = false
+	# dialogue_panelはhire_panel等のモーダルより手前に重ねていない(_open_modalの管理対象外)ため、
+	# パーティパネル/割り当てモーダルを開いたまま再生すると会話が背後に隠れて見えなくなる
+	# (PARTY_TUTORIAL_SCRIPT再生箇所と同じ理由)。先に閉じてから再生する。
+	_close_any_modal()
+	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_assignment_followup_seen(), CONNECT_ONE_SHOT)
+	EventDialogue.play(INTRO_TUTORIAL_PART2_SCRIPT)
+
+## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
+## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
+func _close_any_modal() -> void:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel]:
+		p.visible = false
+	modal_blocker.visible = false
 
 ## 行動ログビューアー(design.md 8.2「記録再生」)。掲示板と違い、DBの`action_log`テーブルを
 ## その場でクエリして表示する(常時メモリに保持しない)。NPCで絞り込める。
@@ -602,6 +768,138 @@ func _build_node_detail_ui() -> void:
 	node_detail_body.custom_minimum_size = Vector2(0, 320)
 	node_detail_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(node_detail_body)
+
+## セクションへパーティを割り当てる小さなモーダル(2026-09-14、「選んだセクションから
+## パーティ割り当てを可能にする」という要望への対応)。マップのセクション名ボタン
+## (_create_section_panel/_on_section_name_pressed)から開く。パーティパネルの
+## 「パーティを選ぶ→セクションを選ぶ」の逆順(「セクションを選ぶ→パーティを選ぶ」)を提供する。
+func _build_section_assign_ui() -> void:
+	section_assign_panel = PanelContainer.new()
+	section_assign_panel.set_anchors_preset(Control.PRESET_CENTER)
+	section_assign_panel.offset_left = -300
+	section_assign_panel.offset_top = -240
+	section_assign_panel.offset_right = 300
+	section_assign_panel.offset_bottom = 240
+	section_assign_panel.visible = false
+	add_child(section_assign_panel)
+
+	var col := VBoxContainer.new()
+	section_assign_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+
+	section_assign_title = Label.new()
+	section_assign_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section_assign_title.autowrap_mode = TextServer.AUTOWRAP_WORD
+	section_assign_title.add_theme_font_size_override("font_size", 16)
+	header.add_child(section_assign_title)
+
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): _close_modal(section_assign_panel))
+	header.add_child(close_button)
+
+	var hint_label := Label.new()
+	hint_label.text = "どのパーティをここへ割り当てますか?(未割当のパーティは赤く強調表示しています)"
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	col.add_child(hint_label)
+
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 260)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(scroll)
+
+	section_assign_list = VBoxContainer.new()
+	section_assign_list.add_theme_constant_override("separation", 8)
+	section_assign_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(section_assign_list)
+
+	section_assign_status_label = Label.new()
+	section_assign_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	col.add_child(section_assign_status_label)
+
+	var form_party_shortcut := Button.new()
+	form_party_shortcut.text = "パーティが無い場合はこちらで編成する"
+	form_party_shortcut.pressed.connect(func():
+		_close_modal(section_assign_panel)
+		_open_party_panel())
+	col.add_child(form_party_shortcut)
+
+## マップのセクション名ボタン(_create_section_panel)を押した時に開く。
+func _on_section_name_pressed(section_id: String) -> void:
+	_section_assign_target_id = section_id
+	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
+	section_assign_title.text = "「%s」へパーティを割り当て" % section_name
+	_refresh_section_assign_list()
+	_open_modal(section_assign_panel)
+
+func _refresh_section_assign_list() -> void:
+	for child in section_assign_list.get_children():
+		section_assign_list.remove_child(child)
+		child.queue_free()
+	var parties := Parties.get_parties()
+	if parties.is_empty():
+		section_assign_status_label.text = "まだパーティがありません。NPCを雇用してパーティを編成してください。"
+		return
+	section_assign_status_label.text = ""
+	# 未割当のパーティを先頭に並べ、対応が必要なものを見つけやすくする。
+	parties.sort_custom(func(a, b): return a["assigned_section"] == "" and b["assigned_section"] != "")
+	for party in parties:
+		section_assign_list.add_child(_create_section_assign_row(party))
+
+func _create_section_assign_row(party: Dictionary) -> Control:
+	var row := PanelContainer.new()
+	var is_unassigned: bool = party["assigned_section"] == ""
+	var is_current: bool = party["assigned_section"] == _section_assign_target_id
+	if is_unassigned:
+		_apply_unassigned_warning_style(row)
+	else:
+		var normal := StyleBoxFlat.new()
+		normal.bg_color = Color(0.16, 0.18, 0.22, 0.9)
+		normal.border_color = Color(0.4, 0.44, 0.5, 0.6)
+		normal.set_border_width_all(1)
+		normal.set_corner_radius_all(4)
+		normal.content_margin_left = 10
+		normal.content_margin_right = 10
+		normal.content_margin_top = 6
+		normal.content_margin_bottom = 6
+		row.add_theme_stylebox_override("panel", normal)
+
+	var hbox := HBoxContainer.new()
+	row.add_child(hbox)
+
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.add_child(info)
+
+	var section_name := "未割当"
+	if not is_unassigned and WorldMap.sections.has(party["assigned_section"]):
+		section_name = WorldMap.sections[party["assigned_section"]]["name"]
+
+	var name_label := Label.new()
+	name_label.text = "%s%s" % [party["name"], "  ⚠ 未割当" if is_unassigned else ""]
+	info.add_child(name_label)
+
+	var sub_label := Label.new()
+	sub_label.modulate = Color(1, 1, 1, 0.75)
+	sub_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	sub_label.text = "現在: %s / 状態: %s / 戦力: %d" % [section_name, _party_status_text(party), Parties.power(party["id"])]
+	info.add_child(sub_label)
+
+	var assign_button := Button.new()
+	assign_button.text = "現在地です" if is_current else "ここに割り当てる"
+	assign_button.disabled = is_current
+	if not is_current:
+		_apply_primary_button_style(assign_button)
+	assign_button.pressed.connect(_on_section_assign_row_pressed.bind(party["id"]))
+	hbox.add_child(assign_button)
+
+	return row
+
+func _on_section_assign_row_pressed(party_id: int) -> void:
+	_assign_party_to_section(party_id, _section_assign_target_id)
+	_close_modal(section_assign_panel)
 
 ## 雇用パネル(募集・候補一覧・雇用)。サイドバーの「雇用」ボタンから開く。
 func _build_hire_ui() -> void:
@@ -999,10 +1297,23 @@ func _build_party_detail_view(col: VBoxContainer) -> void:
 	party_detail_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(party_detail_view)
 
+	var detail_header := HBoxContainer.new()
+	party_detail_view.add_child(detail_header)
 	var back_button := Button.new()
 	back_button.text = "← 一覧へ戻る"
 	back_button.pressed.connect(_on_party_detail_back_pressed)
-	party_detail_view.add_child(back_button)
+	detail_header.add_child(back_button)
+	var detail_spacer := Control.new()
+	detail_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_header.add_child(detail_spacer)
+	var disband_button := Button.new()
+	disband_button.text = "パーティを解散する"
+	disband_button.pressed.connect(_on_disband_party_pressed)
+	detail_header.add_child(disband_button)
+
+	disband_confirm = ConfirmationDialog.new()
+	disband_confirm.confirmed.connect(_on_disband_party_confirmed)
+	add_child(disband_confirm)
 
 	party_detail_label = Label.new()
 	party_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
@@ -1044,6 +1355,7 @@ func _build_party_detail_view(col: VBoxContainer) -> void:
 	var assign_button := Button.new()
 	assign_button.text = "割り当て"
 	assign_button.pressed.connect(_on_assign_to_section_pressed)
+	_apply_primary_button_style(assign_button) # 2026-09-14: 「割り当てボタンを目立たせる」という要望への対応
 	section_actions.add_child(assign_button)
 
 	var view_thread_button := Button.new()
@@ -1101,6 +1413,28 @@ func _on_party_detail_back_pressed() -> void:
 	_refresh_party_roster()
 	_show_party_roster_view()
 
+## パーティ解散(design.md 4.7節): 装備・スキル経験値・固有スキルはNPC個体側に残るため、
+## 解散してもメンバーの育成は失われない。メンバーは全員未所属(party_id=-1)に戻り、
+## 別のパーティへ再編成できる。取り消せない操作なので確認ダイアログを挟む
+## (新規プレイ/スロット削除と同じConfirmationDialogのパターン)。
+func _on_disband_party_pressed() -> void:
+	if _selected_party_id < 0:
+		return
+	var party := Parties.get_party(_selected_party_id)
+	if party.is_empty():
+		return
+	_pending_disband_party_id = _selected_party_id
+	disband_confirm.dialog_text = "「%s」を解散します。メンバーは全員未所属に戻ります(スキルや装備は失われません)。よろしいですか？" % party["name"]
+	disband_confirm.popup_centered()
+
+func _on_disband_party_confirmed() -> void:
+	Parties.disband(_pending_disband_party_id)
+	_pending_disband_party_id = -1
+	_selected_party_id = -1
+	_refresh_party_roster()
+	_show_party_roster_view()
+	_refresh_map()
+
 ## パーティパネルを開く共通処理。party_idを指定すればそのパーティの詳細から始める
 ## (マップのパーティアイコンをクリックした場合)。省略時は一覧ビューから始める。
 func _open_party_panel(party_id: int = -1) -> void:
@@ -1157,8 +1491,11 @@ func _refresh_party_roster() -> void:
 		party_grid.remove_child(child)
 		child.queue_free()
 	var group := ButtonGroup.new()
+	var has_unassigned := false
 	for party in Parties.get_parties():
 		party_grid.add_child(_create_party_card(party, group))
+		if party["assigned_section"] == "":
+			has_unassigned = true
 
 	party_form_list.clear()
 	for npc in Npcs.get_roster():
@@ -1166,6 +1503,18 @@ func _refresh_party_roster() -> void:
 			party_form_list.add_item("%s(%s)" % [npc["name"], Jobs.JOB_NAMES[npc["job"]]])
 			party_form_list.set_item_metadata(party_form_list.item_count - 1, npc["id"])
 	party_form_status_label.text = ""
+
+	# サイドバーの「パーティ」ボタン自体も、未割当のパーティが1つでもあれば赤字で警告する
+	# (2026-09-14、「未割当のパーティが赤く光る」という要望への対応。パネルを開かなくても
+	# 対応が必要なことに気付けるようにする)。
+	if has_unassigned:
+		party_button.text = "パーティ ⚠未割当あり"
+		party_button.add_theme_color_override("font_color", Color(1.0, 0.42, 0.36))
+		party_button.add_theme_color_override("font_hover_color", Color(1.0, 0.55, 0.5))
+	else:
+		party_button.text = "パーティ"
+		party_button.remove_theme_color_override("font_color")
+		party_button.remove_theme_color_override("font_hover_color")
 
 func _create_party_card(party: Dictionary, group: ButtonGroup) -> Button:
 	var card := Button.new()
@@ -1176,10 +1525,13 @@ func _create_party_card(party: Dictionary, group: ButtonGroup) -> Button:
 	var member_names := []
 	for npc_id in party["member_ids"]:
 		member_names.append(String(Npcs.get_npc(npc_id).get("name", "?")))
+	var is_unassigned: bool = party["assigned_section"] == ""
 	var section_name := "未割当"
-	if party["assigned_section"] != "" and WorldMap.sections.has(party["assigned_section"]):
+	if not is_unassigned and WorldMap.sections.has(party["assigned_section"]):
 		section_name = WorldMap.sections[party["assigned_section"]]["name"]
-	card.text = "%s\n%s\n担当: %s" % [party["name"], "・".join(member_names), section_name]
+	card.text = "%s\n%s\n担当: %s%s" % [party["name"], "・".join(member_names), section_name, "  ⚠" if is_unassigned else ""]
+	if is_unassigned:
+		_apply_unassigned_warning_style(card)
 	card.pressed.connect(_on_party_card_pressed.bind(party["id"]))
 	return card
 
@@ -1280,9 +1632,18 @@ func _on_assign_to_section_pressed() -> void:
 	var section_id = selected_item.get_metadata(0)
 	if section_id == null:
 		return
-	Parties.assign_section(_selected_party_id, section_id)
+	_assign_party_to_section(_selected_party_id, section_id)
+
+## パーティ割り当ての共通処理。パーティパネルの「割り当て」ボタン(_on_assign_to_section_pressed)、
+## マップのセクション名ボタンから開く割り当てモーダル(_on_section_assign_row_pressed)の
+## 両方から使う(2026-09-14、「選んだセクションからパーティ割り当てを可能にする」という
+## 要望への対応で後者を新設した際、処理を一本化した)。
+func _assign_party_to_section(party_id: int, section_id: String) -> void:
+	Parties.assign_section(party_id, section_id)
 	_refresh_party_roster()
 	_refresh_party_detail()
+	_refresh_map()
+	_maybe_show_assignment_followup_tutorial()
 
 ## 「予測」ボタン: 選択中のパーティをTreeで選んだセクションに置いた場合の、実際の配置転換を
 ## 行わずに今月の見込みだけを計算して表示する(Exploration.forecast_section参照)。
@@ -1383,18 +1744,27 @@ func _refresh_shop_offers() -> void:
 	var current_armor_tier: int = npc["equipped_armor"].get("tier", -1)
 
 	for tier in Equipment.all_tiers():
-		shop_weapon_row.add_child(_create_shop_tier_button(tier, weapon_kind_name, "weapon", tier == current_weapon_tier))
+		shop_weapon_row.add_child(_create_shop_tier_button(tier, weapon_kind_name, "weapon", current_weapon_tier))
 	for tier in Equipment.all_tiers():
-		shop_armor_row.add_child(_create_shop_tier_button(tier, armor_kind_name, "armor", tier == current_armor_tier))
+		shop_armor_row.add_child(_create_shop_tier_button(tier, armor_kind_name, "armor", current_armor_tier))
 
-func _create_shop_tier_button(tier: int, kind_name: String, slot: String, is_equipped: bool) -> Button:
+## current_tierは今そのNPCが装備している等級(未装備なら-1)。Tierは等級が上がるほど戦力・価格が
+## 単調に増える設計(equipment.gd参照)なので、現在の装備より下位の等級は「買っても損しかない」
+## 選択肢であり、押せないようにする(2026-09-15、「武器防具にメリットがないのにランク下の
+## ものを買えてしまう」というバグ報告への対応)。current_tier==-1(転職直後で未装備等)の場合は
+## どの等級も下位に当たらないため、この制限は効かない。
+func _create_shop_tier_button(tier: int, kind_name: String, slot: String, current_tier: int) -> Button:
 	var button := Button.new()
 	var price := Equipment.price(tier)
+	var is_equipped := tier == current_tier
+	var is_downgrade := tier < current_tier
 	button.text = "%s\n+%d 戦力\n%d資金" % [Equipment.item_name(tier, kind_name), Equipment.power_bonus(tier), price]
 	button.custom_minimum_size = Vector2(90, 60)
-	button.disabled = is_equipped or not Economy.can_afford(price)
+	button.disabled = is_equipped or is_downgrade or not Economy.can_afford(price)
 	if is_equipped:
 		button.tooltip_text = "装備中"
+	elif is_downgrade:
+		button.tooltip_text = "現在の装備より下位のため、購入するメリットがありません"
 	button.pressed.connect(_on_buy_equipment_pressed.bind(slot, tier))
 	return button
 
@@ -1513,6 +1883,16 @@ func _build_slot_ui() -> void:
 	autosave_checkbox.toggled.connect(SaveSystem.set_autosave_enabled)
 	col.add_child(autosave_checkbox)
 
+	# 「イベント確認が出来ない」という要望への対応(2026-09-14)。一度見ると二度と出ない
+	# 導入/初雇用/初撤退/初割り当ての説明会話4種を、確認のためだけに何度でも見返せるように、
+	# 「見た」フラグを丸ごとリセットするボタンを設定(セーブスロットパネル)に置く。
+	# セーブデータ自体(資金/NPC等)には触れない。
+	var reset_tutorial_button := Button.new()
+	reset_tutorial_button.text = "イベント会話をリセットする(確認用)"
+	reset_tutorial_button.tooltip_text = "導入/初雇用/初撤退/初割り当ての説明会話を、もう一度見られるようにします"
+	reset_tutorial_button.pressed.connect(_on_reset_tutorials_pressed)
+	col.add_child(reset_tutorial_button)
+
 	manual_save_status_label = Label.new()
 	manual_save_status_label.modulate = Color(1, 1, 1, 0.75)
 	col.add_child(manual_save_status_label)
@@ -1584,6 +1964,16 @@ func _on_duplicate_slot_pressed() -> void:
 		return
 	_refresh_slot_list()
 	manual_save_status_label.text = "スロット%dとして複製しました(現在のスロットのまま続けられます)" % new_id
+
+## 一度見ると二度と出ない説明用イベント会話4種を、確認用に未視聴の状態へ戻す。導入会話
+## (INTRO_TUTORIAL_PART1_SCRIPT)は起動時にしかトリガーできないため、リセット直後にこの場で
+## 再生する(パネルを閉じてから再生しないとdialogue_panelが背後に隠れる。他の会話の再生箇所と
+## 同じ理由)。残り3つ(初雇用/初撤退/初割り当て)は該当の操作を実際に行うと再度表示される。
+func _on_reset_tutorials_pressed() -> void:
+	SaveSystem.reset_tutorial_flags()
+	_close_modal(slot_panel)
+	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_intro_seen(), CONNECT_ONE_SHOT)
+	EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT)
 
 func _on_delete_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
@@ -1671,6 +2061,7 @@ func _seed_demo_world() -> void:
 	node_icon_rows.clear()
 	section_bounds_cache.clear()
 	section_lock_icons.clear()
+	section_title_buttons.clear()
 
 	var cell_size := _map_cell_size()
 	var content_size := Vector2.ZERO
@@ -1789,17 +2180,29 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	panel.add_theme_stylebox_override("panel", style)
 	map_canvas.add_child(panel)
 
-	var title := Label.new()
+	# セクション名を、ただの文字ではなく「押せるボタン」として見せる(2026-09-14、実プレイの
+	# フィードバックへの対応: マップ上でセクション名が押せることが直感的に分からない、との指摘)。
+	# クリックでそのセクションへのパーティ割り当てモーダル(_on_section_name_pressed)を開く。
+	# 到達不可能なセクション(WorldMap.is_section_reachable=false)はdisabled=trueにする。
+	# 個別に"disabled"stylebox上書きをしていないため、共有Theme(_build_theme())側の
+	# 薄暗いdisabledスタイルへ自然にフォールバックし、「押せない」ことが見た目でも伝わる。
+	var title_button := Button.new()
 	# design.md 6.2節「推奨戦力」: セクション内で最も敵戦闘力が高い戦闘ゲートの値を、
 	# パーティの戦力と比較するための大まかな目安として表示する(戦闘ゲートが無ければ表示しない)。
 	var recommended := Exploration.recommended_power_for_section(section_id)
-	title.text = WorldMap.sections[section_id]["name"]
+	title_button.text = "📍 " + WorldMap.sections[section_id]["name"]
 	if recommended > 0:
-		title.text += "\n推奨戦力: %d" % recommended
-	title.position = bounds.position + Vector2(6, 2) * _map_zoom
-	title.add_theme_font_size_override("font_size", max(9, roundi(14 * _map_zoom)))
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	map_canvas.add_child(title)
+		title_button.text += "\n推奨戦力: %d" % recommended
+	title_button.position = bounds.position + Vector2(4, 2) * _map_zoom
+	title_button.custom_minimum_size = Vector2(bounds.size.x - 8 * _map_zoom, 0)
+	title_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	title_button.add_theme_font_size_override("font_size", max(9, roundi(14 * _map_zoom)))
+	title_button.tooltip_text = "クリックしてこのセクションへパーティを割り当てる"
+	title_button.disabled = not WorldMap.is_section_reachable(section_id)
+	_apply_section_title_button_style(title_button)
+	title_button.pressed.connect(_on_section_name_pressed.bind(section_id))
+	map_canvas.add_child(title_button)
+	section_title_buttons[section_id] = title_button
 
 	# まだ誰も足を踏み入れておらず、隣接する突破済みノードも無いセクション(WorldMap.
 	# is_section_reachable=false)には、枠の下に鍵アイコンを出す。表示/非表示の切り替えは
@@ -2038,6 +2441,11 @@ func _refresh_map() -> void:
 
 	for section_id in section_lock_icons.keys():
 		section_lock_icons[section_id].visible = not WorldMap.is_section_reachable(section_id)
+	# セクション名ボタンのdisabledも、探索が進んで新たに到達可能になったセクションがあれば
+	# ここで追従させる(作成時点のdisabled値のままだと、エリアタブを切り替えるかズームし直す
+	# まで押せないままになってしまう)。
+	for section_id in section_title_buttons.keys():
+		section_title_buttons[section_id].disabled = not WorldMap.is_section_reachable(section_id)
 
 	_refresh_party_map_icons()
 	_refresh_area_tabs() # 探索の進行でエリアの到達状況(🔒表示)が変わりうるため、日次でも更新する
@@ -2047,7 +2455,10 @@ func _refresh_map() -> void:
 ## 存在しないが、表示上は次の優先順で代表点を決める:
 ## 1) 発見済みだが未突破のゲートがあれば、そこで足止め中として表示
 ## 2) なければ、既知の最前線(未発見フロアに隣接する突破済みノード)
-## 3) それも無ければ(セクション完全踏破後など)セクション最後のノード
+## 3) それも無ければ(セクション完全踏破後など)周回(ループ)の進み具合(exploration.gdの
+##    _process_lap/Parties.lap_start_day)に応じて最初のフロアから動かす。1周し終えるたびに
+##    最初のフロアへ戻る(2026-09-15、「ループでループしない、終わったらアイコンが
+##    最初に戻るべきだが戻っていない」というバグ報告への対応)。
 func _current_node_for_party(party: Dictionary) -> String:
 	var section_id: String = party["assigned_section"]
 	if section_id == "" or not WorldMap.sections.has(section_id):
@@ -2066,6 +2477,12 @@ func _current_node_for_party(party: Dictionary) -> String:
 		for neighbor_id in WorldMap.neighbors(id):
 			if WorldMap.nodes.has(neighbor_id) and not WorldMap.nodes[neighbor_id]["found"]:
 				return id
+
+	var lap_start_day: int = party.get("lap_start_day", -1)
+	if lap_start_day >= 0:
+		var elapsed: int = TimeSystem.current_day - lap_start_day
+		var index: int = clampi(elapsed, 0, member_ids.size() - 1)
+		return member_ids[index]
 
 	return member_ids[member_ids.size() - 1]
 
@@ -2167,6 +2584,15 @@ func _on_hire_pressed() -> void:
 	_refresh_candidates()
 	_refresh_roster()
 	_refresh_funds()
+	# 初めての雇用の直後だけ、パーティ編成の説明会話を挟む。雇用パネル(モーダル)が開いた
+	# ままだと会話ウィンドウがその下に隠れてしまうため、先に閉じてから再生する。「見た」
+	# フラグは再生開始時ではなくEventDialogue.finished発火時に永続化する(理由はINTRO_TUTORIAL_SCRIPT
+	# 再生箇所のコメント参照。診断コードが雇用だけシミュレートして会話を進めずに終わった場合
+	# などに、実際には見せていないのに実ファイルへ「見た」と書き込んでしまう事故を防ぐ)。
+	if not SaveSystem.tutorial_party_seen:
+		_close_modal(hire_panel)
+		EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_party_seen(), CONNECT_ONE_SHOT)
+		EventDialogue.play(PARTY_TUTORIAL_SCRIPT)
 
 func _on_view_thread_pressed() -> void:
 	var selected_item := section_tree.get_selected()
