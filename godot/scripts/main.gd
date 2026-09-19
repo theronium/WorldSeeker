@@ -106,6 +106,9 @@ var dialogue_text_label: Label
 var choices_box: VBoxContainer
 var advance_hint: Button
 
+var license_panel: PanelContainer # 左メニュー一番下の「ライセンス」ボタンで開く(内容はLicenseInfoが読み込む)
+var license_text: RichTextLabel
+
 var action_log_panel: PanelContainer
 var action_log_npc_option: OptionButton
 var action_log_text: RichTextLabel
@@ -171,6 +174,7 @@ func _ready() -> void:
 	_build_board_ui()
 	_build_node_detail_ui()
 	_build_section_assign_ui()
+	_build_license_ui()
 	_build_back_hint_ui()
 	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめ、常に
 	# まっさらな新規プレイから始まるようにした(design.md 8.2節)。既存の進行を続けたい
@@ -545,6 +549,15 @@ func _build_ui() -> void:
 	board_button.pressed.connect(_on_open_board_pressed)
 	left.add_child(board_button)
 
+	# ライセンス表示(画像・Godot・godot-sqlite、将来は音楽なども)。日常的には使わないので、メニューの
+	# ボタンとしては一番下に置く。掲示板プレビュー(ボタンではなくログ表示)より上にしてあるのは、
+	# タッチUIではこのメニューが画面より縦に長くなり、ボタンの上からのドラッグではスクロールできない
+	# (Godotのボタンがドラッグを受け止める)ため、プレビューの下だと指が届かなくなるから。
+	var license_button := Button.new()
+	license_button.text = "ライセンス"
+	license_button.pressed.connect(_on_open_license_pressed)
+	left.add_child(license_button)
+
 	# ボタン直下に直近10件(全体フィード固定)だけ流す小さなプレビュー。全文・スレッド切替は
 	# board_buttonから開くウィンドウ(board_panel)側で行う。背景を透かさず不透明気味にして、
 	# 他の要素の上に浮いて見えないようにする。
@@ -662,7 +675,7 @@ func _on_area_step_pressed(direction: int) -> void:
 ## 雇用/NPC管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel, license_panel]:
 		p.visible = (p == panel)
 	modal_blocker.visible = true
 	move_child(modal_blocker, get_child_count() - 1)
@@ -801,7 +814,7 @@ func _try_show_assignment_followup_tutorial() -> void:
 ## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
 ## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
 func _close_any_modal() -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel, license_panel]:
 		p.visible = false
 	modal_blocker.visible = false
 
@@ -861,6 +874,44 @@ func _refresh_action_log() -> void:
 
 ## 掲示板パネル(全体フィード/セクション別スレッド)。以前は右カラムに常設表示していたが、
 ## 他の機能と同じくサイドバーの「掲示板」ボタンから開くウィンドウに統合した。
+## ライセンス画面。文書の一覧と読み込みはLicenseInfo(license_info.gd)にあり、ここは表示だけを担当する。
+## 音楽などの素材を追加する時も、この関数は変更不要(LicenseInfo.ENTRIESに足す)。
+func _build_license_ui() -> void:
+	license_panel = PanelContainer.new()
+	license_panel.set_anchors_preset(Control.PRESET_CENTER)
+	license_panel.offset_left = -320
+	license_panel.offset_top = -240
+	license_panel.offset_right = 320
+	license_panel.offset_bottom = 240
+	license_panel.visible = false
+	add_child(license_panel)
+
+	var col := VBoxContainer.new()
+	license_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "ライセンス"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): _close_modal(license_panel))
+	header.add_child(close_button)
+
+	license_text = RichTextLabel.new()
+	license_text.bbcode_enabled = true
+	license_text.scroll_active = true
+	license_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	license_text.custom_minimum_size = Vector2(0, 320)
+	col.add_child(license_text)
+
+func _on_open_license_pressed() -> void:
+	license_text.text = LicenseInfo.to_bbcode() # 開く時に読み込む(起動を遅くしない)
+	license_text.scroll_to_line(0)
+	_open_modal(license_panel)
+
 ## ボタン直下の直近10件プレビュー(board_preview_log)は_build_ui()側で作っている。
 func _build_board_ui() -> void:
 	board_panel = PanelContainer.new()
