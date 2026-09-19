@@ -76,6 +76,19 @@ var map_scroll: ScrollContainer
 var map_canvas: Control
 var _map_panning: bool = false
 var _map_zoom: float = 1.0
+
+# 2本指のピンチでマップを拡大縮小するための状態(2026-09-19)。Android等のタッチ画面向け。
+# 専用のピンチイベントが届くかは環境次第なので、生のタッチ(ScreenTouch/ScreenDrag)の位置を自分で
+# 追跡し、2本の指の距離の比から倍率を求める。
+var _touch_points: Dictionary = {} # 指のindex -> 画面上の位置(押されている指だけ)
+var _pinch_active: bool = false
+var _pinch_prev_distance: float = 1.0
+var _pinch_prev_center: Vector2 = Vector2.ZERO
+var _pinch_target_zoom: float = 1.0 # 指の動きに追従して連続的に変わる目標倍率(実際のレイアウトへの反映は間引く)
+var _pinch_last_rebuild_msec: int = 0
+var _pinch_rebuild_cost_msec: int = 0 # 直近の再構築にかかった時間(遅い端末では反映の間隔を空けるのに使う)
+const PINCH_REBUILD_INTERVAL_MSEC := 90 # ピンチ中にマップを作り直す最短の間隔
+const PINCH_MIN_ZOOM_CHANGE := 0.02 # 倍率の変化(割合)がこれ未満なら、作り直しを省く
 var _active_area_id: String = "" # マップのエリアタブ(design.md 5.1節)で今表示中のエリア
 var area_tab_buttons: Dictionary = {} # area_id -> Button(選択状態・🔒表示の更新に使う)
 var area_option: OptionButton # タッチUI時のエリア選択プルダウン(area_tab_buttonsの代わりに使う)
@@ -90,6 +103,10 @@ var _touch_ui: bool = false
 const TOUCH_BUTTON_MARGIN_V := 16 # タッチUI時のボタン上下の内側余白(通常は6)。ボタン高さが約50pxになる
 const TOUCH_LIST_ROW_MARGIN := 10 # タッチUI時のTree行の上下余白
 const TOUCH_DIALOGUE_HEIGHT := 270 # タッチUI時の会話ウィンドウの高さ(通常は200)
+# 実機(Android等)で、UI全体を画面の四辺から最低これだけ内側に寄せる(表示上のpx)。切り欠きは
+# DisplayServer.get_display_safe_area()で避けられるが、角丸の画面の角はOSが半径を教えてくれない
+# 端末(moto g05は0と報告する)があるため、その分の余白を固定で確保する(_apply_safe_area参照)。
+const MOBILE_MIN_EDGE_MARGIN := 24.0
 
 const BACK_EXIT_WINDOW_MSEC := 2000 # 戻るキーを続けて押して終了するまでの猶予(何も開いていない時)
 var _last_back_press_msec: int = -100000
@@ -176,6 +193,8 @@ func _ready() -> void:
 	_build_section_assign_ui()
 	_build_license_ui()
 	_build_back_hint_ui()
+	_apply_safe_area()
+	get_window().size_changed.connect(_apply_safe_area) # 画面の向きが変わった時など
 	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめ、常に
 	# まっさらな新規プレイから始まるようにした(design.md 8.2節)。既存の進行を続けたい
 	# 場合は、セーブパネルから明示的に「このスロットをロードする」を選ぶ(一般的な
@@ -213,6 +232,11 @@ func _notification(what: int) -> void:
 		_save_and_quit()
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_on_go_back_requested()
+	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		# 裏に回った間に指を離されると、離した通知を受け取れず、押されたままの指が残ってしまう
+		if _pinch_active:
+			_end_pinch()
+		_touch_points.clear()
 
 func _save_and_quit() -> void:
 	SaveSystem.autosave()
@@ -272,6 +296,38 @@ func _build_back_hint_ui() -> void:
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	back_hint_panel.add_child(hint)
 	add_child(back_hint_panel) # 最後に追加して、他のパネル・会話の手前に表示する
+
+## 実機(Android等)で、切り欠き(ノッチ/パンチホール)や角丸の画面の角にUIが隠れないよう、UI全体
+## (このControl自身)を画面の四辺から内側に寄せる。FlutterのSafeAreaに当たる処理。
+## DisplayServer.get_display_safe_area()は切り欠きなどを避けた領域を、画面のピクセル座標で返す。
+## ストレッチ(canvas_items)で表示上のpxとは倍率が違うので、変換してから使う。角丸は取得できない
+## 端末があるため、どの辺にもMOBILE_MIN_EDGE_MARGINの余白を最低限確保する。
+## modal_blockerだけは、寄せたぶん外へ広げて、画面全体を覆ったままにする。デスクトップでは何もしない。
+func _apply_safe_area() -> void:
+	if not OS.has_feature("mobile"):
+		return
+	var window_size := Vector2(get_window().size)
+	if window_size.x <= 0.0 or window_size.y <= 0.0:
+		return
+	var to_viewport := get_viewport().get_visible_rect().size / window_size
+	var top_left := Vector2.ZERO
+	var bottom_right := Vector2.ZERO
+	var safe := DisplayServer.get_display_safe_area()
+	if safe.has_area():
+		top_left = Vector2(safe.position) * to_viewport
+		bottom_right = (window_size - Vector2(safe.end)) * to_viewport
+	var left := maxf(top_left.x, MOBILE_MIN_EDGE_MARGIN)
+	var top := maxf(top_left.y, MOBILE_MIN_EDGE_MARGIN)
+	var right := maxf(bottom_right.x, MOBILE_MIN_EDGE_MARGIN)
+	var bottom := maxf(bottom_right.y, MOBILE_MIN_EDGE_MARGIN)
+	offset_left = left
+	offset_top = top
+	offset_right = -right
+	offset_bottom = -bottom
+	modal_blocker.offset_left = -left
+	modal_blocker.offset_top = -top
+	modal_blocker.offset_right = right
+	modal_blocker.offset_bottom = bottom
 
 ## アプリ全体に1枚だけ適用する共通テーマ。「押せる/選べるもの」と「ただの文字」が
 ## 見た目でほとんど区別できない(押せるのに素の文字にしか見えない、選択してもわずかにしか
@@ -356,31 +412,42 @@ func _build_theme() -> void:
 		ui_theme.set_constant("inner_item_margin_bottom", "Tree", TOUCH_LIST_ROW_MARGIN)
 		ui_theme.set_constant("v_separation", "ItemList", 14)
 
-	var cjk_font := _load_system_cjk_font()
-	if cjk_font != null:
+	var fallback_fonts := _load_system_fallback_fonts()
+	if not fallback_fonts.is_empty():
 		var default_font := FontVariation.new()
 		default_font.base_font = ThemeDB.fallback_font
-		default_font.fallbacks = [cjk_font]
+		default_font.fallbacks = fallback_fonts
 		ui_theme.default_font = default_font
 
 	theme = ui_theme # rootのControl(このシーン自身)に設定するだけで、以降add_childする全子孫に伝播する
 
-## Android用: 端末に入っている日本語(CJK)フォントを、既定フォントのフォールバックとして返す。
-## 「[Day 1] 「古い洞窟」…」のように、英数字の直後に来る「「」などの記号が豆腐(□)になる問題への
-## 対策(2026-09-19)。Godotは英字の並びの直後にあるCJK記号を「英字」として扱い、CJKに対応しない
-## フォントをシステムのフォールバックに選んでしまう(Labelのlanguage指定やSystemFontの名前指定を
-## 試したが直らなかった)。フォントを同梱せず、端末のNoto Sans CJKを直接読み込んで登録することで、
-## アプリサイズを増やさずに直す(この端末で読み込み約34ms・メモリ約32MB)。ttcの先頭の顔(face 0)が
-## 日本語版なのはAndroid標準の並び(fonts.xmlでlang="ja"がindex=0)。ファイルが無い端末では
-## nullを返し、従来どおりシステムのフォールバックに任せる。デスクトップは対象外。
-func _load_system_cjk_font() -> Font:
-	const FONT_PATH := "/system/fonts/NotoSansCJK-Regular.ttc"
-	if not OS.has_feature("android") or not FileAccess.file_exists(FONT_PATH):
-		return null
-	var font := FontFile.new()
-	if font.load_dynamic_font(FONT_PATH) != OK:
-		return null
-	return font
+## Android用: 端末に入っているフォントを、既定フォントのフォールバックとして返す(日本語のCJKと絵文字)。
+##
+## (1) CJK(2026-09-19): 「[Day 1] 「古い洞窟」…」のように、英数字の直後に来る「「」などの記号が
+## 豆腐(□)になる問題への対策。Godotは英字の並びの直後にあるCJK記号を「英字」として扱い、CJKに
+## 対応しないフォントをシステムのフォールバックに選んでしまう(Labelのlanguage指定やSystemFontの
+## 名前指定を試したが直らなかった)。フォントを同梱せず、端末のNoto Sans CJKを直接読み込んで
+## 登録することで、アプリサイズを増やさずに直す(この端末で読み込み約34ms・メモリ約32MB)。ttcの
+## 先頭の顔(face 0)が日本語版なのはAndroid標準の並び(fonts.xmlでlang="ja"がindex=0)。
+##
+## (2) 絵文字(2026-09-19): マップの再構築が実機で約0.5秒かかっていた主因が、「📍」「🔒」を含む文字の
+## 描画(セクション名ボタンと鍵アイコン)で、絵文字のたびに端末のシステムフォントを探し直すため
+## だった(計測で、セクション1つあたり約60ms=文字設定とツリーへの追加が各約12ms)。絵文字フォントを
+## ここで読み込んでおけば、探し直しが要らなくなる(NotoColorEmoji.ttfは約2.7MB)。
+##
+## 見つからないファイルは飛ばし、無い端末では従来どおりシステムのフォールバックに任せる。
+## デスクトップは対象外。
+func _load_system_fallback_fonts() -> Array[Font]:
+	var fonts: Array[Font] = []
+	if not OS.has_feature("android"):
+		return fonts
+	for path in ["/system/fonts/NotoSansCJK-Regular.ttc", "/system/fonts/NotoColorEmoji.ttf"]:
+		if not FileAccess.file_exists(path):
+			continue
+		var font := FontFile.new()
+		if font.load_dynamic_font(path) == OK:
+			fonts.append(font)
+	return fonts
 
 ## マップのセクション名ボタン専用のスタイル(2026-09-14、「セクション名が押せると直感的に
 ## 分からない」という指摘への対応)。共有Theme([[godot_install_path]]の通常ボタン(青系)とは
@@ -2420,10 +2487,12 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	var title_button := Button.new()
 	# design.md 6.2節「推奨戦力」: セクション内で最も敵戦闘力が高い戦闘ゲートの値を、
 	# パーティの戦力と比較するための大まかな目安として表示する(戦闘ゲートが無ければ表示しない)。
+	# 表示しないセクションでも2行目に全角スペースを入れて、見出しボタンの高さを全セクションで揃える
+	# (1行だけだと、推奨戦力ありのセクションより見出しの帯が細くなってしまう。末尾の改行だけでは
+	# Buttonが空の行を数えないので、空白でも中身のある行にする)。
 	var recommended := Exploration.recommended_power_for_section(section_id)
-	title_button.text = "📍 " + WorldMap.sections[section_id]["name"]
-	if recommended > 0:
-		title_button.text += "\n推奨戦力: %d" % recommended
+	var title_text: String = "📍 " + WorldMap.sections[section_id]["name"] + "\n"
+	title_text += "推奨戦力: %d" % recommended if recommended > 0 else "　"
 	title_button.position = bounds.position + Vector2(4, 2) * _map_zoom
 	title_button.custom_minimum_size = Vector2(bounds.size.x - 8 * _map_zoom, 0)
 	title_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
@@ -2433,6 +2502,10 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	_apply_section_title_button_style(title_button)
 	title_button.pressed.connect(_on_section_name_pressed.bind(section_id))
 	map_canvas.add_child(title_button)
+	# 文字は、スタイルや文字サイズの上書きを全て済ませ、ツリーに入れた後に、最後に1回だけ設定する。
+	# 文字の形の計算(シェーピング)は、テーマの上書きが1つ入るたびにやり直され、1回が実機で数msかかる
+	# ため、先に文字を入れておくと1つのボタンで何度も計算していた(2026-09-19、実測)。
+	title_button.text = title_text
 	section_title_buttons[section_id] = title_button
 
 	# まだ誰も足を踏み入れておらず、隣接する突破済みノードも無いセクション(WorldMap.
@@ -2440,11 +2513,11 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	# 到達状況が変わるたびに_refresh_mapで行うので、ここでは作るだけ(常時mapに常駐させ、
 	# ダブルクリック判定は_on_map_double_clickでこの位置を直接ヒットテストする)。
 	var lock_icon := Label.new()
-	lock_icon.text = "🔒 未到達(%sで詳細)" % ("ダブルタップ" if _touch_ui else "ダブルクリック")
 	lock_icon.add_theme_font_size_override("font_size", max(9, roundi(12 * _map_zoom)))
 	lock_icon.modulate = Color(1, 0.82, 0.35, 0.95)
 	lock_icon.position = bounds.position + Vector2(6, bounds.size.y + 4 * _map_zoom)
 	map_canvas.add_child(lock_icon)
+	lock_icon.text = "🔒 未到達(%sで詳細)" % ("ダブルタップ" if _touch_ui else "ダブルクリック") # 文字は最後に(上と同じ理由)
 	section_lock_icons[section_id] = lock_icon
 
 func _create_node_box(id: String, cell_pos: Vector2) -> void:
@@ -2510,19 +2583,153 @@ func _on_map_canvas_gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 		_zoom_map(false, event.position)
 
-## マウスホイールでのズーム。カーソル直下にあったコンテンツ座標がズーム後も同じ画面位置に
-## 留まるよう、レイアウト再構築後にスクロール位置を計算し直す。
+## マウスホイールでのズーム(1段階ずつ)。
 func _zoom_map(zoom_in: bool, cursor_pos: Vector2) -> void:
+	_set_map_zoom(_map_zoom + (MAP_ZOOM_STEP if zoom_in else -MAP_ZOOM_STEP), cursor_pos)
+
+## マップを指定の倍率にする(範囲内に丸める)。cursor_posの直下にあったコンテンツ座標がズーム後も
+## 同じ画面位置に留まるよう、レイアウト再構築後にスクロール位置を計算し直す。cursor_posは
+## map_canvas内の座標(マウスのイベント位置、または画面上の位置からcanvasの位置を引いたもの)。
+func _set_map_zoom(target_zoom: float, cursor_pos: Vector2) -> void:
 	var old_zoom := _map_zoom
-	var new_zoom := clampf(old_zoom + (MAP_ZOOM_STEP if zoom_in else -MAP_ZOOM_STEP), MAP_ZOOM_MIN, MAP_ZOOM_MAX)
+	var new_zoom := clampf(target_zoom, MAP_ZOOM_MIN, MAP_ZOOM_MAX)
 	if is_equal_approx(new_zoom, old_zoom):
 		return
 	var viewport_pos := cursor_pos - Vector2(map_scroll.scroll_horizontal, map_scroll.scroll_vertical)
 	_map_zoom = new_zoom
 	_seed_demo_world()
+	# 拡大で内容が大きくなった分のスクロール範囲は、放っておくと次のレイアウト更新まで反映されない。すぐ下で
+	# 大きいスクロール位置を代入すると、古い(小さい)範囲に丸められて、拡大の中心がずれてしまう(ピンチで
+	# 一気に大きく拡大した時に実機で起きた。ホイールは少しずつなので目立たなかった)。かといって次の
+	# フレームまで待つと、丸められた位置の画面が1フレーム表示されて、位置がずれて見える。そこで、
+	# スクロールバーの範囲(max_value)を、新しい内容の大きさに、その場で更新しておく。次のレイアウト更新で
+	# ScrollContainerが同じ値に設定し直すので、矛盾しない(実機で確認済み)。Container.NOTIFICATION_
+	# SORT_CHILDRENを送っても、この範囲は更新されなかった(実測)。
+	map_scroll.get_h_scroll_bar().max_value = map_canvas.custom_minimum_size.x
+	map_scroll.get_v_scroll_bar().max_value = map_canvas.custom_minimum_size.y
 	var new_content_pos := cursor_pos * (new_zoom / old_zoom)
-	map_scroll.scroll_horizontal = int(new_content_pos.x - viewport_pos.x)
-	map_scroll.scroll_vertical = int(new_content_pos.y - viewport_pos.y)
+	var new_scroll := Vector2i(int(new_content_pos.x - viewport_pos.x), int(new_content_pos.y - viewport_pos.y))
+	map_scroll.scroll_horizontal = new_scroll.x
+	map_scroll.scroll_vertical = new_scroll.y
+	# それでも、このフレームのレイアウト更新の途中で、横のスクロール位置が再構築前の範囲に丸め直されて
+	# しまう(実機でフレームごとに追って確認: 直後719 → 次のフレーム221)。遅延呼び出しは、このフレームの
+	# レイアウト更新(コンテナの更新は、その中で更に遅延呼び出しされる)よりも後に実行されるよう、
+	# 2段にして、描画の前に位置を確定させる。
+	_apply_map_scroll_deferred.call_deferred(new_scroll, 1)
+
+func _apply_map_scroll_deferred(scroll_pos: Vector2i, remaining_hops: int) -> void:
+	if remaining_hops > 0:
+		_apply_map_scroll_deferred.call_deferred(scroll_pos, remaining_hops - 1)
+		return
+	map_scroll.scroll_horizontal = scroll_pos.x
+	map_scroll.scroll_vertical = scroll_pos.y
+
+const PINCH_DEBUG := true # TODO: 実機確認が済んだら、この定数とprintごと外す
+
+## 生のタッチを最初に見て、マップ上の2本指ピンチを検出する(ボタンなどのControlより先に呼ばれる)。
+##
+## ピンチ中は、指の動きに合わせて、本物のレイアウトを一定間隔で作り直す(_rebuild_for_pinch)。
+## 以前は、ピンチ中は見た目だけを拡大縮小し、離した時に1回だけ作り直していたが、(1)縮小して
+## マップが画面より小さくなると、見た目は中央に寄るのに、離した後のレイアウトは左上に寄る、(2)縦方向は
+## 倍率に比例しない(文字の最小サイズなど)ため、離した後に位置が飛ぶ、という食い違いで、実機で酔う
+## ほど不快だった。再構築を実機で約0.5秒→約60msに軽くできた(絵文字フォントの登録と、文字を最後に
+## 1回だけ設定する変更)ので、常に本物のレイアウトだけを見せる方式にした。
+func _input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		_on_touch_changed(event)
+	elif event is InputEventScreenDrag:
+		_on_touch_dragged(event)
+	elif _pinch_active and event is InputEventMouse:
+		# 1本目の指から作られる擬似マウス(パン・クリック)を止める。止めないと、ピンチしながらマップが
+		# 1本指でパンされたり、指の下のボタンが押されたりする
+		get_viewport().set_input_as_handled()
+
+func _on_touch_changed(event: InputEventScreenTouch) -> void:
+	if event.pressed:
+		_touch_points[event.index] = event.position
+		if PINCH_DEBUG:
+			print("[pinch] touch down idx=%d pos=%s fingers=%d" % [event.index, str(event.position), _touch_points.size()])
+		if not _pinch_active and _touch_points.size() == 2 and _can_start_pinch():
+			_start_pinch()
+		if _pinch_active:
+			get_viewport().set_input_as_handled() # 追加の指の押下を、ScrollContainerなどに渡さない
+	else:
+		_touch_points.erase(event.index)
+		if PINCH_DEBUG:
+			print("[pinch] touch up idx=%d fingers=%d" % [event.index, _touch_points.size()])
+		if _pinch_active and _touch_points.size() < 2:
+			_end_pinch()
+
+func _on_touch_dragged(event: InputEventScreenDrag) -> void:
+	if _touch_points.has(event.index):
+		_touch_points[event.index] = event.position
+	if not _pinch_active:
+		return
+	get_viewport().set_input_as_handled() # ピンチ中の指の動きは、ScrollContainerの1本指スクロールに渡さない
+	if _touch_points.size() < 2:
+		return
+	var points := _touch_points.values()
+	var a: Vector2 = points[0]
+	var b: Vector2 = points[1]
+	var distance := maxf(a.distance_to(b), 1.0)
+	var center := (a + b) * 0.5
+	# 2本指の中心の動きで、マップをパンする(拡大縮小と同時に、指の間の場所を追う)
+	var moved := center - _pinch_prev_center
+	map_scroll.scroll_horizontal -= int(moved.x)
+	map_scroll.scroll_vertical -= int(moved.y)
+	_pinch_target_zoom = clampf(_pinch_target_zoom * distance / _pinch_prev_distance, MAP_ZOOM_MIN, MAP_ZOOM_MAX)
+	_pinch_prev_distance = distance
+	_pinch_prev_center = center
+	_rebuild_for_pinch(false)
+
+## 2本の指が両方ともマップの上にあり、ポップアップや会話が開いていない時だけ、ピンチを始める。
+func _can_start_pinch() -> bool:
+	if modal_blocker.visible or dialogue_panel.visible:
+		return false
+	var map_rect := map_scroll.get_global_rect()
+	for point in _touch_points.values():
+		if not map_rect.has_point(point):
+			return false
+	return true
+
+func _start_pinch() -> void:
+	var points := _touch_points.values()
+	var a: Vector2 = points[0]
+	var b: Vector2 = points[1]
+	_pinch_active = true
+	_map_panning = false
+	_pinch_prev_distance = maxf(a.distance_to(b), 1.0)
+	_pinch_prev_center = (a + b) * 0.5
+	_pinch_target_zoom = _map_zoom
+	_pinch_last_rebuild_msec = Time.get_ticks_msec()
+	if PINCH_DEBUG:
+		print("[pinch] START zoom=%.2f distance=%.0f center=%s" % [_map_zoom, _pinch_prev_distance, str(_pinch_prev_center)])
+
+## 指を離した時: 間引きに関係なく、最後の目標倍率に合わせる。
+func _end_pinch() -> void:
+	_rebuild_for_pinch(true)
+	_pinch_active = false
+	if PINCH_DEBUG:
+		print("[pinch] END zoom=%.2f" % _map_zoom)
+
+## 目標倍率で、本物のレイアウトを作り直す。再構築は重いので、通常は前回から一定時間あけ(遅い端末では
+## 直近の再構築にかかった時間に合わせて広げ)、倍率の変化が小さい間は省く。forceは、指を離した時用。
+## 指の中心にあるマップの場所は、作り直しの前後で同じ画面位置に留まる(_set_map_zoom)。
+func _rebuild_for_pinch(force: bool) -> void:
+	var now := Time.get_ticks_msec()
+	var interval := maxi(PINCH_REBUILD_INTERVAL_MSEC, int(_pinch_rebuild_cost_msec * 1.5))
+	if not force and now - _pinch_last_rebuild_msec < interval:
+		return
+	if absf(_pinch_target_zoom - _map_zoom) / _map_zoom < (0.0 if force else PINCH_MIN_ZOOM_CHANGE):
+		return
+	# 指の中心の、map_canvas内の座標(=画面上の位置 - マップ領域の左上 + 今のスクロール量)
+	var scroll := Vector2(map_scroll.scroll_horizontal, map_scroll.scroll_vertical)
+	var cursor_in_canvas := _pinch_prev_center - map_scroll.get_global_rect().position + scroll
+	_set_map_zoom(_pinch_target_zoom, cursor_in_canvas)
+	_pinch_last_rebuild_msec = Time.get_ticks_msec()
+	_pinch_rebuild_cost_msec = _pinch_last_rebuild_msec - now
+	if PINCH_DEBUG:
+		print("[pinch] rebuild -> zoom %.2f (%d ms)" % [_map_zoom, _pinch_rebuild_cost_msec])
 
 ## フロア(ノード)の枠内なら詳細ポップアップ、それ以外でセクション枠内ならそのセクションの
 ## 掲示板スレッドを開く。フロアの箱の方がセクション枠より内側にある(小さい)ので、先に
