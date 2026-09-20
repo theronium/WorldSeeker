@@ -24,7 +24,13 @@ var party_grid: GridContainer
 var party_form_list: ItemList # 未所属NPCから最大4人を選ぶ簡易選択(多重選択)
 var party_form_status_label: Label
 var party_detail_label: Label
-var party_member_list: ItemList # 選択中パーティの並び順(上下移動ボタンで編成)
+# パーティ詳細は2つのタブ(メンバー・並び順/担当セクション)に分けてある(2026-09-19)。
+var party_member_row: HBoxContainer # 選択中パーティのメンバーを肖像付きのカードで左(先頭)から並べる
+var party_member_move_buttons: Array[Button] = [] # 前へ/後ろへ。メンバーのカードを選んでいる間だけ押せる
+var _selected_member_index: int = -1 # 並び順の中で選んでいるメンバー(-1は未選択)
+var party_tab_buttons: Array[Button] = [] # [メンバー, 担当セクション]
+var party_tab_pages: Array[Control] = []
+var section_action_buttons: Array[Button] = [] # 割り当て/ログ/予測。セクションを選んでいる間だけ押せる
 var section_tree: Tree
 var section_forecast_label: Label
 var post_clear_behavior_buttons: Dictionary = {} # Parties.PostClearBehavior:int -> Button
@@ -65,7 +71,13 @@ var time_label: Label
 var speed_buttons: Dictionary = {} # multiplier:float -> Button
 var board_log: RichTextLabel
 var board_title_label: Label
-var board_preview_log: RichTextLabel
+var board_preview_log: RichTextLabel # デスクトップは左メニュー内の常時プレビュー、タッチUIは右端のboard_overlay内
+var board_overlay: PanelContainer # タッチUI時だけ: 掲示板ボタンで出し入れする、右端の半透明の直近ログ
+var board_toggle_button: Button # タッチUI時の掲示板ボタン(overlayが出ている間は押された状態にする)
+var area_nav_panel: PanelContainer # マップ上部にフロートするエリア選択バー
+var left_scroll: ScrollContainer
+var left_menu: VBoxContainer
+var _fit_left_menu_pending: bool = false
 var board_panel: PanelContainer
 var node_detail_panel: PanelContainer
 var node_detail_title: Label
@@ -107,6 +119,12 @@ const TOUCH_DIALOGUE_HEIGHT := 270 # タッチUI時の会話ウィンドウの�
 # DisplayServer.get_display_safe_area()で避けられるが、角丸の画面の角はOSが半径を教えてくれない
 # 端末(moto g05は0と報告する)があるため、その分の余白を固定で確保する(_apply_safe_area参照)。
 const MOBILE_MIN_EDGE_MARGIN := 24.0
+# タッチUIの左メニューのボタンの内側余白(上下)。画面が低くても縦に収まるよう、これを下限にして小さく作り、
+# 余った高さがあれば_fit_left_menu()が各ボタンをTOUCH_BUTTON_MARGIN_V相当まで広げる。
+const LEFT_MENU_BUTTON_MARGIN_V := 4
+const LEFT_MENU_BOTTOM_MARGIN := 12.0 # 左メニューの最下のボタンの下に空ける余白
+const LEFT_MENU_RIGHT_MARGIN := 12 # 左メニューのボタンの右に空ける余白(マップとの間)
+const BOARD_OVERLAY_WIDTH := 380.0 # タッチUI時の掲示板ウィンドウの幅(表示上のpx)
 
 const BACK_EXIT_WINDOW_MSEC := 2000 # 戻るキーを続けて押して終了するまでの猶予(何も開いていない時)
 var _last_back_press_msec: int = -100000
@@ -119,6 +137,9 @@ var dialogue_panel: PanelContainer
 var left_slot: VBoxContainer
 var right_slot: VBoxContainer
 var speaker_name_label: Label
+var dialogue_kind_badge: PanelContainer # 会話の種別(ボス戦/戦闘/技能…)と結果(突破/失敗)を示すバッジ
+var dialogue_kind_label: Label
+var _dialogue_accent: Color = Color.TRANSPARENT # 今の会話の色(選択肢ボタンにも同じ色を付けるために覚えておく)
 var dialogue_text_label: Label
 var choices_box: VBoxContainer
 var advance_hint: Button
@@ -221,7 +242,7 @@ func _ready() -> void:
 	# 事故につながる(実際に一度発生させて修正した)。
 	if not SaveSystem.tutorial_intro_seen:
 		EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_intro_seen(), CONNECT_ONE_SHOT)
-		EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT)
+		EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT, "guide")
 	TimeSystem.mark_boot_complete()
 
 func _process(_delta: float) -> void:
@@ -259,6 +280,9 @@ func _on_go_back_requested() -> void:
 		return
 	if modal_blocker.visible:
 		_close_any_modal()
+		return
+	if board_overlay != null and board_overlay.visible:
+		_set_board_overlay_visible(false)
 		return
 	if dialogue_panel.visible:
 		return # 会話中は誤って終了しないよう何もしない(「次へ」で進める)
@@ -535,14 +559,34 @@ func _build_ui() -> void:
 	modal_blocker.visible = false
 	add_child(modal_blocker)
 
-	var left_scroll := ScrollContainer.new()
+	left_scroll = ScrollContainer.new()
 	left_scroll.custom_minimum_size = Vector2(240, 0)
 	root.add_child(left_scroll)
 
 	var left := VBoxContainer.new()
 	left.custom_minimum_size = Vector2(240, 0)
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left_scroll.add_child(left)
+	if _touch_ui:
+		# スクロールバーは出さない(全部のボタンが収まる高さに_fit_left_menuが合わせるため。万一収まらない
+		# 小さい画面では、ボタン以外をドラッグすれば動かせる)。横には動かさない。ボタンがスクロールバーや
+		# マップの縁に張り付かないよう、ボタン列の右に余白を置く(ボタン自体の幅は変えない)。
+		left_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+		left_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		var left_margin := MarginContainer.new()
+		left_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		left_margin.add_theme_constant_override("margin_right", LEFT_MENU_RIGHT_MARGIN)
+		left_scroll.add_child(left_margin)
+		left_margin.add_child(left)
+	else:
+		left_scroll.add_child(left)
+	left_menu = left
+	if _touch_ui:
+		# スクロールしなくても全部のボタンが画面に収まるよう、左メニューのボタンだけ余白を小さく作る。
+		# 高さの調整は_fit_left_menu()。
+		left.theme = _compact_button_theme()
+		# 画面サイズの変化と、行やラベルの増減・高さの変化(次の月へボタンの出入り、文字の設定など)のたびに取り直す
+		left_scroll.resized.connect(_queue_fit_left_menu)
+		left.minimum_size_changed.connect(_queue_fit_left_menu)
 
 	funds_label = Label.new()
 	left.add_child(funds_label)
@@ -613,38 +657,51 @@ func _build_ui() -> void:
 
 	var board_button := Button.new()
 	board_button.text = "掲示板"
-	board_button.pressed.connect(_on_open_board_pressed)
+	if _touch_ui:
+		# タッチUIでは、メニューに直近ログを常時置く余裕が無いので、ボタンで右端の半透明ウィンドウを
+		# 出し入れする(_build_board_overlay)。開いている間はボタンが押された状態になる。
+		board_button.toggle_mode = true
+		board_button.toggled.connect(_set_board_overlay_visible)
+		board_toggle_button = board_button
+	else:
+		board_button.pressed.connect(_on_open_board_pressed)
 	left.add_child(board_button)
 
 	# ライセンス表示(画像・Godot・godot-sqlite、将来は音楽なども)。日常的には使わないので、メニューの
-	# ボタンとしては一番下に置く。掲示板プレビュー(ボタンではなくログ表示)より上にしてあるのは、
-	# タッチUIではこのメニューが画面より縦に長くなり、ボタンの上からのドラッグではスクロールできない
-	# (Godotのボタンがドラッグを受け止める)ため、プレビューの下だと指が届かなくなるから。
+	# ボタンとしては一番下に置く。
 	var license_button := Button.new()
 	license_button.text = "ライセンス"
 	license_button.pressed.connect(_on_open_license_pressed)
 	left.add_child(license_button)
 
-	# ボタン直下に直近10件(全体フィード固定)だけ流す小さなプレビュー。全文・スレッド切替は
-	# board_buttonから開くウィンドウ(board_panel)側で行う。背景を透かさず不透明気味にして、
-	# 他の要素の上に浮いて見えないようにする。
-	var board_preview_panel := PanelContainer.new()
-	var board_preview_style := StyleBoxFlat.new()
-	board_preview_style.bg_color = Color(0.05, 0.05, 0.07, 0.95)
-	board_preview_style.set_border_width_all(1)
-	board_preview_style.border_color = Color(1, 1, 1, 0.15)
-	board_preview_style.content_margin_left = 4
-	board_preview_style.content_margin_right = 4
-	board_preview_style.content_margin_top = 4
-	board_preview_style.content_margin_bottom = 4
-	board_preview_panel.add_theme_stylebox_override("panel", board_preview_style)
-	left.add_child(board_preview_panel)
+	if _touch_ui:
+		# 最下のボタンが画面の下端に張り付かないよう、下に余白を置く(_fit_left_menuの高さの計算にも含まれる)
+		var bottom_spacer := Control.new()
+		bottom_spacer.custom_minimum_size = Vector2(0, LEFT_MENU_BOTTOM_MARGIN)
+		bottom_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		left.add_child(bottom_spacer)
 
-	board_preview_log = RichTextLabel.new()
-	board_preview_log.custom_minimum_size = Vector2(0, 150)
-	board_preview_log.scroll_active = true
-	board_preview_log.add_theme_font_size_override("normal_font_size", 11)
-	board_preview_panel.add_child(board_preview_log)
+	if not _touch_ui:
+		# ボタン直下に直近10件(全体フィード固定)だけ流す小さなプレビュー。全文・スレッド切替は
+		# board_buttonから開くウィンドウ(board_panel)側で行う。背景を透かさず不透明気味にして、
+		# 他の要素の上に浮いて見えないようにする。
+		var board_preview_panel := PanelContainer.new()
+		var board_preview_style := StyleBoxFlat.new()
+		board_preview_style.bg_color = Color(0.05, 0.05, 0.07, 0.95)
+		board_preview_style.set_border_width_all(1)
+		board_preview_style.border_color = Color(1, 1, 1, 0.15)
+		board_preview_style.content_margin_left = 4
+		board_preview_style.content_margin_right = 4
+		board_preview_style.content_margin_top = 4
+		board_preview_style.content_margin_bottom = 4
+		board_preview_panel.add_theme_stylebox_override("panel", board_preview_style)
+		left.add_child(board_preview_panel)
+
+		board_preview_log = RichTextLabel.new()
+		board_preview_log.custom_minimum_size = Vector2(0, 150)
+		board_preview_log.scroll_active = true
+		board_preview_log.add_theme_font_size_override("normal_font_size", 11)
+		board_preview_panel.add_child(board_preview_log)
 
 	# マップが縦に長くエリア間の移動が大変なため、マップ領域(map_area)を作って
 	# map_scrollを全面に敷き、その上にエリア選択ボタンをフロートで重ねる。
@@ -669,7 +726,7 @@ func _build_ui() -> void:
 	# 選んだエリアのセクションだけを表示する方式にした。map_scrollの後に追加することで
 	# 手前に重ねて表示する。WorldMap.areasはオートロードのWorldDataが既に流し込み済みなので、
 	# ボタン自体はここで一度作ればよい(選択状態・🔒表示は_refresh_area_tabsで更新する)。
-	var area_nav_panel := PanelContainer.new()
+	area_nav_panel = PanelContainer.new()
 	area_nav_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	var area_nav_style := StyleBoxFlat.new()
 	area_nav_style.bg_color = Color(0.05, 0.05, 0.07, 0.9)
@@ -700,6 +757,8 @@ func _build_ui() -> void:
 			area_tab_buttons[area_id] = area_button
 	if _active_area_id == "" and not WorldMap.areas.is_empty():
 		_active_area_id = WorldMap.areas.keys()[0] # 既定は最初のエリア(王国)
+	if _touch_ui:
+		_build_board_overlay(map_area) # エリアバーの後に追加して、その手前に重ねる
 
 ## タッチUI用のエリア選択(2026-09-19)。横スクロールのタブ列は、指でなぞるとバー自体が動いてしまい
 ## 押し辛かったため、「◀ [現在のエリア ▼] ▶」に置き換えた。中央のプルダウンで任意のエリアへ一発で
@@ -774,12 +833,26 @@ func _build_dialogue_ui() -> void:
 	center.custom_minimum_size = Vector2(0, dialogue_height)
 	row.add_child(center)
 
+	# 発言者名の行: 左に名前、右に会話の種別バッジ(_apply_dialogue_style)
+	var name_row := HBoxContainer.new()
+	center.add_child(name_row)
+
 	speaker_name_label = Label.new()
 	speaker_name_label.add_theme_font_size_override("font_size", 20)
-	center.add_child(speaker_name_label)
+	speaker_name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_row.add_child(speaker_name_label)
+
+	dialogue_kind_badge = PanelContainer.new()
+	dialogue_kind_badge.visible = false
+	dialogue_kind_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	name_row.add_child(dialogue_kind_badge)
+
+	dialogue_kind_label = Label.new()
+	dialogue_kind_label.add_theme_font_size_override("font_size", 14)
+	dialogue_kind_badge.add_child(dialogue_kind_label)
 
 	dialogue_text_label = Label.new()
-	dialogue_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	dialogue_text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dialogue_text_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	center.add_child(dialogue_text_label)
 
@@ -816,10 +889,84 @@ func _highlight_portrait_slot(slot: VBoxContainer, character_name: String) -> vo
 	slot.modulate = Color(1, 1, 1, 1)
 	slot.get_child(1).text = character_name
 
+## イベント会話の種別ごとの表示スタイル(2026-09-20)。パネルの縁と背景、発言者名、種別バッジ、次へ/選択肢の
+## ボタンが、この色(accent)で揃う。種別はEventDialogue.play()の引数で決まる(フロアのイベントは、ゲートの種類から
+## WorldMap.event_kind_for_nodeが自動で決める)。色の意味: ボス戦=赤、戦闘=朱、技能=青(通常の進行)、
+## アイテム=金、血筋=紫、案内=灰。結果(突破/失敗)は色を変えず、バッジの文字と、失敗時の彩度の低下で示す。
+const EVENT_STYLES := {
+	"boss": {"label": "ボス戦", "accent": Color(0.92, 0.26, 0.24)},
+	"combat": {"label": "戦闘", "accent": Color(0.95, 0.55, 0.2)},
+	"skill": {"label": "技能", "accent": Color(0.32, 0.58, 0.96)},
+	"item": {"label": "アイテム", "accent": Color(0.95, 0.78, 0.25)},
+	"bloodline": {"label": "血筋", "accent": Color(0.68, 0.45, 0.92)},
+	"guide": {"label": "案内", "accent": Color(0.62, 0.68, 0.74)},
+}
+const EVENT_RESULT_LABELS := {"pass": "突破", "fail": "失敗"}
+
+func _apply_dialogue_style(kind: String, result: String) -> void:
+	if not EVENT_STYLES.has(kind):
+		# 種別なし: 従来の見た目に戻す
+		_dialogue_accent = Color.TRANSPARENT
+		dialogue_panel.remove_theme_stylebox_override("panel")
+		speaker_name_label.remove_theme_color_override("font_color")
+		dialogue_kind_badge.visible = false
+		_apply_dialogue_button_style(advance_hint)
+		return
+
+	var accent: Color = EVENT_STYLES[kind]["accent"]
+	if result == "fail":
+		accent = accent.lerp(Color(0.5, 0.5, 0.5), 0.45) # 失敗は、同じ色味のまま彩度を落とす
+	_dialogue_accent = accent
+
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(accent.darkened(0.8), 0.96)
+	panel_style.border_color = accent
+	panel_style.set_border_width_all(3)
+	panel_style.border_width_top = 6
+	panel_style.set_corner_radius_all(6)
+	panel_style.set_content_margin_all(8)
+	dialogue_panel.add_theme_stylebox_override("panel", panel_style)
+	speaker_name_label.add_theme_color_override("font_color", accent.lightened(0.55))
+
+	var badge_style := StyleBoxFlat.new()
+	badge_style.bg_color = accent.darkened(0.1)
+	badge_style.set_corner_radius_all(8)
+	badge_style.content_margin_left = 10
+	badge_style.content_margin_right = 10
+	badge_style.content_margin_top = 2
+	badge_style.content_margin_bottom = 2
+	dialogue_kind_badge.add_theme_stylebox_override("panel", badge_style)
+	var badge_text: String = EVENT_STYLES[kind]["label"]
+	if EVENT_RESULT_LABELS.has(result):
+		badge_text += " ― " + EVENT_RESULT_LABELS[result]
+	dialogue_kind_label.text = badge_text
+	dialogue_kind_badge.visible = true
+	_apply_dialogue_button_style(advance_hint)
+
+## 会話の「次へ」や選択肢のボタンに、今の会話の色(_dialogue_accent)を付ける。種別なしなら共通テーマに戻す。
+func _apply_dialogue_button_style(button: Button) -> void:
+	if _dialogue_accent == Color.TRANSPARENT:
+		for state in ["normal", "hover", "pressed", "focus"]:
+			button.remove_theme_stylebox_override(state)
+		return
+	var margin_v: int = TOUCH_BUTTON_MARGIN_V if _touch_ui else 6
+	for state in ["normal", "hover", "pressed"]:
+		var style := StyleBoxFlat.new()
+		style.bg_color = _dialogue_accent.darkened({"normal": 0.55, "hover": 0.4, "pressed": 0.2}[state])
+		style.border_color = _dialogue_accent
+		style.set_border_width_all(2)
+		style.set_corner_radius_all(4)
+		style.content_margin_left = 10
+		style.content_margin_right = 10
+		style.content_margin_top = margin_v
+		style.content_margin_bottom = margin_v
+		button.add_theme_stylebox_override(state, style)
+
 func _on_dialogue_line_shown(line: Dictionary) -> void:
 	dialogue_panel.visible = true
 	speaker_name_label.text = line.get("name", "")
 	dialogue_text_label.text = line.get("text", "")
+	_apply_dialogue_style(line.get("kind", EventDialogue.current_kind), line.get("result", EventDialogue.current_result))
 
 	var side: String = line.get("side", "none")
 	if side == "left":
@@ -841,6 +988,7 @@ func _on_dialogue_line_shown(line: Dictionary) -> void:
 		var choice_button := Button.new()
 		choice_button.text = choices[i]["label"]
 		choice_button.pressed.connect(func(): EventDialogue.choose(i))
+		_apply_dialogue_button_style(choice_button)
 		choices_box.add_child(choice_button)
 
 func _on_dialogue_finished(_outcome: String) -> void:
@@ -876,7 +1024,7 @@ func _try_show_assignment_followup_tutorial() -> void:
 	# (PARTY_TUTORIAL_SCRIPT再生箇所と同じ理由)。先に閉じてから再生する。
 	_close_any_modal()
 	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_assignment_followup_seen(), CONNECT_ONE_SHOT)
-	EventDialogue.play(INTRO_TUTORIAL_PART2_SCRIPT)
+	EventDialogue.play(INTRO_TUTORIAL_PART2_SCRIPT, "guide")
 
 ## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
 ## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
@@ -1020,6 +1168,113 @@ func _on_open_board_pressed() -> void:
 	_open_modal(board_panel)
 	_refresh_board()
 
+## タッチUIの掲示板ウィンドウ(右端に重ねる半透明の直近10件、全体フィード固定)。デスクトップの左メニュー内の
+## 常時プレビューの代わりで、掲示板ボタンで出し入れする(_set_board_overlay_visible)。全文・スレッド切替は、
+## 「全文」で従来のウィンドウ(board_panel)を開く。マップの上に重ねるので、背景を半透明にしてマップが透ける。
+func _build_board_overlay(map_area: Control) -> void:
+	board_overlay = PanelContainer.new()
+	board_overlay.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	board_overlay.offset_left = -BOARD_OVERLAY_WIDTH
+	board_overlay.visible = false
+	board_overlay.theme = _compact_button_theme() # 見出しの小さなボタン用
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.07, 0.72)
+	style.border_color = Color(1, 1, 1, 0.3)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(6)
+	board_overlay.add_theme_stylebox_override("panel", style)
+	map_area.add_child(board_overlay)
+
+	var col := VBoxContainer.new()
+	board_overlay.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+
+	var title := Label.new()
+	title.text = "掲示板"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+
+	var full_button := Button.new()
+	full_button.text = "全文"
+	full_button.pressed.connect(func():
+		_set_board_overlay_visible(false)
+		_on_open_board_pressed())
+	header.add_child(full_button)
+
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(_set_board_overlay_visible.bind(false))
+	header.add_child(close_button)
+
+	board_preview_log = RichTextLabel.new()
+	board_preview_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	board_preview_log.scroll_following = true # 古い順に並ぶので、はみ出す時は最新が見えるようにする
+	board_preview_log.add_theme_font_size_override("normal_font_size", 13)
+	col.add_child(board_preview_log)
+
+func _set_board_overlay_visible(shown: bool) -> void:
+	board_overlay.visible = shown
+	board_toggle_button.set_pressed_no_signal(shown) # ×や「全文」で閉じた時も、ボタンの押された状態を戻す
+	if shown:
+		# エリア選択バーの下から画面の下端まで
+		board_overlay.offset_top = area_nav_panel.size.y + 4
+		board_overlay.offset_bottom = -8
+		_refresh_board()
+
+## ボタンの内側余白(上下)を小さくしたテーマ。共通テーマのボタンのスタイルを複製して、余白だけ変える。
+## 左メニューや掲示板ウィンドウなど、縦の余裕が無い場所のControlに設定して使う。
+func _compact_button_theme() -> Theme:
+	var compact := Theme.new()
+	for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var style: StyleBoxFlat = theme.get_stylebox(state, "Button").duplicate()
+		style.content_margin_top = LEFT_MENU_BUTTON_MARGIN_V
+		style.content_margin_bottom = LEFT_MENU_BUTTON_MARGIN_V
+		compact.set_stylebox(state, "Button", style)
+	return compact
+
+## タッチUIの左メニューを、スクロール無しで画面に収める(可能な範囲で)。ボタンの内側余白は小さく作って
+## あるので、まずその「自然な高さ」で並べた時の合計を求め、画面の高さに余りがあれば、行数で割った分だけ
+## 各ボタンの行を縦に広げる。広げる幅には上限があり、以前の見た目(TOUCH_BUTTON_MARGIN_V)より大きくは
+## しない。小さい画面で自然な高さでも収まらない場合は、そのまま(従来どおりスクロールになる)。
+##
+## 合計は、メニュー全体の最小サイズ(広げた分を含み、文字の設定などのタイミングで古い値が残る)を
+## 使わず、各行の自然な高さ(get_minimum_size)と、ラベルの高さ、行の間隔から直接足して求める。
+## 広げた結果でメニューの最小サイズが変わっても同じ値を求め直すだけなので、繰り返しは収束する。
+func _fit_left_menu() -> void:
+	_fit_left_menu_pending = false
+	if left_scroll == null or left_menu == null:
+		return
+	var rows: Array[Control] = []
+	var natural_total := 0.0
+	var visible_count := 0
+	for child in left_menu.get_children():
+		if not child.visible:
+			continue
+		visible_count += 1
+		# ボタンと、倍速ボタンの行(HBoxContainer)が対象。文字ラベルは、そのままの高さで数える
+		if child is Button or child is HBoxContainer:
+			rows.append(child)
+			natural_total += child.get_minimum_size().y
+		else:
+			natural_total += child.get_combined_minimum_size().y
+	if rows.is_empty():
+		return
+	natural_total += left_menu.get_theme_constant("separation") * (visible_count - 1)
+	var max_extra := float(TOUCH_BUTTON_MARGIN_V - LEFT_MENU_BUTTON_MARGIN_V) * 2.0
+	var extra := clampf((left_scroll.size.y - natural_total) / rows.size(), 0.0, max_extra)
+	for row in rows:
+		row.custom_minimum_size.y = row.get_minimum_size().y + extra
+
+## 左メニューの高さの調整を、このフレームの終わりに1回だけ行う(短い間に何度も呼ばれても1回にまとめる)。
+func _queue_fit_left_menu() -> void:
+	if _fit_left_menu_pending:
+		return
+	_fit_left_menu_pending = true
+	_fit_left_menu.call_deferred()
+
 ## フロア詳細パネル。マップ上でフロアの箱をダブルクリックすると開く(_on_map_double_click)。
 func _build_node_detail_ui() -> void:
 	node_detail_panel = PanelContainer.new()
@@ -1074,7 +1329,7 @@ func _build_section_assign_ui() -> void:
 
 	section_assign_title = Label.new()
 	section_assign_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	section_assign_title.autowrap_mode = TextServer.AUTOWRAP_WORD
+	section_assign_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	section_assign_title.add_theme_font_size_override("font_size", 16)
 	header.add_child(section_assign_title)
 
@@ -1085,7 +1340,7 @@ func _build_section_assign_ui() -> void:
 
 	var hint_label := Label.new()
 	hint_label.text = "どのパーティをここへ割り当てますか?(未割当のパーティは赤く強調表示しています)"
-	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(hint_label)
 
 	var scroll := ScrollContainer.new()
@@ -1099,7 +1354,7 @@ func _build_section_assign_ui() -> void:
 	scroll.add_child(section_assign_list)
 
 	section_assign_status_label = Label.new()
-	section_assign_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	section_assign_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(section_assign_status_label)
 
 	var form_party_shortcut := Button.new()
@@ -1166,7 +1421,7 @@ func _create_section_assign_row(party: Dictionary) -> Control:
 
 	var sub_label := Label.new()
 	sub_label.modulate = Color(1, 1, 1, 0.75)
-	sub_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	sub_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	sub_label.text = "現在: %s / 状態: %s / 戦力: %d" % [section_name, _party_status_text(party), Parties.power(party["id"])]
 	info.add_child(sub_label)
 
@@ -1231,7 +1486,7 @@ func _build_hire_ui() -> void:
 	col.add_child(hire_button)
 
 	hire_status_label = Label.new()
-	hire_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	hire_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hire_status_label.modulate = Color(1, 1, 1, 0.8)
 	col.add_child(hire_status_label)
 
@@ -1299,7 +1554,7 @@ func _build_npc_roster_view(col: VBoxContainer) -> void:
 	# コスト表示をボタン本体の文字列に埋め込むと、桁が増えるたびにボタンの最小幅が伸びて
 	# 押し広げてしまっていたため、ボタンの文言は固定にして数値は別行のLabelへ分離した。
 	facility_info_label = Label.new()
-	facility_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	facility_info_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	facility_info_label.add_theme_font_size_override("font_size", 12)
 	facility_info_label.modulate = Color(1, 1, 1, 0.75)
 	npc_roster_view.add_child(facility_info_label)
@@ -1345,11 +1600,11 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 	identity_row.add_child(identity_col)
 
 	npc_detail_label = Label.new()
-	npc_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	npc_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	identity_col.add_child(npc_detail_label)
 
 	npc_job_label = Label.new()
-	npc_job_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	npc_job_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	npc_job_label.modulate = Color(1, 1, 1, 0.85)
 	identity_col.add_child(npc_job_label)
 
@@ -1569,7 +1824,7 @@ func _build_party_roster_view(col: VBoxContainer) -> void:
 
 	var form_label := Label.new()
 	form_label.text = "新しいパーティを編成する(未所属NPCから最大%d人を選択)" % Parties.MAX_PARTY_SIZE
-	form_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	form_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	party_roster_view.add_child(form_label)
 
 	party_form_list = ItemList.new()
@@ -1583,7 +1838,7 @@ func _build_party_roster_view(col: VBoxContainer) -> void:
 	party_roster_view.add_child(form_button)
 
 	party_form_status_label = Label.new()
-	party_form_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	party_form_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	party_form_status_label.modulate = Color(1, 1, 1, 0.8)
 	party_roster_view.add_child(party_form_status_label)
 
@@ -1612,67 +1867,125 @@ func _build_party_detail_view(col: VBoxContainer) -> void:
 	add_child(disband_confirm)
 
 	party_detail_label = Label.new()
-	party_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	party_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	party_detail_view.add_child(party_detail_label)
 
-	var order_label := Label.new()
-	order_label.text = "並び順(戦闘での対戦順。上が先頭。先頭に立つ間だけ効果を発揮する固有スキルもある)"
-	order_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	party_detail_view.add_child(order_label)
+	# 詳細は2つのタブに分ける(2026-09-19、実機で「メンバーが文字だけ・担当セクションの一覧が狭く潰れる・
+	# 割り当てボタンだけが目立つ」との指摘): 「メンバー・並び順」と「担当セクション」。タブは、
+	# 倍速ボタンと同じくButtonGroupのトグルにして、開いている側が青く押された状態になる。
+	var tab_row := HBoxContainer.new()
+	party_detail_view.add_child(tab_row)
+	var tab_group := ButtonGroup.new()
+	party_tab_buttons.clear()
+	for tab_index in range(2):
+		var tab_button := Button.new()
+		tab_button.text = ["メンバー・並び順", "担当セクション"][tab_index]
+		tab_button.toggle_mode = true
+		tab_button.button_group = tab_group
+		tab_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab_button.pressed.connect(_show_party_tab.bind(tab_index))
+		tab_row.add_child(tab_button)
+		party_tab_buttons.append(tab_button)
 
-	party_member_list = ItemList.new()
-	party_member_list.custom_minimum_size = Vector2(0, 90)
-	party_detail_view.add_child(party_member_list)
+	party_tab_pages.clear()
+	_build_party_members_page()
+	_build_party_sections_page()
+	_show_party_tab(0)
+
+func _build_party_members_page() -> void:
+	var page := VBoxContainer.new()
+	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	party_detail_view.add_child(page)
+	party_tab_pages.append(page)
+
+	var order_label := Label.new()
+	order_label.text = "並び順(戦闘での対戦順。左が先頭。先頭に立つ間だけ効果を発揮する固有スキルもある)。カードを選んで、前へ/後ろへで入れ替える"
+	order_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	page.add_child(order_label)
+
+	party_member_row = HBoxContainer.new()
+	party_member_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	party_member_row.add_theme_constant_override("separation", 12)
+	page.add_child(party_member_row)
 
 	var order_actions := HBoxContainer.new()
-	party_detail_view.add_child(order_actions)
-	var move_up_button := Button.new()
-	move_up_button.text = "↑ 上へ"
-	move_up_button.pressed.connect(_on_move_member_pressed.bind(-1))
-	order_actions.add_child(move_up_button)
-	var move_down_button := Button.new()
-	move_down_button.text = "↓ 下へ"
-	move_down_button.pressed.connect(_on_move_member_pressed.bind(1))
-	order_actions.add_child(move_down_button)
+	order_actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	page.add_child(order_actions)
+	party_member_move_buttons.clear()
+	var move_forward_button := Button.new()
+	move_forward_button.text = "◀ 前へ"
+	move_forward_button.pressed.connect(_on_move_member_pressed.bind(-1))
+	order_actions.add_child(move_forward_button)
+	party_member_move_buttons.append(move_forward_button)
+	var move_back_button := Button.new()
+	move_back_button.text = "後ろへ ▶"
+	move_back_button.pressed.connect(_on_move_member_pressed.bind(1))
+	order_actions.add_child(move_back_button)
+	party_member_move_buttons.append(move_back_button)
+
+func _build_party_sections_page() -> void:
+	var page := VBoxContainer.new()
+	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	party_detail_view.add_child(page)
+	party_tab_pages.append(page)
 
 	var section_label := Label.new()
-	section_label.text = "担当セクションの割り当て(エリアごとに折り畳めます)"
-	section_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	party_detail_view.add_child(section_label)
+	section_label.text = "担当セクションを選んで「割り当て」を押す(エリアごとに折り畳めます)。右の欄は、各セクションを今担当しているパーティ"
+	section_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	page.add_child(section_label)
 
+	# 選ぶ場所だと一目で分かるよう、一覧に枠と暗い背景を付ける(ただの文字と区別が付きにくかった)
 	section_tree = Tree.new()
 	section_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	section_tree.hide_root = true
-	party_detail_view.add_child(section_tree)
+	# 左: セクション名、右: 今そこを担当しているパーティ(_update_section_party_labels)。どちらの欄を押しても
+	# 行全体が選択されるようにする。
+	section_tree.columns = 2
+	section_tree.select_mode = Tree.SELECT_ROW
+	section_tree.set_column_expand(0, true)
+	section_tree.set_column_expand(1, false)
+	section_tree.set_column_custom_minimum_width(1, SECTION_TREE_PARTY_COLUMN_WIDTH)
+	var tree_style := StyleBoxFlat.new()
+	tree_style.bg_color = Color(0.07, 0.08, 0.11, 1.0)
+	tree_style.border_color = Color(0.45, 0.6, 0.85, 1.0)
+	tree_style.set_border_width_all(2)
+	tree_style.set_corner_radius_all(4)
+	tree_style.set_content_margin_all(4)
+	section_tree.add_theme_stylebox_override("panel", tree_style)
+	section_tree.item_selected.connect(_update_section_action_buttons)
+	section_tree.nothing_selected.connect(_update_section_action_buttons)
+	page.add_child(section_tree)
 
 	var section_actions := HBoxContainer.new()
-	party_detail_view.add_child(section_actions)
+	page.add_child(section_actions)
+	section_action_buttons.clear()
 
 	var assign_button := Button.new()
 	assign_button.text = "割り当て"
 	assign_button.pressed.connect(_on_assign_to_section_pressed)
 	_apply_primary_button_style(assign_button) # 2026-09-14: 「割り当てボタンを目立たせる」という要望への対応
 	section_actions.add_child(assign_button)
+	section_action_buttons.append(assign_button)
 
 	var view_thread_button := Button.new()
 	view_thread_button.text = "ログ"
 	view_thread_button.pressed.connect(_on_view_thread_pressed)
 	section_actions.add_child(view_thread_button)
+	section_action_buttons.append(view_thread_button)
 
 	var forecast_button := Button.new()
 	forecast_button.text = "予測"
 	forecast_button.pressed.connect(_on_forecast_pressed)
 	section_actions.add_child(forecast_button)
+	section_action_buttons.append(forecast_button)
 
-	section_forecast_label = Label.new()
-	section_forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	section_forecast_label.modulate = Color(1, 1, 1, 0.85)
-	party_detail_view.add_child(section_forecast_label)
+	var actions_spacer := Control.new()
+	actions_spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section_actions.add_child(actions_spacer)
 
 	# 完全踏破後の挙動(留まって収入源として維持するか、次の未踏破セクションへ自動で移るか)。
-	# パーティごとに設定できる(exploration.gdのpost_clear_behavior参照)。
-	var post_clear_row := HBoxContainer.new()
-	party_detail_view.add_child(post_clear_row)
+	# パーティごとに設定できる(exploration.gdのpost_clear_behavior参照)。割り当ての操作と同じ行の右端に置く。
+	var post_clear_row := section_actions
 
 	var post_clear_label := Label.new()
 	post_clear_label.text = "完全踏破後:"
@@ -1697,13 +2010,28 @@ func _build_party_detail_view(col: VBoxContainer) -> void:
 	post_clear_row.add_child(move_on_button)
 	post_clear_behavior_buttons[Parties.PostClearBehavior.MOVE_ON] = move_on_button
 
+	section_forecast_label = Label.new()
+	section_forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	section_forecast_label.modulate = Color(1, 1, 1, 0.85)
+	page.add_child(section_forecast_label)
+
+## 詳細のタブを切り替える(0=メンバー・並び順、1=担当セクション)。
+func _show_party_tab(tab_index: int) -> void:
+	for i in range(party_tab_pages.size()):
+		party_tab_pages[i].visible = i == tab_index
+		party_tab_buttons[i].set_pressed_no_signal(i == tab_index)
+
 func _show_party_roster_view() -> void:
 	party_roster_view.visible = true
 	party_detail_view.visible = false
 
+## パーティ詳細を開く。担当が未割当のパーティは、次にやることが割り当てなので「担当セクション」のタブから、
+## そうでなければ「メンバー・並び順」のタブから始める。
 func _show_party_detail_view() -> void:
 	party_roster_view.visible = false
 	party_detail_view.visible = true
+	var party := Parties.get_party(_selected_party_id)
+	_show_party_tab(1 if not party.is_empty() and party["assigned_section"] == "" else 0)
 
 func _on_party_detail_back_pressed() -> void:
 	_refresh_party_roster()
@@ -1727,6 +2055,7 @@ func _on_disband_party_confirmed() -> void:
 	Parties.disband(_pending_disband_party_id)
 	_pending_disband_party_id = -1
 	_selected_party_id = -1
+	_selected_member_index = -1
 	_refresh_party_roster()
 	_show_party_roster_view()
 	_refresh_map()
@@ -1738,6 +2067,7 @@ func _open_party_panel(party_id: int = -1) -> void:
 	_refresh_party_roster()
 	if party_id != -1:
 		_selected_party_id = party_id
+		_selected_member_index = -1
 		_refresh_party_detail()
 		_show_party_detail_view()
 	else:
@@ -1761,14 +2091,52 @@ func _populate_section_tree() -> void:
 		var area_item := section_tree.create_item(root)
 		area_item.set_text(0, WorldMap.areas[area_id]["name"])
 		area_item.set_selectable(0, false)
+		area_item.set_selectable(1, false)
 		for section_id in reachable_sections:
 			var section_item := section_tree.create_item(area_item)
 			section_item.set_text(0, WorldMap.sections[section_id]["name"])
 			section_item.set_metadata(0, section_id)
+	_update_section_party_labels()
+	_update_section_action_buttons() # clear()で選択が無くなるので、ボタンの押せる状態も合わせる
+
+const SECTION_TREE_PARTY_COLUMN_WIDTH := 320
+
+## 担当セクションの一覧の右の欄に、各セクションを今担当しているパーティを表示する(パーティ詳細を開いて
+## いる間は、そのパーティを先頭に「▶」付きで金色にして、他のパーティと見分けられるようにする)。
+## どのパーティも担当していないセクションは空欄。パーティの割り当てが変わるたびに呼び直す。
+func _update_section_party_labels() -> void:
+	var names_by_section := {} # section_id -> Array[String]
+	var current_section := ""
+	for party in Parties.get_parties():
+		var section_id: String = party["assigned_section"]
+		if section_id == "":
+			continue
+		var names: Array = names_by_section.get(section_id, [])
+		if party["id"] == _selected_party_id:
+			names.push_front("▶ " + String(party["name"]))
+			current_section = section_id
+		else:
+			names.append(String(party["name"]))
+		names_by_section[section_id] = names
+	var root := section_tree.get_root()
+	if root == null:
+		return
+	var area_item := root.get_first_child()
+	while area_item:
+		var item := area_item.get_first_child()
+		while item:
+			var section_id = item.get_metadata(0)
+			var names: Array = names_by_section.get(section_id, [])
+			item.set_text(1, "・".join(names))
+			item.set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT)
+			item.set_custom_color(1, Color(1.0, 0.85, 0.4) if section_id == current_section else Color(0.75, 0.8, 0.9))
+			item = item.get_next()
+		area_item = area_item.get_next()
 
 ## パーティを切り替えるたびに、担当セクションのTreeもそのパーティの現在の割り当て先を
 ## 選択済みにしておく。
 func _select_current_section_in_tree(section_id: String) -> void:
+	section_tree.deselect_all() # 別のパーティで選んでいた行が残って、誤って割り当てないように
 	var root := section_tree.get_root()
 	if root == null:
 		return
@@ -1817,7 +2185,7 @@ func _create_party_card(party: Dictionary, group: ButtonGroup) -> Button:
 	card.toggle_mode = true
 	card.button_group = group
 	card.custom_minimum_size = Vector2(220, 90)
-	card.autowrap_mode = TextServer.AUTOWRAP_WORD
+	card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var member_names := []
 	for npc_id in party["member_ids"]:
 		member_names.append(String(Npcs.get_npc(npc_id).get("name", "?")))
@@ -1833,6 +2201,7 @@ func _create_party_card(party: Dictionary, group: ButtonGroup) -> Button:
 
 func _on_party_card_pressed(party_id: int) -> void:
 	_selected_party_id = party_id
+	_selected_member_index = -1
 	_refresh_party_detail()
 	_show_party_detail_view()
 
@@ -1854,11 +2223,17 @@ func _on_form_party_pressed() -> void:
 	_refresh_party_roster()
 	party_form_status_label.text = "パーティを編成しました"
 
+func _clear_party_member_row() -> void:
+	for child in party_member_row.get_children():
+		party_member_row.remove_child(child) # queue_free()だけだと、同じフレーム内の再構築で残ってしまう
+		child.queue_free()
+
 func _refresh_party_detail() -> void:
 	if _selected_party_id < 0 or Parties.get_party(_selected_party_id).is_empty():
 		party_detail_label.text = "左の一覧からパーティを選択してください"
 		section_forecast_label.text = ""
-		party_member_list.clear()
+		_clear_party_member_row()
+		_update_member_move_buttons()
 		for behavior in post_clear_behavior_buttons.keys():
 			post_clear_behavior_buttons[behavior].button_pressed = false
 		return
@@ -1869,17 +2244,111 @@ func _refresh_party_detail() -> void:
 	party_detail_label.text = "%s / 担当: %s / 状態: %s / 戦力: %d" % [
 		party["name"], section_name, _party_status_text(party), Parties.power(_selected_party_id)]
 
-	party_member_list.clear()
-	for npc_id in party["member_ids"]:
-		var npc := Npcs.get_npc(npc_id)
+	_clear_party_member_row()
+	var member_group := ButtonGroup.new()
+	var member_ids: Array = party["member_ids"]
+	for index in range(member_ids.size()):
+		var npc := Npcs.get_npc(member_ids[index])
 		if npc.is_empty():
 			continue
-		party_member_list.add_item("%s(%s) HP:%d/%d" % [npc["name"], Jobs.JOB_NAMES[npc["job"]], int(npc["hp"]), int(npc["max_hp"])])
+		var card := _create_party_member_card(npc, index, member_group)
+		party_member_row.add_child(card)
+		if index == _selected_member_index:
+			card.set_pressed_no_signal(true)
+	if _selected_member_index >= member_ids.size():
+		_selected_member_index = -1
+	_update_member_move_buttons()
 
 	var behavior: int = party["post_clear_behavior"]
 	if post_clear_behavior_buttons.has(behavior):
 		post_clear_behavior_buttons[behavior].button_pressed = true
 	_select_current_section_in_tree(section_id)
+	_update_section_party_labels()
+	_update_section_action_buttons()
+
+const PARTY_MEMBER_CARD_WIDTH := 170.0
+const PARTY_MEMBER_PORTRAIT_SIZE := 110.0
+
+## パーティ詳細の並び順の1人分: [先頭/2番手…][肖像][名前][ジョブ HP]。押すと選択(青い枠)になり、
+## 前へ/後ろへで並び順を入れ替えられる。Buttonは子の大きさを最小サイズに反映しないので、大きさは決め打ち
+## (_create_roster_cardと同じ作り。名前は長くてもはみ出さないよう省略表示にする)。
+func _create_party_member_card(npc: Dictionary, index: int, group: ButtonGroup) -> Button:
+	var card := Button.new()
+	card.toggle_mode = true
+	card.button_group = group
+	card.custom_minimum_size = Vector2(PARTY_MEMBER_CARD_WIDTH, PARTY_MEMBER_PORTRAIT_SIZE + 96)
+	card.tooltip_text = npc["name"]
+	card.pressed.connect(_on_party_member_card_pressed.bind(index))
+
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 6)
+	card.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	margin.add_child(vbox)
+
+	var order_label := Label.new()
+	order_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	order_label.text = "先頭" if index == 0 else "%d番手" % (index + 1)
+	order_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	order_label.add_theme_font_size_override("font_size", 12)
+	order_label.modulate = Color(1.0, 0.85, 0.4) if index == 0 else Color(1, 1, 1, 0.7)
+	vbox.add_child(order_label)
+
+	var portrait := PanelContainer.new()
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.custom_minimum_size = Vector2(PARTY_MEMBER_PORTRAIT_SIZE, PARTY_MEMBER_PORTRAIT_SIZE)
+	portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	portrait.clip_contents = true
+	var portrait_style := StyleBoxFlat.new()
+	portrait_style.bg_color = _bloodline_color(npc["innate_traits"].get("bloodline", ""))
+	portrait_style.set_corner_radius_all(6)
+	portrait.add_theme_stylebox_override("panel", portrait_style)
+	portrait.add_child(_create_portrait_content(npc))
+	vbox.add_child(portrait)
+
+	var name_label := Label.new()
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_label.text = npc["name"]
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.clip_text = true
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	vbox.add_child(name_label)
+
+	var stats_label := Label.new()
+	stats_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_label.text = "%s HP:%d/%d" % [Jobs.JOB_NAMES[npc["job"]], int(npc["hp"]), int(npc["max_hp"])]
+	stats_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats_label.add_theme_font_size_override("font_size", 12)
+	stats_label.modulate = Color(1, 1, 1, 0.8)
+	stats_label.clip_text = true
+	stats_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	vbox.add_child(stats_label)
+	return card
+
+func _on_party_member_card_pressed(index: int) -> void:
+	_selected_member_index = index
+	_update_member_move_buttons()
+
+## 前へ/後ろへは、カードを選んでいて、その方向にまだ動かせる時だけ押せる(動かせない時は薄く表示される)。
+func _update_member_move_buttons() -> void:
+	var party := Parties.get_party(_selected_party_id)
+	var count: int = party["member_ids"].size() if not party.is_empty() else 0
+	var has_selection := _selected_member_index >= 0 and _selected_member_index < count
+	party_member_move_buttons[0].disabled = not has_selection or _selected_member_index == 0
+	party_member_move_buttons[1].disabled = not has_selection or _selected_member_index >= count - 1
+
+## 割り当て/ログ/予測は、担当セクションを選んでいる時だけ押せる(選ぶ前から緑の割り当てボタンだけが
+## 目立って、選ぶ場所が目立たなかったため)。セクション名のグループ行(エリア)は選択できない。
+func _update_section_action_buttons() -> void:
+	var has_selection := section_tree.get_selected() != null
+	for button in section_action_buttons:
+		button.disabled = not has_selection
 
 ## 探索中/回復中(あと何日か)/未割当を文字にする(design.md 5.4節、パーティ全体で足並みを揃える)。
 func _party_status_text(party: Dictionary) -> String:
@@ -1887,7 +2356,8 @@ func _party_status_text(party: Dictionary) -> String:
 		Parties.Status.RECOVERING:
 			return "回復中(あと%d日)" % max(0, party["recovering_until_day"] - TimeSystem.current_day)
 		Parties.Status.EXPLORING:
-			return "探索中"
+			# 勝てない敵の前で詰まって、力を付けている間(exploration.gdの_check_blocked)
+			return "戦力不足で待機中(力を付けている)" if Parties.is_retreating(party) else "探索中"
 		_:
 			return "未割当"
 
@@ -1899,25 +2369,29 @@ func _on_move_member_pressed(direction: int) -> void:
 	var party := Parties.get_party(_selected_party_id)
 	if party.is_empty():
 		return
-	var selected := party_member_list.get_selected_items()
-	if selected.is_empty():
+	var index := _selected_member_index
+	if index < 0:
 		return
-	var index: int = selected[0]
 	var order: Array = party["member_ids"].duplicate()
 	var target := index + direction
-	if target < 0 or target >= order.size():
+	if index >= order.size() or target < 0 or target >= order.size():
 		return
 	var tmp = order[index]
 	order[index] = order[target]
 	order[target] = tmp
 	Parties.reorder(_selected_party_id, order)
+	_selected_member_index = target # 動かしたメンバーを選択したままにして、続けて動かせるようにする
 	_refresh_party_detail()
-	party_member_list.select(target)
 
 func _on_post_clear_behavior_pressed(behavior: int) -> void:
 	if _selected_party_id < 0:
 		return
 	Parties.set_post_clear_behavior(_selected_party_id, behavior)
+	# 「先へ進む」に切り替えた時点で、既に完全攻略済みのセクションにいるなら、翌日を待たずにその場で次へ移す
+	if Exploration.apply_post_clear_behavior(Parties.get_party(_selected_party_id), TimeSystem.current_day):
+		_refresh_party_roster()
+		_refresh_party_detail()
+		_refresh_map()
 
 func _on_assign_to_section_pressed() -> void:
 	if _selected_party_id < 0:
@@ -2002,7 +2476,7 @@ func _build_shop_ui() -> void:
 	col.add_child(shop_armor_row)
 
 	shop_status_label = Label.new()
-	shop_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	shop_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(shop_status_label)
 
 func _on_open_shop_pressed() -> void:
@@ -2271,7 +2745,7 @@ func _on_reset_tutorials_pressed() -> void:
 	SaveSystem.reset_tutorial_flags()
 	_close_modal(slot_panel)
 	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_intro_seen(), CONNECT_ONE_SHOT)
-	EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT)
+	EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT, "guide")
 
 func _on_delete_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
@@ -2549,7 +3023,7 @@ func _create_node_box(id: String, cell_pos: Vector2) -> void:
 
 	var name_label := Label.new()
 	name_label.add_theme_font_size_override("font_size", max(9, roundi(13 * _map_zoom)))
-	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(name_label)
 
 	var status_label := Label.new()
@@ -2957,7 +3431,10 @@ func _create_party_icon(party: Dictionary) -> Button:
 	var icon := Button.new()
 	icon.custom_minimum_size = Vector2(MAP_ICON_SIZE, MAP_ICON_SIZE) * _map_zoom
 	icon.clip_contents = true
-	icon.tooltip_text = party["name"]
+	var is_recovering: bool = int(party["status"]) == Parties.Status.RECOVERING
+	var is_looping := _is_party_looping(party)
+	var is_retreating := Parties.is_retreating(party)
+	icon.tooltip_text = "%s(%s / %s)" % [party["name"], _party_status_text(party), "退避中" if is_retreating else ("ループ中" if is_looping else "進行中")]
 	icon.pressed.connect(_on_party_icon_pressed.bind(party["id"]))
 
 	var member_ids: Array = party["member_ids"]
@@ -2975,7 +3452,63 @@ func _create_party_icon(party: Dictionary) -> Button:
 	else:
 		icon.text = party["name"].substr(0, 1)
 		icon.add_theme_font_size_override("font_size", max(8, roundi(18 * _map_zoom)))
+
+	# 撤退して休養中のパーティは、フロアの上から動かないので、止まって見えてしまう(実機で指摘)。
+	# 休養中だと分かるよう、肖像を暗くし、橙の枠を付け、下に「💤 残り日数」を出す。
+	# 文字では40pxの小さなアイコンに収まらず、点滅などのエフェクトは、アイコンを毎日作り直すので途切れるため、
+	# 静止して見える暗転+枠+バッジにした。
+	if is_recovering:
+		for child in icon.get_children():
+			if child is TextureRect:
+				child.modulate = Color(0.5, 0.5, 0.56)
+		var frame := Panel.new()
+		frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+		var frame_style := StyleBoxFlat.new()
+		frame_style.draw_center = false
+		frame_style.border_color = Color(0.98, 0.62, 0.2)
+		frame_style.set_border_width_all(maxi(2, roundi(3 * _map_zoom)))
+		frame_style.set_corner_radius_all(4)
+		frame.add_theme_stylebox_override("panel", frame_style)
+		icon.add_child(frame)
+		var days_left: int = maxi(0, int(party["recovering_until_day"]) - TimeSystem.current_day)
+		icon.add_child(_make_party_icon_badge("💤%d日" % days_left, false, Color(0.55, 0.3, 0.05, 0.92)))
+
+	# 進行中(⏩)かループ中(🔁)かを、右上に出す(担当セクションを完全踏破して周回している間がループ)。
+	# 戦力不足で1つ前のセクションへ退避して力を付けている間は、戻っていることが分かる「⏪」を出す。
+	var progress_badge := "⏪" if is_retreating else ("🔁" if is_looping else "⏩")
+	icon.add_child(_make_party_icon_badge(progress_badge, true, Color(0, 0, 0, 0.6)))
 	return icon
+
+## 担当セクションを完全踏破していて、踏破後の設定が「ループ」(留まって周回する)ならtrue。
+## そうでなければ(まだ攻略中、または「先へ進む」)進行中とみなす。
+func _is_party_looping(party: Dictionary) -> bool:
+	var section_id: String = party["assigned_section"]
+	return party["post_clear_behavior"] == Parties.PostClearBehavior.STAY \
+		and WorldMap.sections.has(section_id) and WorldMap.is_section_cleared(section_id)
+
+## パーティアイコンの隅に重ねる、絵文字や短い文字の小さなバッジ。top_rightなら右上、そうでなければ右下。
+func _make_party_icon_badge(text: String, top_right: bool, bg_color: Color) -> PanelContainer:
+	var badge := PanelContainer.new()
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_preset(Control.PRESET_TOP_RIGHT if top_right else Control.PRESET_BOTTOM_RIGHT)
+	badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	if not top_right:
+		badge.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg_color
+	style.set_corner_radius_all(6)
+	style.content_margin_left = 3
+	style.content_margin_right = 3
+	style.content_margin_top = 0
+	style.content_margin_bottom = 0
+	badge.add_theme_stylebox_override("panel", style)
+	var label := Label.new()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.text = text
+	label.add_theme_font_size_override("font_size", max(8, roundi(12 * _map_zoom)))
+	badge.add_child(label)
+	return badge
 
 func _on_party_icon_pressed(party_id: int) -> void:
 	_open_party_panel(party_id)
@@ -3040,7 +3573,7 @@ func _on_hire_pressed() -> void:
 	if not SaveSystem.tutorial_party_seen:
 		_close_modal(hire_panel)
 		EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_party_seen(), CONNECT_ONE_SHOT)
-		EventDialogue.play(PARTY_TUTORIAL_SCRIPT)
+		EventDialogue.play(PARTY_TUTORIAL_SCRIPT, "guide")
 
 func _on_view_thread_pressed() -> void:
 	var selected_item := section_tree.get_selected()
@@ -3365,7 +3898,9 @@ func _refresh_board() -> void:
 	for entry in source:
 		board_log.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
 
-	# ボタン直下のプレビューは常に全体フィードの直近10件固定(閲覧中のスレッドに関係なく)。
-	board_preview_log.clear()
-	for entry in Board.recent(10):
-		board_preview_log.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
+	# ボタン直下(タッチUIは右端のウィンドウ)のプレビューは常に全体フィードの直近10件固定
+	# (閲覧中のスレッドに関係なく)。タッチUIで閉じている間は作らない(開く時に作り直す)。
+	if board_preview_log.is_visible_in_tree():
+		board_preview_log.clear()
+		for entry in Board.recent(10):
+			board_preview_log.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])

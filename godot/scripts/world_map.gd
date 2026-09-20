@@ -111,6 +111,33 @@ func is_area_reachable(area_id: String) -> bool:
 func is_section_reachable(section_id: String) -> bool:
 	return is_section_entered(section_id) or not frontier_for_section(section_id).is_empty()
 
+## イベント会話の表示スタイルの種別(event_dialogue.gdのcurrent_kind参照)。ゲートの種類から自動で決める:
+## 戦闘は、そのセクションで最も敵戦闘力が高ければ"boss"(セクションの最奥にいる主)、そうでなければ
+## "combat"。技能は"skill"、アイテムは"item"、生まれ・血筋の条件は"bloodline"。ゲートが無い/未知なら""
+## (従来の見た目)。
+func event_kind_for_node(id: String) -> String:
+	if not nodes.has(id):
+		return ""
+	var gate: Dictionary = nodes[id].get("gate", {})
+	match gate.get("type", ""):
+		"combat":
+			return "boss" if _is_strongest_combat_in_section(id) else "combat"
+		"skill":
+			return "skill"
+		"item":
+			return "item"
+		"innate_trait":
+			return "bloodline"
+	return ""
+
+func _is_strongest_combat_in_section(id: String) -> bool:
+	var power: int = nodes[id]["gate"].get("enemy_power", 0)
+	for other_id in nodes_in_section(nodes[id]["section"]):
+		var other_gate: Dictionary = nodes[other_id].get("gate", {})
+		if other_gate.get("type", "") == "combat" and other_gate.get("enemy_power", 0) > power:
+			return false
+	return true
+
 func neighbors(id: String) -> Array:
 	if not nodes.has(id):
 		return []
@@ -205,19 +232,41 @@ func mark_section_reward_claimed(section_id: String) -> void:
 
 ## 踏破後の自動再配置(NPCのpost_clear_behavior=MOVE_ON)用: 同じエリア内でまだ完全攻略されていない
 ## セクションを優先し、無ければ次のエリア以降から順に探す。全て埋まっていれば空文字を返す。
+## まだ世界のどこからも繋がっていない(is_section_reachable=false)セクションは選ばない: 配置転換しても
+## 何も発見できず、パーティがそこで動けなくなるため。繋がった時に、改めて選ばれる(exploration.gdが毎日判定する)。
 func next_section_to_explore(current_section_id: String) -> String:
 	if not sections.has(current_section_id):
 		return ""
 	var current_area: String = sections[current_section_id]["area"]
 	for section_id in sections_in_area(current_area):
-		if section_id != current_section_id and not is_section_cleared(section_id):
+		if section_id != current_section_id and not is_section_cleared(section_id) and is_section_reachable(section_id):
 			return section_id
 	var area_ids := areas.keys()
 	var start_idx := area_ids.find(current_area)
 	for i in range(start_idx + 1, area_ids.size()):
 		for section_id in sections_in_area(area_ids[i]):
-			if not is_section_cleared(section_id):
+			if not is_section_cleared(section_id) and is_section_reachable(section_id):
 				return section_id
+	return ""
+
+## 世界の最初のセクション(最初のエリアの最初のセクション)。戦力不足で退避する先が他に無い時の戻り先。
+func first_section() -> String:
+	for area_id in areas.keys():
+		var section_ids := sections_in_area(area_id)
+		if not section_ids.is_empty():
+			return section_ids[0]
+	return ""
+
+## 世界の並び順(エリアの順、その中のセクションの順)で、current_section_idより前にある、最も近い
+## 完全攻略済みのセクション。無ければ空文字。
+func previous_cleared_section(current_section_id: String) -> String:
+	var ordered: Array = []
+	for area_id in areas.keys():
+		ordered.append_array(sections_in_area(area_id))
+	var index := ordered.find(current_section_id)
+	for i in range(index - 1, -1, -1):
+		if is_section_cleared(ordered[i]):
+			return ordered[i]
 	return ""
 
 func frontier_for_section(section_id: String) -> Array:

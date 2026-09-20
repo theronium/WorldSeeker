@@ -88,7 +88,9 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 ## exploration.gdのforecast_section(「予測」ボタン)用の非破壊シミュレーション。
 ## resolve_party_encounter()と同じ計算式を使うが、NPCの実際のHP/経験値/回復状態には
 ## 一切書き込まない(dry run)。
-func predict_party_result(party_id: int, enemy_power: int) -> String:
+## assume_full_hpをtrueにすると、今のHPではなく全員が満タンだった場合の結果を返す(「満タンでも勝てない=勝ち目が
+## 無い」の判定用。exploration.gdの_is_hopeless_gate)。
+func predict_party_result(party_id: int, enemy_power: int, assume_full_hp: bool = false) -> String:
 	var party := Parties.get_party(party_id)
 	if party.is_empty():
 		return "error"
@@ -99,7 +101,7 @@ func predict_party_result(party_id: int, enemy_power: int) -> String:
 		if npc.is_empty():
 			continue
 		var combat_power := _combat_power_for(npc_id, npc, party)
-		var hp: float = npc["hp"]
+		var hp: float = npc["max_hp"] if assume_full_hp else npc["hp"]
 		var policy: Dictionary = npc["combat_policy"]
 		var retreated := false
 

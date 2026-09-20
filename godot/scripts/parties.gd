@@ -40,6 +40,10 @@ func form_party(member_ids: Array, display_name: String = "") -> int:
 		"recovering_until_day": -1,
 		"post_clear_behavior": PostClearBehavior.MOVE_ON,
 		"lap_start_day": -1, # 完全踏破済みセクションでの周回(ループ)開始日。exploration.gd参照
+		# 戦力不足で退避中の記録(exploration.gdの_check_blocked/_update_retreat_state参照)。return_sectionが空でなければ
+		# 退避(待機)中で、return_nodeの敵に勝てる見込みが立ったらreturn_sectionへ戻る。
+		"return_section": "",
+		"return_node": "",
 	}
 	for npc_id in member_ids:
 		Npcs.set_party(npc_id, id)
@@ -79,7 +83,34 @@ func assign_section(party_id: int, section_id: String) -> bool:
 	parties[party_id]["assigned_section"] = section_id
 	parties[party_id]["status"] = Status.EXPLORING
 	parties[party_id]["lap_start_day"] = -1 # 配置転換したら周回の進み具合もリセット(exploration.gdが再開始する)
+	# 割り当て直したら、退避中の記録は消える(プレイヤーの手動の割り当てでも、自動の配置転換でも)
+	parties[party_id]["return_section"] = ""
+	parties[party_id]["return_node"] = ""
 	return true
+
+## 戦力不足のフロアの前で詰まったパーティを、safe_sectionへ退避させ、勝てる見込みが立ったら
+## back_sectionのblocked_nodeへ戻れるように記録する。safe_sectionがback_sectionと同じ(退避先が無い)なら、
+## 移動はせずにその場で待機する扱いになる。
+func retreat_for_training(party_id: int, safe_section: String, back_section: String, blocked_node: String) -> bool:
+	if not assign_section(party_id, safe_section):
+		return false
+	parties[party_id]["return_section"] = back_section
+	parties[party_id]["return_node"] = blocked_node
+	return true
+
+## 移動せずに、その場で待機する扱いにする(退避先が今のセクション自身の時)。
+func set_return(party_id: int, back_section: String, blocked_node: String) -> void:
+	if parties.has(party_id):
+		parties[party_id]["return_section"] = back_section
+		parties[party_id]["return_node"] = blocked_node
+
+func clear_return(party_id: int) -> void:
+	if parties.has(party_id):
+		parties[party_id]["return_section"] = ""
+		parties[party_id]["return_node"] = ""
+
+func is_retreating(party: Dictionary) -> bool:
+	return String(party.get("return_section", "")) != ""
 
 func set_post_clear_behavior(party_id: int, behavior: int) -> void:
 	if parties.has(party_id):
@@ -142,6 +173,8 @@ func load_state(data: Dictionary) -> void:
 		party["recovering_until_day"] = int(party["recovering_until_day"])
 		party["post_clear_behavior"] = int(party.get("post_clear_behavior", PostClearBehavior.MOVE_ON))
 		party["lap_start_day"] = int(party.get("lap_start_day", -1))
+		party["return_section"] = String(party.get("return_section", ""))
+		party["return_node"] = String(party.get("return_node", ""))
 		parties[id] = party
 		max_id = max(max_id, id)
 	_next_id = max(int(data.get("next_id", 1)), max_id + 1)

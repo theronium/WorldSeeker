@@ -51,6 +51,10 @@ const HEALING_PER_LEVEL := 3
 ## 動かし、1周し終えるたびに最初のフロアへ戻す(main.gdの_current_node_for_party参照)。
 const LAP_INCOME_PER_POINT := MONTHLY_INCOME_PER_POINT
 
+# 戦力不足で退避(待機)している間に、パーティ全員が毎日得る戦闘力の経験値(_update_retreat_state)。
+# 戦闘力のレベルアップに必要な経験値は10×(レベル+1)なので、Lv0→1が約10日。初期チューニング値(要調整)。
+const RETREAT_TRAINING_EXP_PER_DAY := 1
+
 ## 初めて戦闘で撤退した直後だけ再生する説明会話。「ループ」「先へ進む」(design.md 4.7節の
 ## post_clear_behavior)は今まさに阻まれている状況には関係なく、セクションを完全に突破し
 ## 終えたあとの挙動を決める設定だと誤解されやすいため、その区別を説明する。
@@ -92,7 +96,7 @@ func _maybe_show_retreat_tutorial() -> void:
 	# 日数を進めるだけの診断がたまたま撤退を発生させても、会話を進めない限り実ファイルは
 	# 汚れない)。
 	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_retreat_seen(), CONNECT_ONE_SHOT)
-	EventDialogue.play(RETREAT_TUTORIAL_SCRIPT)
+	EventDialogue.play(RETREAT_TUTORIAL_SCRIPT, "guide")
 
 ## 月末の集計タイムで、担当パーティがいる全セクション分の収入をまとめて資金化する。
 ## 完全踏破済みのセクションは対象外(_process_lapによる周回収入に置き換わっている。
@@ -131,11 +135,14 @@ func _on_day_advanced(current_day: int) -> void:
 			continue
 		if party["status"] != Parties.Status.EXPLORING:
 			continue
+		_update_retreat_state(party, current_day) # 戦力不足で退避中なら、経験値を得る/勝てる見込みが立てば戻る
+		apply_post_clear_behavior(party, current_day) # 完全攻略済みの担当のままなら、「先へ進む」の設定に従って次へ移る
 		_apply_daily_healing(party)
 		_claim_wild_progress(party)
 		_retry_gates(party, current_day)
 		if Parties.is_available(party["id"], current_day):
 			_attempt_discovery(party, current_day)
+			_check_blocked(party, current_day) # 勝てない敵しか残っていなければ、退避する
 		_process_lap(party, current_day)
 
 ## 完全踏破済みセクションでの周回(ループ)処理。対象外(まだ未踏破区間が残っている)なら
@@ -281,7 +288,7 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 		EventDialogue.finished.connect(
 			func(outcome: String): _finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
 			CONNECT_ONE_SHOT)
-		EventDialogue.play(script)
+		EventDialogue.play(script, WorldMap.event_kind_for_node(node_id), "pass" if gate_result["passed"] else "fail")
 		return
 
 	var milestone := _capture_milestone_state(node_id)
@@ -368,19 +375,113 @@ func _check_section_cleared(section_id: String, current_day: int) -> void:
 	ActionLog.record(current_day, "section_clear", text, -1, "", section_id)
 
 	for party in Parties.get_parties():
-		if party["assigned_section"] != section_id:
+		if party["assigned_section"] == section_id:
+			apply_post_clear_behavior(party, current_day)
+
+## 担当セクションが完全攻略済みで、パーティの完全踏破後の設定が「先へ進む」(MOVE_ON)なら、次の未踏破
+## セクションへ配置転換する。配置転換したかどうかを返す。
+##
+## 以前は、セクションを初めて完全攻略した瞬間(_check_section_cleared)にしか判定されなかった。そのため
+## 「ループ」のまま攻略を終えて、後から「先へ進む」に切り替えても、次のセクションへ移らなかった
+## (2026-09-19、実機で報告)。今は、毎日の探索(_on_day_advanced)と、設定を切り替えた時(main.gd)にも
+## 呼ぶので、完全攻略済みのセクションに「先へ進む」で居続けることは無い。ずっと居たいなら「ループ」にする。
+func apply_post_clear_behavior(party: Dictionary, current_day: int) -> bool:
+	if party["post_clear_behavior"] != Parties.PostClearBehavior.MOVE_ON:
+		return false
+	if Parties.is_retreating(party):
+		return false # 戦力不足で退避中は、勝てる見込みが立つまで、先へ進ませない(進むと同じ敵に戻ってしまう)
+	var section_id: String = party["assigned_section"]
+	if section_id == "" or not WorldMap.sections.has(section_id) or not WorldMap.is_section_cleared(section_id):
+		return false
+	var next_section := WorldMap.next_section_to_explore(section_id)
+	if next_section == "":
+		return false
+	var section_name: String = WorldMap.sections[section_id]["name"]
+	var next_section_name: String = WorldMap.sections[next_section]["name"]
+	Parties.assign_section(party["id"], next_section)
+	Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
+	# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログのNPC別フィルタで、
+	# そのメンバーで絞り込んだ時にも配置転換イベントが見えるようにするため)。
+	ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], party["member_ids"][0], "", next_section)
+	return true
+
+## 満タンのHPでもパーティが勝てない戦闘ゲートかどうか(勝ち目が無い)。
+func _is_hopeless_gate(party: Dictionary, node: Dictionary) -> bool:
+	var gate: Dictionary = node.get("gate", {})
+	if gate.get("type", "") != "combat":
+		return false
+	return Combat.predict_party_result(party["id"], gate["enemy_power"], true) != "victory"
+
+## 担当セクションで、発見済みだが未突破のフロアが「勝てない戦闘ゲートだけ」になり、これ以上発見できる
+## フロアも残っていない(=このセクションでは先に進めない)時に、パーティを退避させる。退避先は、世界の並び順で
+## 1つ前の攻略済みセクション。無ければ世界の最初のセクション。退避先が今のセクション自身なら、移動せずに
+## その場で待機する。退避中は_update_retreat_stateが毎日経験値を与え、勝てる見込みが立てば元のセクションへ戻す。
+## 他に挑めるフロア(技能/アイテムのゲートなど)が残っている間は、退避しない。
+func _check_blocked(party: Dictionary, current_day: int) -> void:
+	if Parties.is_retreating(party):
+		return
+	var section_id: String = party["assigned_section"]
+	if section_id == "" or not WorldMap.sections.has(section_id):
+		return
+	var blocker := ""
+	for node_id in WorldMap.nodes_in_section(section_id):
+		var node: Dictionary = WorldMap.nodes[node_id]
+		if not node["found"] or node["passed"]:
 			continue
-		if party["post_clear_behavior"] != Parties.PostClearBehavior.MOVE_ON:
-			continue
-		var next_section := WorldMap.next_section_to_explore(section_id)
-		if next_section == "":
-			continue
-		var next_section_name: String = WorldMap.sections[next_section]["name"]
-		Parties.assign_section(party["id"], next_section)
-		Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
-		# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログのNPC別フィルタで、
-		# そのメンバーで絞り込んだ時にも配置転換イベントが見えるようにするため)。
-		ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], party["member_ids"][0], "", next_section)
+		if not _is_hopeless_gate(party, node):
+			return # 他に挑めるフロアが残っている
+		if blocker == "":
+			blocker = node_id
+	if blocker == "":
+		return
+	if not WorldMap.frontier_for_section(section_id).is_empty():
+		return # まだ発見できるフロアがある
+
+	var safe_section := WorldMap.previous_cleared_section(section_id)
+	if safe_section == "":
+		safe_section = WorldMap.first_section()
+	if safe_section == "":
+		safe_section = section_id
+	var section_name: String = WorldMap.sections[section_id]["name"]
+	var blocker_name: String = WorldMap.nodes[blocker]["name"]
+	var text: String
+	if safe_section == section_id:
+		Parties.set_return(party["id"], section_id, blocker)
+		text = "%sは「%s」の「%s」に勝つ見込みが無いため、戦力が整うまでその場で待機する" % [party["name"], section_name, blocker_name]
+	else:
+		var safe_name: String = WorldMap.sections[safe_section]["name"]
+		Parties.retreat_for_training(party["id"], safe_section, section_id, blocker)
+		text = "%sは「%s」の「%s」に勝つ見込みが無いため、「%s」へ戻って力を付けることにした" % [party["name"], section_name, blocker_name, safe_name]
+	Board.post(current_day, text, Board.Importance.MINOR, "reassignment")
+	# npc_idには代表としてパーティ先頭メンバーを記録する(配置転換と同じ。行動ログのNPC別フィルタ用)
+	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], blocker, section_id)
+
+## 戦力不足で退避(待機)中のパーティの日次処理。戻り先のフロアにまだ勝てないなら、パーティ全員が戦闘力の
+## 経験値を毎日少し(RETREAT_TRAINING_EXP_PER_DAY)得る。勝てる見込みが立った(または、そのフロアが突破済みに
+## なった)ら、戻り先のセクションへ戻す(その場で待機していただけなら、退避の記録を消して通常の探索に戻る)。
+func _update_retreat_state(party: Dictionary, current_day: int) -> void:
+	if not Parties.is_retreating(party):
+		return
+	var back_section: String = party["return_section"]
+	var blocker_id: String = party["return_node"]
+	var still_blocked := false
+	if WorldMap.nodes.has(blocker_id):
+		var blocker: Dictionary = WorldMap.nodes[blocker_id]
+		still_blocked = not blocker["passed"] and _is_hopeless_gate(party, blocker)
+	if still_blocked:
+		for npc_id in party["member_ids"]:
+			Npcs.grant_skill_exp(npc_id, SkillTypes.Skill.COMBAT, RETREAT_TRAINING_EXP_PER_DAY)
+		return
+
+	if party["assigned_section"] == back_section or not WorldMap.sections.has(back_section):
+		Parties.clear_return(party["id"]) # その場で待機していた(または戻り先が無い)ので、通常の探索に戻る
+		return
+	var from_name: String = WorldMap.sections[party["assigned_section"]]["name"] if WorldMap.sections.has(party["assigned_section"]) else ""
+	var to_name: String = WorldMap.sections[back_section]["name"]
+	Parties.assign_section(party["id"], back_section) # 退避の記録も消える
+	var text := "%sは力を付け、「%s」へ戻った" % [party["name"], to_name]
+	Board.post(current_day, text, Board.Importance.MINOR, "reassignment")
+	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], "", back_section)
 
 func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
@@ -394,6 +495,10 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 	var gate: Dictionary = WorldMap.nodes[node_id]["gate"]
 	match gate.get("type", ""):
 		"combat":
+			# 満タンのHPでも勝てない相手には挑まない(戦闘に乱数は無く、同じ戦力なら結果は毎回同じなので、挑んでも
+			# 全滅して休養に入るだけ。以前はそれを繰り返して、同じ敵に全滅し続けた)。詰まった後の動きは_check_blocked。
+			if _is_hopeless_gate(party, WorldMap.nodes[node_id]):
+				return {"passed": false, "npc_id": -1}
 			var result: Dictionary = Combat.resolve_party_encounter(party["id"], gate["enemy_power"], current_day)
 			if result["result"] == "victory":
 				return {"passed": true, "npc_id": result["npc_id"]}

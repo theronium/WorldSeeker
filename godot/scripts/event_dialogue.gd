@@ -20,15 +20,26 @@ signal finished(outcome: String)
 
 var is_active: bool = false
 
+# 会話全体の表示スタイルの種別と結果(main.gdのEVENT_STYLESが色と名前を決める)。
+#   kind: "boss"(ボス戦) | "combat"(戦闘) | "skill"(技能) | "item"(アイテム) | "bloodline"(血筋) |
+#         "guide"(案内・チュートリアル) | ""(指定なし=従来の見た目)
+#   result: "pass"(突破) | "fail"(失敗) | ""(結果を出さない)
+# 行に"kind"キーがあれば、その行だけ種別を上書きできる。フロアのイベントの種別は、ゲートの種類から
+# WorldMap.event_kind_for_nodeが決めるので、イベントの会話データ自体には書かなくてよい。
+var current_kind: String = ""
+var current_result: String = ""
+
 var _script: Array = []
 var _index: int = 0
 var _time_was_paused: bool = false
 
-func play(script: Array) -> void:
+func play(script: Array, kind: String = "", result: String = "") -> void:
 	if script.is_empty():
 		return
 	_script = script
 	_index = 0
+	current_kind = kind
+	current_result = result
 	_time_was_paused = TimeSystem.is_paused
 	TimeSystem.is_paused = true
 	is_active = true
