@@ -544,7 +544,51 @@ func _apply_unassigned_warning_style(control: Control) -> void:
 	else:
 		control.add_theme_stylebox_override("panel", normal)
 
+const BACKGROUND_TEXTURE_PATH := "res://assets/background/bg_main.png"
+# 背景の絵が明るい青空なので、上に暗いフィルターを重ねて、素のラベル(資金・日付など)や
+# 半透明のマップのノードが読みやすいようにする(色みは絵の青に寄せた暗色)。濃さはここで調整する。
+const BACKGROUND_DIM_COLOR := Color(0.02, 0.03, 0.07, 0.76)
+
+## 画面全体の最背面に、背景画像と暗いフィルターを敷く。安全領域(_apply_safe_area)でこのControlを
+## 内側に寄せても、切り欠きの裏まで背景が届くよう、寄せの影響を受けないCanvasLayerに置く
+## (layer=-1で通常のUI=レイヤー0より奥)。入力は一切受けない。
+## 画像は画面を隙間なく覆う大きさにして、下端に揃えて左右は中央に置く。縦が余る(画面が画像より横長な、
+## 普通の場合)ときは、上側だけが見切れる(絵の下寄りにいるキャラクターを残すため)。TextureRectの
+## STRETCH_KEEP_ASPECT_COVEREDは上下を均等に切るので使えず、大きさと位置は_layout_backgroundで決める。
+func _build_background() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = -1
+	add_child(layer)
+	var frame := Control.new()
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.clip_contents = true
+	var picture := TextureRect.new()
+	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode = TextureRect.STRETCH_SCALE
+	picture.texture = load(BACKGROUND_TEXTURE_PATH)
+	frame.add_child(picture)
+	frame.resized.connect(_layout_background.bind(frame, picture)) # 画面の大きさ・向きが変わるたびに置き直す
+	layer.add_child(frame)
+	_layout_background(frame, picture)
+	var dim := ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim.color = BACKGROUND_DIM_COLOR
+	layer.add_child(dim)
+
+func _layout_background(frame: Control, picture: TextureRect) -> void:
+	var texture_size := picture.texture.get_size()
+	if frame.size.x <= 0.0 or frame.size.y <= 0.0 or texture_size.x <= 0.0 or texture_size.y <= 0.0:
+		return
+	var fit := maxf(frame.size.x / texture_size.x, frame.size.y / texture_size.y)
+	var fitted := texture_size * fit
+	picture.size = fitted
+	picture.position = Vector2((frame.size.x - fitted.x) * 0.5, frame.size.y - fitted.y)
+
 func _build_ui() -> void:
+	_build_background()
 	var root := HBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(root)

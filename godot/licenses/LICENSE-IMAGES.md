@@ -1,8 +1,10 @@
 # 画像ライセンス
 
-対象: `godot/assets/portraits/` にあるキャラクター画像(`char_01.png`〜`char_48.png`)
+対象:
+- `godot/assets/portraits/` にあるキャラクター画像(`char_01.png`〜`char_64.png`)
+- `godot/assets/background/` にある背景画像(`bg_main.png`)
 
-これらのキャラクター画像は、OpenAIの画像生成サービスを
+これらの画像は、OpenAIの画像生成サービスを
 使用して著者が生成したAI生成画像です。
 
 著者は、これらの画像について、著者への許諾申請や表示を必要とせず、

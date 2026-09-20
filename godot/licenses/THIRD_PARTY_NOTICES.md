@@ -1,7 +1,7 @@
 # 第三者ライセンス表示 (Third-party notices)
 
 このゲームは、次のソフトウェアを利用・同梱しています。
-ゲーム自身のコードは `LICENSE`(MIT)、肖像画像は `LICENSE-IMAGES.md` の条件です。
+ゲーム自身のコードは `LICENSE`(MIT)、キャラクター画像と背景画像は `LICENSE-IMAGES.md` の条件です。
 
 ## Godot Engine
 
