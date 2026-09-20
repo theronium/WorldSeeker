@@ -33,7 +33,7 @@ APPDATA=<空の隔離ディレクトリ> "$GODOT_EXE" --headless --path godot --
 - `run_on_phone.sh ["logcatで待つ正規表現"]`: コンパイル確認 → **リポジトリから直接**リリースAPKをエクスポート(作業ツリーの内容がそのまま載る) → 署名者が本物のキーの指紋と一致するか確認 → `adb install -r`(スマホのセーブは残る) → 起動 → エラーの有無を表示。
   - 署名キーは`C:\Users\thero\worldseeker-signing\`の`worldseeker-release.keystore`と`PASSWORD.txt`を**実行時に読む**(パスワードはスクリプトにもリポジトリにも書かない)。場所は`WS_SIGNING_DIR`などの環境変数で変えられる。
   - **インストールのたびにゲームは再起動し、新規開始になる**。
-- `env.sh`: ビルド道具(adb・JDK・Android SDK・Godotのエディタ設定とエクスポートテンプレート)の場所を決める。`WS_TOOLS`で指定するか、無ければ**Temp配下の前のセッションの作業フォルダ**から、揃ったものを探す。**Tempは消えることがある**(消えたら、道具を入れ直す必要がある。`docs/SESSION_LOG_2026-09-19_20.md`参照)。
+- `env.sh`: ビルド道具(adb・JDK・Android SDK・Godotのエディタ設定とエクスポートテンプレート)の場所を決める。置き場は**`D:\DevTools\godot-android`**(恒久。プロジェクトに依存しない道具なので、他のGodotプロジェクトでも使い回せる。中身と移し方はそのフォルダの`README.txt`)。`WS_TOOLS`で別の場所を指定でき、`D:\DevTools\godot-android`が無ければ、前のセッションのTemp配下の作業フォルダを探す(Tempは消えることがある)。署名キーはこのフォルダには置かない(`C:\Users\thero\worldseeker-signing\`)。
 - `gtap.sh <x> <y>`: 前面のアプリがゲームの時だけタップする(誤って別のアプリを操作しない)。ポップアップは「閉じる」ボタンのタップで閉じ、戻るキーは使わない(戻るキーでアプリが終了し、続けて送ったタップがホーム画面の別のアプリを押した実例がある)。
 - スクリーンショット: `adb exec-out screencap -p > out.png`。複数枚は`PIL`で切り出して1枚にまとめると見やすい。
 - **署名不一致(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`)で失敗しても、アンインストールしない**(スマホのセーブが消える)。本物のキーで署名したAPKの間は、この問題は起きない。
