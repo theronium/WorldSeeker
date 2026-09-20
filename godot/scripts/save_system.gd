@@ -41,13 +41,6 @@ var current_slot_name: String = "" # 空文字なら一覧表示側が「スロ�
 ## worldseeker_meta.cfgに永続化する(スロットごとの値ではない)。
 var autosave_enabled: bool = true
 
-## 説明用イベント会話(design.md参照)を既に見せたかどうか。プレイヤー個人の既知情報であり
-## セーブスロットの進行状態ではないため、autosave_enabledと同じくworldseeker_meta.cfgへ
-## スロット非依存で永続化する(新しいスロットを作るたびに毎回見せ直さないため)。
-var tutorial_intro_seen: bool = false
-var tutorial_party_seen: bool = false
-var tutorial_retreat_seen: bool = false
-var tutorial_assignment_followup_seen: bool = false
 
 func _ready() -> void:
 	# 2026-09-14: 起動時に前回のアクティブスロットを自動ロードする仕様をやめた(design.md
@@ -58,47 +51,48 @@ func _ready() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(META_PATH) == OK:
 		autosave_enabled = bool(cfg.get_value("state", "autosave_enabled", true))
-		tutorial_intro_seen = bool(cfg.get_value("state", "tutorial_intro_seen", false))
-		tutorial_party_seen = bool(cfg.get_value("state", "tutorial_party_seen", false))
-		tutorial_retreat_seen = bool(cfg.get_value("state", "tutorial_retreat_seen", false))
-		tutorial_assignment_followup_seen = bool(cfg.get_value("state", "tutorial_assignment_followup_seen", false))
 
-func _mark_tutorial_seen(key: String) -> void:
+## 案内会話(場面名: intro_part1 導入・前編 / intro_part2 導入・後編 / party_formed 初雇用後 / retreat 初撤退)を、
+## 既に見せたかどうか。プレイヤー個人の既知情報でありセーブスロットの進行状態ではないため、autosave_enabledと同じく
+## worldseeker_meta.cfgへスロット非依存で永続化する(新しいスロットを作るたびに毎回見せ直さないため)。
+## 2026-09-21: **シナリオごと**に持つ(シナリオが自前の導入会話を持てるため。自作のシナリオを初めて始める時に、その導入が流れる)。
+## デフォルトシナリオは、従来のキー("state"の`tutorial_intro_seen`など)をそのまま使うので、見た記録は引き継がれる。
+const TUTORIAL_LEGACY_KEYS := {
+	"intro_part1": "tutorial_intro_seen", "intro_part2": "tutorial_assignment_followup_seen",
+	"party_formed": "tutorial_party_seen", "retreat": "tutorial_retreat_seen",
+}
+
+## 今遊んでいるシナリオ(ScenarioEvents.info)の、案内会話の記録先: [セクション, キー]
+func _tutorial_key(scene: String) -> Array:
+	var source := String(ScenarioEvents.info.get("source", "default"))
+	var scenario_id := String(ScenarioEvents.info.get("id", "default"))
+	if source == "default" and scenario_id == "default":
+		return ["state", TUTORIAL_LEGACY_KEYS.get(scene, "tutorial_%s_seen" % scene)]
+	return ["tutorial_seen.%s.%s" % [source, scenario_id], scene]
+
+func is_tutorial_seen(scene: String) -> bool:
+	var cfg := ConfigFile.new()
+	if cfg.load(META_PATH) != OK:
+		return false
+	var key := _tutorial_key(scene)
+	return bool(cfg.get_value(key[0], key[1], false))
+
+func mark_tutorial_seen(scene: String) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(META_PATH)
-	cfg.set_value("state", key, true)
+	var key := _tutorial_key(scene)
+	cfg.set_value(key[0], key[1], true)
 	cfg.save(META_PATH)
 
-func mark_tutorial_intro_seen() -> void:
-	tutorial_intro_seen = true
-	_mark_tutorial_seen("tutorial_intro_seen")
-
-func mark_tutorial_party_seen() -> void:
-	tutorial_party_seen = true
-	_mark_tutorial_seen("tutorial_party_seen")
-
-func mark_tutorial_retreat_seen() -> void:
-	tutorial_retreat_seen = true
-	_mark_tutorial_seen("tutorial_retreat_seen")
-
-func mark_tutorial_assignment_followup_seen() -> void:
-	tutorial_assignment_followup_seen = true
-	_mark_tutorial_seen("tutorial_assignment_followup_seen")
-
-## 「イベント確認が出来ない」という要望への対応(2026-09-14)。一度見ると二度と出ない
-## 説明用イベント会話4種を、すべて未視聴の状態に戻す(セーブスロットパネルの「イベント会話を
+## 「イベント確認が出来ない」という要望への対応(2026-09-14)。一度見ると二度と出ない説明用イベント会話4種を、
+## 今遊んでいるシナリオについて、すべて未視聴の状態に戻す(セーブスロットパネルの「イベント会話を
 ## リセットする」ボタンから呼ぶ、main.gd参照)。進行中のセーブデータ自体には触れない。
 func reset_tutorial_flags() -> void:
-	tutorial_intro_seen = false
-	tutorial_party_seen = false
-	tutorial_retreat_seen = false
-	tutorial_assignment_followup_seen = false
 	var cfg := ConfigFile.new()
 	cfg.load(META_PATH)
-	cfg.set_value("state", "tutorial_intro_seen", false)
-	cfg.set_value("state", "tutorial_party_seen", false)
-	cfg.set_value("state", "tutorial_retreat_seen", false)
-	cfg.set_value("state", "tutorial_assignment_followup_seen", false)
+	for scene in TUTORIAL_LEGACY_KEYS.keys():
+		var key := _tutorial_key(scene)
+		cfg.set_value(key[0], key[1], false)
 	cfg.save(META_PATH)
 
 func _slot_path(slot_id: int) -> String:

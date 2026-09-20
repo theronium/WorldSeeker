@@ -26,6 +26,11 @@ func _check(label: String, condition: bool, detail: String = "") -> void:
 		_fails += 1
 	print("%s %s%s" % ["OK  " if condition else "NG  ", label, "" if detail == "" else "  (" + detail + ")"])
 
+func _cfg_value(path: String, section: String, key: String) -> Variant:
+	var cfg := ConfigFile.new()
+	cfg.load(path)
+	return cfg.get_value(section, key, false)
+
 func _finish_dialogue(choice_index: int = 0) -> void:
 	var dialogue = root.get_node("EventDialogue")
 	var guard := 0
@@ -64,6 +69,12 @@ func _write_custom_scenario(scenario_name: String) -> void:
 			"script": [{"side": "left", "name": "試験官", "text": "封印を解こうか?", "choices": [{"label": "頼む", "outcome": "help"}, {"label": "断る", "outcome": "refuse"}]}],
 			"effects": [{"on": "help", "type": "open_floor", "floor": "sealed"}, {"on": "refuse", "type": "set_flag", "flag": "refused", "value": true}],
 		},
+		"guide_intro_part1": {
+			"id": "guide_intro_part1", "title": "自作の導入", "trigger": {"type": "system", "name": "intro_part1"},
+			"conditions": [], "repeat": false, "priority": 0, "kind": "guide",
+			"script": [{"side": "left", "name": "試験官", "text": "ようこそ、試験の世界へ", "outcome": "ok"}],
+			"effects": [{"on": "ok", "type": "set_flag", "flag": "intro_done", "value": true}],
+		},
 		"gate_a_pass": {
 			"id": "gate_a_pass", "title": "試験の間(突破)", "trigger": {"type": "gate", "floor": "gate_a", "result": "pass"},
 			"conditions": [], "repeat": false, "priority": 0, "kind": "auto",
@@ -96,6 +107,14 @@ func _run() -> void:
 	_check("新規開始: シナリオ情報", scenario.info.get("name", "") == "試験シナリオ" and scenario.info.get("source", "") == "custom")
 	_check("新規開始: 暦の起点(3年4月)", time_system.format_date() == "3年4月1日", time_system.format_date())
 	_check("新規開始: フラグは空", scenario.flags.is_empty() and scenario.fired.is_empty())
+
+	# --- 案内会話(導入)の「見た」記録は、シナリオごと ---
+	_check("導入: 自作シナリオではまだ見ていない", not save.is_tutorial_seen("intro_part1"))
+	_check("導入: 自作の導入会話を再生できる", scenario.play_guide("intro_part1") and dialogue.is_active and dialogue.current_kind == "guide")
+	_check("導入: 会話が終わるまでは、見た記録が付かない", not save.is_tutorial_seen("intro_part1"))
+	_finish_dialogue()
+	_check("導入: 最後まで進めると見た記録が付き、効果(フラグ)も働く", save.is_tutorial_seen("intro_part1") and scenario.flags.has("intro_done"))
+	scenario.reset_progress()
 
 	# --- 画像(ライブラリの画像と、シナリオ固有のPNG) ---
 	var png := Image.create(8, 8, false, Image.FORMAT_RGBA8)
@@ -149,6 +168,11 @@ func _run() -> void:
 
 	# --- 別のシナリオへ切替 → 元のスロットへ戻る ---
 	var other_slot: int = save.create_new_slot("標準", "default", "default")
+	_check("導入: デフォルトシナリオの記録は、自作のものと別(自作を見ても、デフォルトは見ていない扱い)", not save.is_tutorial_seen("intro_part1"))
+	save.mark_tutorial_seen("intro_part1")
+	_check("導入: デフォルトの記録は従来のキー(state/tutorial_intro_seen)に付く", ConfigFile.new().load(save.META_PATH) == OK and bool(_cfg_value(save.META_PATH, "state", "tutorial_intro_seen")))
+	save.reset_tutorial_flags()
+	_check("導入: リセットは今のシナリオだけ(デフォルトは未視聴に戻り、自作の記録は残る)", not save.is_tutorial_seen("intro_part1") and bool(_cfg_value(save.META_PATH, "tutorial_seen.custom.test_custom", "intro_part1")))
 	_check("別シナリオ: デフォルトの世界(194)、フラグは空、暦は0年1月", world_map.nodes.size() == 194 and scenario.flags.is_empty() and time_system.format_date() == "0年1月1日", "%d %s" % [world_map.nodes.size(), time_system.format_date()])
 	# シナリオを後から編集する(名前と、条件イベントの本数)
 	_write_custom_scenario("試験シナリオ(編集後)")

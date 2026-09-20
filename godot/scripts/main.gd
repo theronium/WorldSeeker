@@ -176,11 +176,11 @@ var modal_blocker: ColorRect
 ## 案内会話(導入の前編・後編、初雇用後のパーティ編成の説明)は、2026-09-21にシナリオのイベント
 ## (scenarios/<id>/events/guide_*.json、trigger.type="system")へ移した。ここからは、場面名で
 ## ScenarioEvents.play_system()を呼んで再生する:
-##   "intro_part1"  導入・前編(起動直後の一度きり。SaveSystem.tutorial_intro_seenで制御、_ready()参照)。
+##   "intro_part1"  導入・前編(起動直後の一度きり。SaveSystem.is_tutorial_seen("intro_part1")で制御。_ready()と、新規プレイ開始時の_play_intro_if_unseen()参照)。
 ##                  情報を詰め込みすぎず、マップでの割り当て操作そのものへ誘導することだけに絞ってある
-##   "intro_part2"  導入・後編(初めて実際に割り当てを行った直後。SaveSystem.tutorial_assignment_followup_seen、
+##   "intro_part2"  導入・後編(初めて実際に割り当てを行った直後。SaveSystem.is_tutorial_seen("intro_part2")、
 ##                  _maybe_show_assignment_followup_tutorial()参照)。収入の仕組み/行ける場所の増やし方/進行速度の説明
-##   "party_formed" 初めて探索者を雇用した直後(SaveSystem.tutorial_party_seen、_on_hire_pressed()参照)。
+##   "party_formed" 初めて探索者を雇用した直後(SaveSystem.is_tutorial_seen("party_formed")、_on_hire_pressed()参照)。
 ##                  雇っただけではまだ働けず、パーティ編成(1人でも組める)が必要なことを教える
 
 func _ready() -> void:
@@ -218,17 +218,25 @@ func _ready() -> void:
 	EventDialogue.finished.connect(_on_dialogue_finished)
 	_refresh_all()
 	# 初回起動時だけ、遊び方(探索者の配置/稼ぎ方/行ける場所の増やし方/進行速度)を説明する
-	# 導入会話を挟む。スロットに紐付かず(SaveSystem.tutorial_intro_seen)、新規プレイを
-	# 何度始めても一度見せたら二度と出さない。この時点ではまだ他の会話は動いていないので、
+	# 導入会話を挟む。スロットに紐付かず(SaveSystem.is_tutorial_seen)、シナリオごとに、新規プレイを
+	# 何度始めても一度見せたら二度と出さない(起動直後はデフォルトシナリオ。別のシナリオは、その新規プレイ開始時に
+	# _on_new_game_confirmed()が_play_intro_if_unseen()で流す)。この時点ではまだ他の会話は動いていないので、
 	# そのまま直接EventDialogue.play()してよい(節末の「イベント会話まわりの実装メモ」参照)。
 	# 「見た」フラグは再生開始時ではなく、実際にプレイヤーが最後まで進めてEventDialogue.finished
 	# が発火した時点でONE_SHOT接続で永続化する。開始時点で即座に書き込むと、`--headless --quit`
 	# のようなコンパイル確認だけの起動(誰も会話を進めない)でも実ファイル(worldseeker_meta.cfg)
 	# に「見た」と書き込まれてしまい、次回以降の本当のプレイでチュートリアルが二度と出なくなる
 	# 事故につながる(実際に一度発生させて修正した)。
-	if not SaveSystem.tutorial_intro_seen:
-		ScenarioEvents.play_system("intro_part1", SaveSystem.mark_tutorial_intro_seen)
+	_play_intro_if_unseen()
 	TimeSystem.mark_boot_complete()
+
+## 導入・前編を、今のシナリオでまだ見ていなければ再生する(起動直後と、新規プレイの開始直後)。
+## 「見た」記録は、会話を最後まで進めた時にScenarioEvents.play_guide()が付ける(会話を進めない`--headless --quit`の
+## 起動で、実ファイルへ「見た」と書き込んでしまわないため)。
+func _play_intro_if_unseen() -> void:
+	if EventDialogue.is_active or SaveSystem.is_tutorial_seen("intro_part1"):
+		return
+	ScenarioEvents.play_guide("intro_part1")
 
 func _process(_delta: float) -> void:
 	_refresh_time_label()
@@ -1075,7 +1083,7 @@ func _on_dialogue_finished(_outcome: String) -> void:
 ## RETREAT_TUTORIAL_SCRIPT(撤退説明会話)と同じ「安全になるまでcall_deferredで
 ## 先送りし続ける」方式で対応する。
 func _maybe_show_assignment_followup_tutorial() -> void:
-	if SaveSystem.tutorial_assignment_followup_seen or _pending_assignment_followup:
+	if SaveSystem.is_tutorial_seen("intro_part2") or _pending_assignment_followup:
 		return
 	_pending_assignment_followup = true
 	call_deferred("_try_show_assignment_followup_tutorial")
@@ -1088,7 +1096,7 @@ func _try_show_assignment_followup_tutorial() -> void:
 	# パーティパネル/割り当てモーダルを開いたまま再生すると会話が背後に隠れて見えなくなる
 	# ("party_formed"の再生箇所と同じ理由)。先に閉じてから再生する。
 	_close_any_modal()
-	ScenarioEvents.play_system("intro_part2", SaveSystem.mark_tutorial_assignment_followup_seen)
+	ScenarioEvents.play_guide("intro_part2")
 
 ## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
 ## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
@@ -2916,6 +2924,7 @@ func _on_new_game_confirmed() -> void:
 	SaveSystem.create_new_slot(slot_name_input.text.strip_edges(), String(entry.get("id", "")), String(entry.get("source", "default")))
 	_refresh_all()
 	_close_modal(slot_panel)
+	_play_intro_if_unseen() # 遊ぶシナリオの導入会話を、そのシナリオでまだ見ていなければ流す(パネルを閉じた後: 開いたままだと会話が隠れる)
 
 func _on_rename_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
@@ -3013,7 +3022,7 @@ func _on_import_confirmed() -> void:
 func _on_reset_tutorials_pressed() -> void:
 	SaveSystem.reset_tutorial_flags()
 	_close_modal(slot_panel)
-	ScenarioEvents.play_system("intro_part1", SaveSystem.mark_tutorial_intro_seen)
+	ScenarioEvents.play_guide("intro_part1")
 
 func _on_delete_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
@@ -3854,9 +3863,9 @@ func _on_hire_pressed() -> void:
 	# フラグは再生開始時ではなくEventDialogue.finished発火時に永続化する(理由は_ready()の導入会話の再生箇所
 	# 再生箇所のコメント参照。診断コードが雇用だけシミュレートして会話を進めずに終わった場合
 	# などに、実際には見せていないのに実ファイルへ「見た」と書き込んでしまう事故を防ぐ)。
-	if not SaveSystem.tutorial_party_seen:
+	if not SaveSystem.is_tutorial_seen("party_formed"):
 		_close_modal(hire_panel)
-		ScenarioEvents.play_system("party_formed", SaveSystem.mark_tutorial_party_seen)
+		ScenarioEvents.play_guide("party_formed")
 
 func _on_view_thread_pressed() -> void:
 	var selected_item := section_tree.get_selected()

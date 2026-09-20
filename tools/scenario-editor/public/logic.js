@@ -26,7 +26,7 @@
   const SKILL_NAMES = { WISDOM: '知恵', LOCKPICKING: '鍵開け', DESTRUCTION: '破壊', PERCEPTION: '知覚/発見', COMBAT: '戦闘力', HEALING: '回復' };
   const SIDES = [{ value: 'left', label: '左(人物)' }, { value: 'right', label: '右(敵)' }, { value: 'none', label: 'なし(語り)' }];
   const SYSTEM_SCENES = [
-    { value: 'intro_part1', label: '導入・前編(ゲーム起動直後の一度きり)' },
+    { value: 'intro_part1', label: '導入・前編(新規プレイの開始直後。シナリオごとに一度きり)' },
     { value: 'intro_part2', label: '導入・後編(初めてパーティを割り当てた直後)' },
     { value: 'party_formed', label: '初めて探索者を雇用した直後' },
     { value: 'retreat', label: '初めて戦闘で撤退した直後' },

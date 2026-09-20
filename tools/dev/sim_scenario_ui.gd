@@ -30,6 +30,16 @@ func _run() -> void:
 			{"id": "n3", "name": "別区画", "section": "sx2", "connections": ["n2"], "gate": {}, "item_reward": "", "initially_passed": false},
 		],
 	})
+	ScenarioStore.write_json("user://scenarios/ui_test/events/guide_intro_part1.json", {
+		"id": "guide_intro_part1", "title": "導入", "trigger": {"type": "system", "name": "intro_part1"}, "kind": "guide",
+		"script": [{"side": "left", "name": "案内人", "text": "自作シナリオへようこそ", "outcome": "ok"}],
+	})
+	var dialogue = root.get_node("EventDialogue")
+	var save = root.get_node("SaveSystem")
+	print("起動直後: デフォルトの導入会話が流れている=", dialogue.is_active, " 見た記録=", save.is_tutorial_seen("intro_part1"))
+	while dialogue.is_active:
+		dialogue.advance() # デフォルトの導入を最後まで進める(見た記録が付く)
+	print("導入を進めた後: 見た記録=", save.is_tutorial_seen("intro_part1"))
 	_main._on_open_slots_pressed()
 	var options: OptionButton = _main.new_game_scenario_option
 	var labels := []
@@ -44,6 +54,9 @@ func _run() -> void:
 	_main._on_new_game_pressed()
 	print("確認文: ", _main.new_game_confirm.dialog_text)
 	_main._on_new_game_confirmed()
+	print("自作シナリオの新規開始直後: 導入会話が流れている=", dialogue.is_active, " 台詞=", (dialogue._script[dialogue._index]["text"] if dialogue.is_active else ""))
+	while dialogue.is_active:
+		dialogue.advance()
 	print("新規後: エリア%d フロア%d タブ%s 暦%s 選択中エリア=%s" % [world_map.areas.size(), world_map.nodes.size(), _main.area_tab_buttons.keys(), root.get_node("TimeSystem").format_date(), _main._active_area_id])
 	print("マップのフロア箱: ", _main.node_boxes.keys())
 	_main._on_area_tab_pressed("x2")
@@ -58,5 +71,6 @@ func _run() -> void:
 		if options.get_item_metadata(i)["id"] == "default":
 			options.select(i)
 	_main._on_new_game_confirmed()
+	print("標準へ戻した直後: 導入会話が流れている=", dialogue.is_active, " (期待: false=デフォルトは見た記録がある)")
 	print("標準へ: エリア%d フロア%d タブ%d 選択中エリア=%s フロア箱=%d" % [world_map.areas.size(), world_map.nodes.size(), _main.area_tab_buttons.size(), _main._active_area_id, _main.node_boxes.size()])
 	DirAccess.remove_absolute("user://scenarios/ui_test")

@@ -99,6 +99,11 @@ func play(event: Dictionary, on_done: Callable = Callable()) -> bool:
 func play_system(scene_name: String, on_done: Callable = Callable()) -> bool:
 	return play(system_event(scene_name), on_done)
 
+## 案内会話を再生し、最後まで進められたら「このシナリオでは見た」と記録する(SaveSystem.mark_tutorial_seen)。
+## 見た/見ないの判定は、呼び出し側がSaveSystem.is_tutorial_seen()で先に行う(リセットボタンは、見たあとでも再生する)。
+func play_guide(scene_name: String) -> bool:
+	return play_system(scene_name, func(): SaveSystem.mark_tutorial_seen(scene_name))
+
 func _on_event_finished(event: Dictionary, outcome: String) -> void:
 	var record: Dictionary = fired.get(event["id"], {"count": 0, "day": 0})
 	record["count"] += 1

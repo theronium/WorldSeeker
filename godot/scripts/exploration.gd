@@ -59,7 +59,7 @@ const RETREAT_TRAINING_EXP_PER_DAY := 1
 ## (design.md 4.7節のpost_clear_behavior)は今まさに阻まれている状況には関係なく、セクションを完全に突破し
 ## 終えたあとの挙動を決める設定だと誤解されやすいため、その区別を説明する内容(デフォルトシナリオ)。
 ## 会話の中身は、2026-09-21にシナリオ(scenarios/<id>/events/guide_retreat.json)へ移した。
-## SaveSystem.tutorial_retreat_seenで一度きりに制御する(_post_retreat_help()/_maybe_show_retreat_tutorial()参照)。
+## SaveSystem.is_tutorial_seen("retreat")で(シナリオごとに)一度きりに制御する(_post_retreat_help()/_maybe_show_retreat_tutorial()参照)。
 
 ## 撤退説明会話の予約フラグ: _post_retreat_help()が立て、EventDialogue.finished(または
 ## その場)から_maybe_show_retreat_tutorial()が消化する。true→実際に再生完了までの間、
@@ -90,7 +90,7 @@ func _maybe_show_retreat_tutorial() -> void:
 	# 永続化する(main.gdのINTRO_TUTORIAL_SCRIPT再生箇所のコメント参照。同じ理由で、
 	# 日数を進めるだけの診断がたまたま撤退を発生させても、会話を進めない限り実ファイルは
 	# 汚れない)。
-	ScenarioEvents.play_system("retreat", SaveSystem.mark_tutorial_retreat_seen)
+	ScenarioEvents.play_guide("retreat")
 
 ## 月末の集計タイムで、担当パーティがいる全セクション分の収入をまとめて資金化する。
 ## 完全踏破済みのセクションは対象外(_process_lapによる周回収入に置き換わっている。
@@ -532,7 +532,7 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "combat_retreat")
 	ActionLog.record(current_day, "combat_retreat", text, -1, node_id, section_id)
 
-	if not SaveSystem.tutorial_retreat_seen and not _retreat_tutorial_pending:
+	if not SaveSystem.is_tutorial_seen("retreat") and not _retreat_tutorial_pending:
 		_retreat_tutorial_pending = true
 		call_deferred("_maybe_show_retreat_tutorial")
 

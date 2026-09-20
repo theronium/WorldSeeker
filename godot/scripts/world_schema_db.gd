@@ -44,6 +44,9 @@ var active_version_id: String = "" # 今WorldMapに実際に読み込まれて�
 func _ready() -> void:
 	if use_scenario(STARTUP_SCENARIO_ID, "default"):
 		import_into_worldmap(current_version_id)
+		# 端末(特にAndroid: res://のフォルダ一覧が使えるか)で、シナリオを読めたかを確かめるためのログ(logcat -s godot)
+		print("[scenario] 起動: %s フロア%d 会話%d 選べるシナリオ%d" % [
+			ScenarioEvents.info.get("id", ""), WorldMap.nodes.size(), ScenarioEvents.events.size(), ScenarioStore.list_scenarios().size()])
 	else:
 		push_error("デフォルトシナリオを読み込めません: " + ScenarioStore.scenario_dir(STARTUP_SCENARIO_ID, "default"))
 
