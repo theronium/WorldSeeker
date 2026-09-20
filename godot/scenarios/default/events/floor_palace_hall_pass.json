@@ -1,0 +1,28 @@
+{
+  "id": "floor_palace_hall_pass",
+  "title": "月宮の広間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "palace_hall",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "月宮の広間",
+      "text": "広間の壁一面に、満ち欠けを描いた月の紋様が刻まれている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "月の満ち欠けの順序を読み解くと、奥の扉が静かに開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

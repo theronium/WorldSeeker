@@ -1,0 +1,28 @@
+{
+  "id": "floor_archive_room_pass",
+  "title": "古文書庫(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "archive_room",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "古文書庫",
+      "text": "崩れかけた棚に、色褪せた探検記録の束が眠っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "記録の中から、当時の探検隊が遺した地図を見つけ出した。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

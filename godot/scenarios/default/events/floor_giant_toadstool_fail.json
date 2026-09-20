@@ -1,0 +1,28 @@
+{
+  "id": "floor_giant_toadstool_fail",
+  "title": "巨大な茸(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "giant_toadstool",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "巨大な茸",
+      "text": "見上げるほどの茸が一本、傘を大きく広げて立っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "茸は思いのほか頑丈で、びくともしなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

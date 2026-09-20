@@ -1,0 +1,28 @@
+{
+  "id": "floor_fae_queen_pass",
+  "title": "妖精女王(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "fae_queen",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "妖精女王",
+      "text": "……ほう、ここまで辿り着くとはな。相応の資格があるか、見せてもらおう。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "女王との激しい鍔迫り合いの末、その笑みとともに寵愛の証を授けられた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

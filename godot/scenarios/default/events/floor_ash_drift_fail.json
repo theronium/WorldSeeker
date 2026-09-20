@@ -1,0 +1,28 @@
+{
+  "id": "floor_ash_drift_fail",
+  "title": "灰の吹き溜まり(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "ash_drift",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "灰の小鬼",
+      "text": "灰の吹き溜まりから、小さな炎をまとった影がいくつも飛び出してくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "熱い灰に阻まれ、やむなく退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

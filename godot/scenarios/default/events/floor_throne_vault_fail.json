@@ -1,0 +1,28 @@
+{
+  "id": "floor_throne_vault_fail",
+  "title": "王の秘宝庫(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "throne_vault",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "王の秘宝庫",
+      "text": "奥の台座に、心臓を収める窪みが静かに脈打っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "心臓を持たぬ今は、窪みはただ静かに沈黙している。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

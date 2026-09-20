@@ -1,0 +1,28 @@
+{
+  "id": "floor_boss_lair_fail",
+  "title": "ゴブリンキングの間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "boss_lair",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "ゴブリンキング",
+      "text": "……よくぞここまで来たか、小僧……",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "歯が立たず、深手を負って撤退した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

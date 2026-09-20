@@ -48,7 +48,7 @@ var section_assign_title: Label
 var section_assign_list: VBoxContainer
 var section_assign_status_label: Label
 var _section_assign_target_id: String = ""
-var _pending_assignment_followup: bool = false # INTRO_TUTORIAL_PART2_SCRIPT予約フラグ
+var _pending_assignment_followup: bool = false # 導入・後編(場面名"intro_part2")の予約フラグ
 
 # 武器防具屋パネル(design.md 6.2節)。
 var shop_panel: PanelContainer
@@ -158,6 +158,8 @@ var slot_name_input: LineEdit
 var manual_save_status_label: Label
 var autosave_checkbox: CheckBox
 var new_game_confirm: ConfirmationDialog
+var new_game_scenario_option: OptionButton # 新規プレイで遊ぶシナリオ(ScenarioStore.list_scenarios())
+var _built_world_version: String = "" # エリア選択バーとマップを作った時の世界のバージョン(WorldSchemaDb.active_version_id)
 var delete_slot_confirm: ConfirmationDialog
 var _pending_delete_slot_id: int = -1
 # セーブのエクスポート/インポート(SaveSystem.export_all_slots/read_import_file/import_slots)。
@@ -171,38 +173,15 @@ var hire_panel: PanelContainer
 var npc_panel: PanelContainer
 var modal_blocker: ColorRect
 
-## 初回起動時だけ再生する導入会話・前編(design.md参照、2026-09-14に前後編へ分割)。
-## 「チュートリアルのマップ割り当てまでが分かりにくい」という指摘への対応として、
-## 情報を詰め込みすぎず、まずマップでの割り当て操作そのものへ誘導することだけに絞った。
-## SaveSystem.tutorial_intro_seenで一度きりに制御する(_ready()参照)。後編は
-## INTRO_TUTORIAL_PART2_SCRIPT(初めて実際に割り当てを行った直後に再生。
-## _maybe_show_assignment_followup_tutorial()参照)。
-const INTRO_TUTORIAL_PART1_SCRIPT: Array = [
-	{"side": "left", "name": "案内人", "text": "ようこそ。ここは、雇った探索者たちを世界へ送り出し、その稼ぎで暮らしを立てていく土地だ。"},
-	{"side": "left", "name": "案内人", "text": "既に「初期パーティ」が1つ、無償で用意されている。まずはこれをどこかのセクション(区画)に割り当てて、探索を始めよう。"},
-	{"side": "left", "name": "案内人", "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)を押してみるといい。そこにパーティを割り当てられる。", "outcome": "ok"},
-]
-
-## 導入会話・後編。初めて実際にパーティ割り当てを行った直後に再生する(マップのセクション名
-## ボタン経由/パーティパネルの「割り当て」ボタン経由、どちらでも良い)。前編で触れなかった
-## 収入の仕組み/行ける場所の増やし方/進行速度について説明する。
-## SaveSystem.tutorial_assignment_followup_seenで一度きりに制御する。
-const INTRO_TUTORIAL_PART2_SCRIPT: Array = [
-	{"side": "left", "name": "案内人", "text": "よし、これで探索が始まった。割り当てたパーティが、毎日自動で発見・突破に挑んでくれる。"},
-	{"side": "left", "name": "案内人", "text": "資金は、担当セクションで突破したフロアの数に応じて毎月自動的に入る。フロアを突破するほど、そしてセクションを完全に突破しきるほど、実入りは大きくなる。"},
-	{"side": "left", "name": "案内人", "text": "セクションを突破しきれば、その先の新しいセクションやエリアへの道も開ける。行ける場所を増やしたいなら、目の前を突破し続けるのが一番の近道だ。"},
-	{"side": "left", "name": "案内人", "text": "進行速度は画面左上の「1x/10x/100x/1000x」でいつでも変えられる。月末には自動で一時停止するので、収支を確かめてから次の月へ進めるといい。"},
-	{"side": "left", "name": "案内人", "text": "困ったら、探索者管理やパーティのパネルを開いて様子を見るといい。……それでは、健闘を祈る。", "outcome": "ok"},
-]
-
-## 初めて探索者を雇用した直後だけ再生する説明会話。雇っただけではまだ働けず、パーティ編成
-## (1人でも組める)が必要なことを教える。SaveSystem.tutorial_party_seenで一度きりに制御する
-## (_on_hire_pressed()参照)。
-const PARTY_TUTORIAL_SCRIPT: Array = [
-	{"side": "left", "name": "案内人", "text": "新しい仲間が加わった。……とはいえ、雇っただけではまだ働けない。"},
-	{"side": "left", "name": "案内人", "text": "「パーティ」パネルを開いて、雇った探索者を選び、パーティを編成しよう。1人だけでもパーティは組める――まずは1人で始めて、あとから仲間を増やしても構わない。"},
-	{"side": "left", "name": "案内人", "text": "パーティが組めたら、担当セクションを割り当てるといい。あとは毎日自動で探索に挑んでくれる。", "outcome": "ok"},
-]
+## 案内会話(導入の前編・後編、初雇用後のパーティ編成の説明)は、2026-09-21にシナリオのイベント
+## (scenarios/<id>/events/guide_*.json、trigger.type="system")へ移した。ここからは、場面名で
+## ScenarioEvents.play_system()を呼んで再生する:
+##   "intro_part1"  導入・前編(起動直後の一度きり。SaveSystem.tutorial_intro_seenで制御、_ready()参照)。
+##                  情報を詰め込みすぎず、マップでの割り当て操作そのものへ誘導することだけに絞ってある
+##   "intro_part2"  導入・後編(初めて実際に割り当てを行った直後。SaveSystem.tutorial_assignment_followup_seen、
+##                  _maybe_show_assignment_followup_tutorial()参照)。収入の仕組み/行ける場所の増やし方/進行速度の説明
+##   "party_formed" 初めて探索者を雇用した直後(SaveSystem.tutorial_party_seen、_on_hire_pressed()参照)。
+##                  雇っただけではまだ働けず、パーティ編成(1人でも組める)が必要なことを教える
 
 func _ready() -> void:
 	_touch_ui = OS.has_feature("mobile") or "--touch-ui" in OS.get_cmdline_user_args()
@@ -228,7 +207,7 @@ func _ready() -> void:
 	# 場合は、セーブパネルから明示的に「このスロットをロードする」を選ぶ(一般的な
 	# ゲームの「ロードは明示的操作」という体験に合わせた。過去に診断作業が実セーブを
 	# 誤って上書きした事故の根本原因でもあったため、安全面でも狙い通り)。
-	# WorldMapはworld_data.gdの起動時ブートストラップで既に最新スキーマで構築済みのため、
+	# WorldMapはオートロードのWorldSchemaDbが起動時にデフォルトシナリオで既に構築済みのため、
 	# ここではスキーマの再構築は不要。
 	_seed_demo_world()
 	SaveSystem.start_fresh_session()
@@ -248,8 +227,7 @@ func _ready() -> void:
 	# に「見た」と書き込まれてしまい、次回以降の本当のプレイでチュートリアルが二度と出なくなる
 	# 事故につながる(実際に一度発生させて修正した)。
 	if not SaveSystem.tutorial_intro_seen:
-		EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_intro_seen(), CONNECT_ONE_SHOT)
-		EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT, "guide")
+		ScenarioEvents.play_system("intro_part1", SaveSystem.mark_tutorial_intro_seen)
 	TimeSystem.mark_boot_complete()
 
 func _process(_delta: float) -> void:
@@ -775,7 +753,7 @@ func _build_ui() -> void:
 	# エリアタブ(design.md 5.1節、2026-09-14: スクロール式のエリア選択バーから置き換え)。
 	# マップが9エリア分を1列に縦積みし続けて際限なく長大化していた問題への対応として、
 	# 選んだエリアのセクションだけを表示する方式にした。map_scrollの後に追加することで
-	# 手前に重ねて表示する。WorldMap.areasはオートロードのWorldDataが既に流し込み済みなので、
+	# 手前に重ねて表示する。WorldMap.areasはオートロードのWorldSchemaDbが(シナリオから)既に流し込み済みなので、
 	# ボタン自体はここで一度作ればよい(選択状態・🔒表示は_refresh_area_tabsで更新する)。
 	area_nav_panel = PanelContainer.new()
 	area_nav_panel.set_anchors_preset(Control.PRESET_TOP_WIDE)
@@ -788,7 +766,18 @@ func _build_ui() -> void:
 	area_nav_panel.add_theme_stylebox_override("panel", area_nav_style)
 	map_area.add_child(area_nav_panel)
 
+	_rebuild_area_nav()
+	if _touch_ui:
+		_build_board_overlay(map_area) # エリアバーの後に追加して、その手前に重ねる
+
+## エリア選択バーを、今のWorldMap.areasから(作り直して)組み立てる。別のシナリオ(別の世界)へ切り替えると
+## エリアの顔ぶれが変わるため、_refresh_all()が_built_world_versionとの違いを見つけて呼び直す。
+func _rebuild_area_nav() -> void:
+	for child in area_nav_panel.get_children():
+		area_nav_panel.remove_child(child)
+		child.queue_free()
 	area_tab_buttons.clear()
+	area_option = null
 	if _touch_ui:
 		_build_area_nav_touch(area_nav_panel)
 	else:
@@ -806,10 +795,9 @@ func _build_ui() -> void:
 			area_button.pressed.connect(_on_area_tab_pressed.bind(area_id))
 			area_nav_row.add_child(area_button)
 			area_tab_buttons[area_id] = area_button
-	if _active_area_id == "" and not WorldMap.areas.is_empty():
-		_active_area_id = WorldMap.areas.keys()[0] # 既定は最初のエリア(王国)
-	if _touch_ui:
-		_build_board_overlay(map_area) # エリアバーの後に追加して、その手前に重ねる
+	_built_world_version = WorldSchemaDb.active_version_id
+	if not WorldMap.areas.has(_active_area_id):
+		_active_area_id = WorldMap.areas.keys()[0] if not WorldMap.areas.is_empty() else "" # 既定は最初のエリア
 
 ## タッチUI用のエリア選択(2026-09-19)。横スクロールのタブ列は、指でなぞるとバー自体が動いてしまい
 ## 押し辛かったため、「◀ [現在のエリア ▼] ▶」に置き換えた。中央のプルダウンで任意のエリアへ一発で
@@ -952,13 +940,9 @@ func _highlight_portrait_slot(slot: VBoxContainer, character_name: String) -> vo
 ## 埋まるか会話が終わるまで残り、話していない間は_dim_portrait_slotで暗くなるだけで消えない。
 func _set_portrait_slot_image(slot: VBoxContainer, portrait_id: String) -> void:
 	var image_rect: TextureRect = slot.get_child(0).get_child(0)
-	var path := PortraitLibrary.texture_path(portrait_id) if portrait_id != "" else ""
-	if path != "" and ResourceLoader.exists(path):
-		image_rect.texture = load(path)
-		image_rect.visible = true
-	else:
-		image_rect.texture = null
-		image_rect.visible = false
+	var texture: Texture2D = EventPortraits.load_texture(portrait_id)
+	image_rect.texture = texture
+	image_rect.visible = texture != null
 
 ## イベント会話の種別ごとの表示スタイル(2026-09-20)。パネルの縁と背景、発言者名、種別バッジ、次へ/選択肢の
 ## ボタンが、この色(accent)で揃う。種別はEventDialogue.play()の引数で決まる(フロアのイベントは、ゲートの種類から
@@ -1042,15 +1026,17 @@ func _on_dialogue_line_shown(line: Dictionary) -> void:
 
 	var side: String = line.get("side", "none")
 	var speaker: String = line.get("name", "")
+	# 画像は、行の"image"(その行だけの指定)、無ければ登場人物表(cast)の割り当て、無ければ名前からの自動選択の順
+	var line_image: String = line.get("image", "")
 	if side == "left":
 		if speaker != "":
-			_set_portrait_slot_image(left_slot, EventPortraits.portrait_id(speaker, kind))
+			_set_portrait_slot_image(left_slot, line_image if line_image != "" else EventPortraits.portrait_id(speaker, kind))
 		_highlight_portrait_slot(left_slot, speaker)
 	else:
 		_dim_portrait_slot(left_slot)
 	if side == "right":
 		if speaker != "":
-			_set_portrait_slot_image(right_slot, EventPortraits.portrait_id(speaker, kind))
+			_set_portrait_slot_image(right_slot, line_image if line_image != "" else EventPortraits.portrait_id(speaker, kind))
 		_highlight_portrait_slot(right_slot, speaker)
 	else:
 		_dim_portrait_slot(right_slot)
@@ -1076,7 +1062,7 @@ func _on_dialogue_finished(_outcome: String) -> void:
 	_set_portrait_slot_image(right_slot, "")
 	_refresh_board()
 	_refresh_map()
-	# 導入会話・後編(INTRO_TUTORIAL_PART2_SCRIPT)の予約消化。他の会話(フロア発見時のVN等)
+	# 導入会話・後編("intro_part2")の予約消化。他の会話(フロア発見時のVN等)
 	# が終わるたびにここでも確認する(下のコメント参照)。
 	if _pending_assignment_followup:
 		call_deferred("_try_show_assignment_followup_tutorial")
@@ -1100,10 +1086,9 @@ func _try_show_assignment_followup_tutorial() -> void:
 	_pending_assignment_followup = false
 	# dialogue_panelはhire_panel等のモーダルより手前に重ねていない(_open_modalの管理対象外)ため、
 	# パーティパネル/割り当てモーダルを開いたまま再生すると会話が背後に隠れて見えなくなる
-	# (PARTY_TUTORIAL_SCRIPT再生箇所と同じ理由)。先に閉じてから再生する。
+	# ("party_formed"の再生箇所と同じ理由)。先に閉じてから再生する。
 	_close_any_modal()
-	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_assignment_followup_seen(), CONNECT_ONE_SHOT)
-	EventDialogue.play(INTRO_TUTORIAL_PART2_SCRIPT, "guide")
+	ScenarioEvents.play_system("intro_part2", SaveSystem.mark_tutorial_assignment_followup_seen)
 
 ## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
 ## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
@@ -2780,9 +2765,22 @@ func _build_slot_ui() -> void:
 	delete_button.pressed.connect(_on_delete_slot_pressed)
 	right_col.add_child(delete_button)
 
+	# 新規プレイで遊ぶシナリオ(2026-09-21、docs/scenario_editor.md)。エディタで作った/直した内容は、
+	# ここで選んで新規プレイを始めた時に読み込まれる(遊び始めたスロットは、その時点の内容のまま続く)。
+	var scenario_row := HBoxContainer.new()
+	right_col.add_child(scenario_row)
+	var scenario_label := Label.new()
+	scenario_label.text = "シナリオ:"
+	scenario_row.add_child(scenario_label)
+	new_game_scenario_option = OptionButton.new()
+	new_game_scenario_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	new_game_scenario_option.clip_text = true
+	scenario_row.add_child(new_game_scenario_option)
+	_refresh_scenario_options()
+
 	var new_game_button := Button.new()
 	new_game_button.text = "新規プレイを開始する"
-	new_game_button.pressed.connect(func(): new_game_confirm.popup_centered())
+	new_game_button.pressed.connect(_on_new_game_pressed)
 	right_col.add_child(new_game_button)
 
 	# オートセーブを切りたい(手動セーブだけで管理したい)という要望への対応。
@@ -2854,7 +2852,36 @@ func _build_slot_ui() -> void:
 	import_confirm.canceled.connect(SaveSystem.cancel_import)
 	add_child(import_confirm)
 
+## 新規プレイで選べるシナリオの一覧を作り直す。開いていたシナリオ(今の世界)を初期の選択にする。
+## パネルを開くたびに呼ぶので、エディタで足した/消したシナリオが、ゲームを再起動せずに一覧へ出る。
+func _refresh_scenario_options() -> void:
+	var previous: Dictionary = {}
+	if new_game_scenario_option.selected >= 0:
+		previous = new_game_scenario_option.get_item_metadata(new_game_scenario_option.selected)
+	var preferred_id := String(previous.get("id", ScenarioEvents.info.get("id", "")))
+	var preferred_source := String(previous.get("source", ScenarioEvents.info.get("source", "default")))
+	new_game_scenario_option.clear()
+	for entry in ScenarioStore.list_scenarios():
+		var label: String = entry["name"] if entry["source"] == "default" else "%s (カスタム)" % entry["name"]
+		new_game_scenario_option.add_item(label)
+		var index := new_game_scenario_option.item_count - 1
+		new_game_scenario_option.set_item_metadata(index, entry)
+		new_game_scenario_option.set_item_tooltip(index, entry["description"])
+		if entry["id"] == preferred_id and entry["source"] == preferred_source:
+			new_game_scenario_option.select(index)
+
+func _selected_scenario() -> Dictionary:
+	if new_game_scenario_option.selected < 0:
+		return {}
+	return new_game_scenario_option.get_item_metadata(new_game_scenario_option.selected)
+
+func _on_new_game_pressed() -> void:
+	var entry := _selected_scenario()
+	new_game_confirm.dialog_text = "シナリオ「%s」を、現在の進行とは別の新しいセーブスロットでゼロから始めます。よろしいですか？" % String(entry.get("name", "(不明)"))
+	new_game_confirm.popup_centered()
+
 func _on_open_slots_pressed() -> void:
+	_refresh_scenario_options()
 	_refresh_slot_list()
 	manual_save_status_label.text = ""
 	slot_name_input.text = ""
@@ -2867,8 +2894,9 @@ func _refresh_slot_list() -> void:
 		var active_mark := " (現在)" if slot["slot_id"] == SaveSystem.current_slot_id else ""
 		var label: String = slot["name"] if slot["name"] != "" else "スロット%d" % slot["slot_id"]
 		var idx := slot_list.item_count
-		slot_list.add_item("%s%s — %s / 資金%d / Day%d / 探索者%d人" % [
-			label, active_mark, SaveSystem.format_saved_at(slot["saved_at"]), slot["funds"], slot["day"], slot["npc_count"]])
+		var scenario_text: String = " / " + slot["scenario_name"] if slot["scenario_name"] != "" else ""
+		slot_list.add_item("%s%s — %s / 資金%d / Day%d / 探索者%d人%s" % [
+			label, active_mark, SaveSystem.format_saved_at(slot["saved_at"]), slot["funds"], slot["day"], slot["npc_count"], scenario_text])
 		slot_list.set_item_metadata(idx, slot["slot_id"])
 
 func _on_open_slot_pressed() -> void:
@@ -2884,7 +2912,8 @@ func _on_open_slot_pressed() -> void:
 	_close_modal(slot_panel)
 
 func _on_new_game_confirmed() -> void:
-	SaveSystem.create_new_slot(slot_name_input.text.strip_edges())
+	var entry := _selected_scenario()
+	SaveSystem.create_new_slot(slot_name_input.text.strip_edges(), String(entry.get("id", "")), String(entry.get("source", "default")))
 	_refresh_all()
 	_close_modal(slot_panel)
 
@@ -2978,14 +3007,13 @@ func _on_import_confirmed() -> void:
 		new_ids.size(), "、".join(new_ids.map(func(id): return str(id)))]
 
 ## 一度見ると二度と出ない説明用イベント会話4種を、確認用に未視聴の状態へ戻す。導入会話
-## (INTRO_TUTORIAL_PART1_SCRIPT)は起動時にしかトリガーできないため、リセット直後にこの場で
+## ("intro_part1")は起動時にしかトリガーできないため、リセット直後にこの場で
 ## 再生する(パネルを閉じてから再生しないとdialogue_panelが背後に隠れる。他の会話の再生箇所と
 ## 同じ理由)。残り3つ(初雇用/初撤退/初割り当て)は該当の操作を実際に行うと再度表示される。
 func _on_reset_tutorials_pressed() -> void:
 	SaveSystem.reset_tutorial_flags()
 	_close_modal(slot_panel)
-	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_intro_seen(), CONNECT_ONE_SHOT)
-	EventDialogue.play(INTRO_TUTORIAL_PART1_SCRIPT, "guide")
+	ScenarioEvents.play_system("intro_part1", SaveSystem.mark_tutorial_intro_seen)
 
 func _on_delete_slot_pressed() -> void:
 	var selected := slot_list.get_selected_items()
@@ -3071,8 +3099,8 @@ func _build_node_styles() -> void:
 ## 以前は9エリア全部を1枚のキャンバスに縦積みしていたため、マップが際限なく長大化し、
 ## 条件付きの支線エリアも進めないままずっと画面の奥に居座り続ける問題があった。
 func _seed_demo_world() -> void:
-	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが
-	# オートロードとして既に流し込み済み。ここではWorldMapの内容を
+	# ワールドの中身(エリア/セクション/フロア/イベント)はWorldSchemaDbが
+	# (シナリオから)既に流し込み済み。ここではWorldMapの内容を
 	# UI(ノードグラフ)として描画するだけ。担当セクションの選択肢(section_tree)は
 	# 探索者管理パネルを開くたびに_populate_section_treeで組み直す。
 	for child in map_canvas.get_children():
@@ -3823,13 +3851,12 @@ func _on_hire_pressed() -> void:
 	_refresh_funds()
 	# 初めての雇用の直後だけ、パーティ編成の説明会話を挟む。雇用パネル(モーダル)が開いた
 	# ままだと会話ウィンドウがその下に隠れてしまうため、先に閉じてから再生する。「見た」
-	# フラグは再生開始時ではなくEventDialogue.finished発火時に永続化する(理由はINTRO_TUTORIAL_SCRIPT
+	# フラグは再生開始時ではなくEventDialogue.finished発火時に永続化する(理由は_ready()の導入会話の再生箇所
 	# 再生箇所のコメント参照。診断コードが雇用だけシミュレートして会話を進めずに終わった場合
 	# などに、実際には見せていないのに実ファイルへ「見た」と書き込んでしまう事故を防ぐ)。
 	if not SaveSystem.tutorial_party_seen:
 		_close_modal(hire_panel)
-		EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_party_seen(), CONNECT_ONE_SHOT)
-		EventDialogue.play(PARTY_TUTORIAL_SCRIPT, "guide")
+		ScenarioEvents.play_system("party_formed", SaveSystem.mark_tutorial_party_seen)
 
 func _on_view_thread_pressed() -> void:
 	var selected_item := section_tree.get_selected()
@@ -3885,6 +3912,9 @@ func _on_month_ended(_month: int) -> void:
 	_refresh_funds() # 月次収入(exploration.gdのEconomy.earn())はここで確定するので反映する
 
 func _refresh_all() -> void:
+	if WorldSchemaDb.active_version_id != _built_world_version:
+		_rebuild_area_nav() # 別のシナリオ(世界)へ切り替わった: エリア選択バーとマップを作り直す
+		_seed_demo_world()
 	_refresh_funds()
 	_refresh_candidates()
 	_refresh_roster()

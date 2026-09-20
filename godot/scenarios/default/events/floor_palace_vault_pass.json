@@ -1,0 +1,28 @@
+{
+  "id": "floor_palace_vault_pass",
+  "title": "秘宝の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "palace_vault",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "秘宝の間",
+      "text": "奥の台座に、冠を戴く窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "月魄の冠を捧げると、間全体が満月の光に包まれた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

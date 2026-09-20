@@ -1,0 +1,28 @@
+{
+  "id": "floor_forge_depths_pass",
+  "title": "鍛冶場の奥(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "forge_depths",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "鍛冶場の奥",
+      "text": "奥の扉には、鋼塊を差し込むような溝が刻まれている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "業火で鍛えた鋼塊を差し込むと、扉は静かに開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

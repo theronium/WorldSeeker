@@ -1,0 +1,28 @@
+{
+  "id": "floor_cracked_geode_fail",
+  "title": "割れた晶洞(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "cracked_geode",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "割れた晶洞",
+      "text": "大きな晶洞が一つ、うっすらとひびの入った状態で転がっている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "晶洞は硬く、ひびを広げることすらできなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_stockroom_pass",
+  "title": "封印の資材庫(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_stockroom",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封印の資材庫",
+      "text": "分厚い鉄板が打ち付けられた戸口。並の道具では歯が立たなそうだ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鍛冶槌を振るうと、鉄板は呆気なく砕け散った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

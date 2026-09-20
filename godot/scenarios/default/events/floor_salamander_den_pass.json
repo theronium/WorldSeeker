@@ -1,0 +1,28 @@
+{
+  "id": "floor_salamander_den_pass",
+  "title": "火蜥蜴の巣(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "salamander_den",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "火蜥蜴の群れ",
+      "text": "鍛冶場の隅、真っ赤な鱗をした蜥蜴たちがこちらを睨んでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "火蜥蜴たちを退け、鍛冶場に静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

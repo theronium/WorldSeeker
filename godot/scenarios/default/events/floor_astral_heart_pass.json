@@ -1,0 +1,28 @@
+{
+  "id": "floor_astral_heart_pass",
+  "title": "星幽の中心(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "astral_heart",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "星幽の中心",
+      "text": "中心には、核を収める小さな窪みが静かに浮かんでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "星幽の核を捧げると、中心全体が穏やかな光に満たされた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

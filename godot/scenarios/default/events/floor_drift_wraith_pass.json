@@ -1,0 +1,28 @@
+{
+  "id": "floor_drift_wraith_pass",
+  "title": "漂う亡霊(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "drift_wraith",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "漂う亡霊",
+      "text": "桟橋の下から、青白い影がゆらりと浮かび上がる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "漂う亡霊を鎮め、桟橋に静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

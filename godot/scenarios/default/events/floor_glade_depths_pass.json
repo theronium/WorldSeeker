@@ -1,0 +1,28 @@
+{
+  "id": "floor_glade_depths_pass",
+  "title": "群生地の奥(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "glade_depths",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "群生地の番人",
+      "text": "群生地の奥から、大きな蜘蛛のような影が這い出してくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "番人を退け、宮廷へ続く道が開けた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_restless_guardian_pass",
+  "title": "彷徨う守護者(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "restless_guardian",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "彷徨う守護者",
+      "text": "前室の隅で、朽ちた鎧の騎士がゆっくりと立ち上がる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "守護者を打ち倒し、前室に再び沈黙が満ちた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

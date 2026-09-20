@@ -1,0 +1,28 @@
+{
+  "id": "floor_ash_chamber_pass",
+  "title": "灰塵の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "ash_chamber",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "灰の幼竜",
+      "text": "灰塵の間の奥で、小さな竜が威嚇するように鳴いた。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "幼竜を退け、灰の中に静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_crypt_gate_pass",
+  "title": "封じられた墓所の門(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_crypt_gate",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封じられた墓所の門",
+      "text": "門には聖印を嵌める窪みがあり、生半可な力では開かなそうだ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "銀の聖遺物匣を窪みに納めると、門は音もなく開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

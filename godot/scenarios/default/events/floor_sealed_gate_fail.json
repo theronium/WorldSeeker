@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_gate_fail",
+  "title": "封印の大扉(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_gate",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封印の大扉",
+      "text": "扉一面に刻まれた古代の紋様が、微かな光を放っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "紋様の意味は掴めず、扉は沈黙したままだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

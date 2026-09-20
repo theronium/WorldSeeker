@@ -1,0 +1,28 @@
+{
+  "id": "floor_ossuary_depths_pass",
+  "title": "骸骨兵の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "ossuary_depths",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "骸骨兵の群れ",
+      "text": "暗がりの奥で、骨のこすれ合う音が一斉に響いた。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "骸骨兵たちを打ち払い、奥への道を切り開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

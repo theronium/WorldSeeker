@@ -1,0 +1,28 @@
+{
+  "id": "floor_mine_boss_chamber_pass",
+  "title": "坑道主の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "mine_boss_chamber",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "坑道の主",
+      "text": "巨躯の影が、坑道を守るように立ちはだかる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "坑道の主を打ち倒し、腰から下がっていた鍵を回収した。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

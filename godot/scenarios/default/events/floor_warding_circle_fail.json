@@ -1,0 +1,28 @@
+{
+  "id": "floor_warding_circle_fail",
+  "title": "結界の間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "warding_circle",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "結界の間",
+      "text": "床一面に描かれた魔法陣が、近づく者を拒むように淡く輝いている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "術式の意味は掴めず、結界は輝きを増すばかりだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

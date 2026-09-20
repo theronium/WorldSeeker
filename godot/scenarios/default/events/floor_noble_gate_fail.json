@@ -1,0 +1,28 @@
+{
+  "id": "floor_noble_gate_fail",
+  "title": "貴族街の門(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "noble_gate",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "left",
+      "name": "門番",
+      "text": "ここから先は由緒ある家柄の者のみが立ち入れる。家名を名乗れ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "「聞いたことのない家名だ」門番は取り合わなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

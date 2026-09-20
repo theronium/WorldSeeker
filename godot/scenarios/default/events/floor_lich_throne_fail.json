@@ -1,0 +1,28 @@
+{
+  "id": "floor_lich_throne_fail",
+  "title": "リッチの玉座(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "lich_throne",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "リッチ",
+      "text": "……何者だ、我が眠りを騒がす者は。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "死してなお纏う強大な力の前に、なすすべなく退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

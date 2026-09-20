@@ -1,0 +1,28 @@
+{
+  "id": "floor_sunken_bell_pass",
+  "title": "沈んだ鐘(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sunken_bell",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "沈んだ鐘",
+      "text": "湖の底から、かすかに鐘の音が響いてくる気がする。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "耳を澄ませ続けると、確かに規則正しい鐘の音が聞こえてきた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

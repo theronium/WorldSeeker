@@ -1,0 +1,28 @@
+{
+  "id": "floor_moonlit_altar_pass",
+  "title": "月光の祭壇(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "moonlit_altar",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "月光の祭壇",
+      "text": "広場の中央、水面から突き出た祭壇に真珠を置く窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "月の真珠を捧げると、祭壇が淡い光を放ち始めた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

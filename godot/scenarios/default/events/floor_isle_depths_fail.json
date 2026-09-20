@@ -1,0 +1,28 @@
+{
+  "id": "floor_isle_depths_fail",
+  "title": "島影の奥(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "isle_depths",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "島影の番人",
+      "text": "島の裏側、影の濃い場所から気配が立ち上る。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "影に飲まれかけ、慌てて島の表側へ逃げ戻った。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

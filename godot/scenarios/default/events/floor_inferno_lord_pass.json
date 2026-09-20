@@ -1,0 +1,28 @@
+{
+  "id": "floor_inferno_lord_pass",
+  "title": "業火の王(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "inferno_lord",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "業火の王",
+      "text": "……小さき者よ、この炎の中で生き延びられると思うてか。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "壮絶な死闘の末、業火の王はついに崩れ、脈打つ炎の心臓だけが残された。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

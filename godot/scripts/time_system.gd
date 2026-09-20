@@ -25,7 +25,7 @@ var _accumulated: float = 0.0
 var _last_check_ms: int = 0
 
 ## 暦の起点(何年何月から始まったプレイか)。デフォルトは0年1月。
-## 将来シナリオ選択機能ができた際は、reset()の後にこれを上書きして使う想定。
+## シナリオ(scenario.jsonのstart_year/start_month)が決める。SaveSystem.start_fresh_session()が、reset()の後に上書きする。
 var start_year: int = 0
 var start_month: int = 1 # 1〜12
 

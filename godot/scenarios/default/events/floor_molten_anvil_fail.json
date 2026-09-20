@@ -1,0 +1,28 @@
+{
+  "id": "floor_molten_anvil_fail",
+  "title": "溶鉱の鉄床(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "molten_anvil",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "溶鉱の鉄床",
+      "text": "今なお赤く熱を帯びた鉄床に、鋼の塊が乗せられたままになっている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鉄床はびくともせず、力尽きて諦めた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

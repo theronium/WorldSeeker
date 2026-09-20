@@ -1,0 +1,28 @@
+{
+  "id": "floor_rattling_alcove_pass",
+  "title": "骨の鳴る窪み(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "rattling_alcove",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "彷徨う骨片",
+      "text": "窪みの奥で、砕けた骨がかたかたと音を立てて動き出す。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "取るに足らない残骸を退け、静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

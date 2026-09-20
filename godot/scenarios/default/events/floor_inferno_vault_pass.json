@@ -1,0 +1,28 @@
+{
+  "id": "floor_inferno_vault_pass",
+  "title": "業火の秘宝庫(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "inferno_vault",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "業火の秘宝庫",
+      "text": "奥の台座に、心臓を収める窪みが静かに脈打つ熱を放っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "業火の心臓を捧げると、秘宝庫全体が眩い炎の光に満たされた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

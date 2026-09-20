@@ -1,0 +1,28 @@
+{
+  "id": "floor_echo_chamber_pass",
+  "title": "谺の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "echo_chamber",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "影の分身",
+      "text": "谺の間の奥で、もう一人の自分のような影が立ち上がる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "影の分身を打ち破ると、谺だけが静かに残った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

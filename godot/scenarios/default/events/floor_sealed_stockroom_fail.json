@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_stockroom_fail",
+  "title": "封印の資材庫(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_stockroom",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封印の資材庫",
+      "text": "分厚い鉄板が打ち付けられた戸口。並の道具では歯が立たなそうだ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鉄板はびくともせず、手ぶらでは開けようがなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

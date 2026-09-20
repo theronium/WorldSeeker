@@ -1,0 +1,28 @@
+{
+  "id": "floor_astral_heart_fail",
+  "title": "星幽の中心(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "astral_heart",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "星幽の中心",
+      "text": "中心には、核を収める小さな窪みが静かに浮かんでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "核を持たぬ今は、窪みはただ静かに浮かんでいるだけだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

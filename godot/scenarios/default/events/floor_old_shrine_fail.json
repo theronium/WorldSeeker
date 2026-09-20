@@ -1,0 +1,28 @@
+{
+  "id": "floor_old_shrine_fail",
+  "title": "古い祠(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "old_shrine",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "古い祠",
+      "text": "祠の奥から声が響く。「三つの問いに答えよ」",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "古い祠",
+      "text": "探索者は首をひねるばかりで、答えが出てこない。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

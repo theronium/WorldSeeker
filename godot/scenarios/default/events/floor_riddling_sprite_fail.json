@@ -1,0 +1,28 @@
+{
+  "id": "floor_riddling_sprite_fail",
+  "title": "謎かけの妖精(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "riddling_sprite",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "left",
+      "name": "謎かけの妖精",
+      "text": "「三つの謎を解けたら、面白いものを見せてやろう」小さな妖精がにやりと笑う。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "「つまらん」妖精はそう言うと、姿を消してしまった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_crystal_cavern_pass",
+  "title": "結晶洞(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "crystal_cavern",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "結晶洞",
+      "text": "暗闇の中、壁一面に無数の結晶が埋まっているのが、目を凝らすとようやく見えてくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "淡く光る結晶の一つ一つに、思わず息を呑んだ。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

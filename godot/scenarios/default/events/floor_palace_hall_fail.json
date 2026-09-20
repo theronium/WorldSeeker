@@ -1,0 +1,28 @@
+{
+  "id": "floor_palace_hall_fail",
+  "title": "月宮の広間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "palace_hall",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "月宮の広間",
+      "text": "広間の壁一面に、満ち欠けを描いた月の紋様が刻まれている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "紋様の並びの意味は掴めず、扉は閉ざされたままだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

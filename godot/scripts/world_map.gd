@@ -16,7 +16,7 @@ extends Node
 
 var areas: Dictionary = {} # area_id -> {id, name}
 var sections: Dictionary = {} # section_id -> {id, name, area}
-var nodes: Dictionary = {} # id -> {name, connections, found, passed, found_by_employed, gate, section, event_script_pass, event_script_fail}
+var nodes: Dictionary = {} # id -> {name, connections, found, passed, found_by_employed, gate, section, item_reward}
 var section_reward_claimed: Dictionary = {} # section_id -> true(攻略報酬を既に支給済みのセクション)
 
 ## nodes_in_section()は日次探索処理(exploration.gd)から担当パーティ数×複数回呼ばれるが、
@@ -41,18 +41,8 @@ func add_node(id: String, display_name: String, connections: Array, gate: Dictio
 		"gate": gate, # 例: {"type": "skill", "skill": SkillTypes.Skill.WISDOM, "min_level": 3} / {"type": "item", "item": "goblin_amulet"}
 		"section": section, # 所属するセクション(ダンジョン/エリア)のsection_id（未所属なら空文字）
 		"item_reward": item_reward, # 突破時に発見者へ渡すアイテムid（なければ空文字）
-		"event_script_pass": [],
-		"event_script_fail": [],
 	}
 	_section_nodes_cache.clear()
-
-func set_event_scripts(id: String, script_pass: Array, script_fail: Array) -> void:
-	if nodes.has(id):
-		nodes[id]["event_script_pass"] = script_pass
-		nodes[id]["event_script_fail"] = script_fail
-
-func has_event(id: String) -> bool:
-	return nodes.has(id) and (not nodes[id]["event_script_pass"].is_empty() or not nodes[id]["event_script_fail"].is_empty())
 
 func nodes_in_section(section_id: String) -> Array:
 	if not _section_nodes_cache.has(section_id):
@@ -183,7 +173,7 @@ func load_progress(states: Dictionary) -> void:
 			nodes[id]["found"] = bool(states[id]["found"])
 			nodes[id]["passed"] = bool(states[id]["passed"])
 			# found_by_employedが無い旧セーブ(この列を追加する前のもの)はfalseがデフォルト値として
-			# 補完される。village/forest_edgeなどはworld_data.gdの起動時ブートストラップで
+			# 補完される。village/forest_edgeなどはシナリオの初期突破(initially_passed)で
 			# 既にtrueが立っているため、ここは上書きではなくOR統合にして、旧セーブ読み込みで
 			# ブートストラップ済みの値を後から潰してしまわないようにする。
 			nodes[id]["found_by_employed"] = nodes[id]["found_by_employed"] or bool(states[id].get("found_by_employed", false))

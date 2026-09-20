@@ -1,0 +1,31 @@
+{
+  "id": "guide_party_formed",
+  "title": "初めての雇用(パーティ編成の案内)",
+  "trigger": {
+    "type": "system",
+    "name": "party_formed"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "guide",
+  "script": [
+    {
+      "side": "left",
+      "name": "案内人",
+      "text": "新しい仲間が加わった。……とはいえ、雇っただけではまだ働けない。"
+    },
+    {
+      "side": "left",
+      "name": "案内人",
+      "text": "「パーティ」パネルを開いて、雇った探索者を選び、パーティを編成しよう。1人だけでもパーティは組める――まずは1人で始めて、あとから仲間を増やしても構わない。"
+    },
+    {
+      "side": "left",
+      "name": "案内人",
+      "text": "パーティが組めたら、担当セクションを割り当てるといい。あとは毎日自動で探索に挑んでくれる。",
+      "outcome": "ok"
+    }
+  ],
+  "effects": []
+}

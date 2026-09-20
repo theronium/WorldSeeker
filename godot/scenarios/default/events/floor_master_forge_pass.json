@@ -1,0 +1,28 @@
+{
+  "id": "floor_master_forge_pass",
+  "title": "大鍛冶場(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "master_forge",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "大鍛冶場",
+      "text": "使われなくなった炉の奥に、頑丈な鉄扉で閉ざされた道具棚がある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "扉を打ち破ると、ドワーフ製の鍛冶槌が眠っていた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

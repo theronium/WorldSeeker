@@ -1,0 +1,202 @@
+[
+  {
+    "name": "ゴブリンキング",
+    "image": "enemy_21",
+    "side": "right"
+  },
+  {
+    "name": "ゴブリンの見張り",
+    "image": "enemy_18",
+    "side": "right"
+  },
+  {
+    "name": "狼の群れ",
+    "image": "enemy_23",
+    "side": "right"
+  },
+  {
+    "name": "盗賊団の頭目",
+    "image": "enemy_22",
+    "side": "right"
+  },
+  {
+    "name": "沈める王",
+    "image": "enemy_31",
+    "side": "right"
+  },
+  {
+    "name": "溺れし王の亡霊",
+    "image": "enemy_27",
+    "side": "right"
+  },
+  {
+    "name": "月の泉の守護者",
+    "image": "enemy_13",
+    "side": "right"
+  },
+  {
+    "name": "坑道の主",
+    "image": "enemy_10",
+    "side": "right"
+  },
+  {
+    "name": "灰の幼竜",
+    "image": "enemy_09",
+    "side": "right"
+  },
+  {
+    "name": "灰塵の竜",
+    "image": "enemy_12",
+    "side": "right"
+  },
+  {
+    "name": "彷徨う骨片",
+    "image": "enemy_28",
+    "side": "right"
+  },
+  {
+    "name": "骸骨兵の群れ",
+    "image": "enemy_29",
+    "side": "right"
+  },
+  {
+    "name": "彷徨う守護者",
+    "image": "enemy_32",
+    "side": "right"
+  },
+  {
+    "name": "リッチ",
+    "image": "enemy_02",
+    "side": "right"
+  },
+  {
+    "name": "空竜蛇",
+    "image": "enemy_12",
+    "side": "right"
+  },
+  {
+    "name": "島影の番人",
+    "image": "enemy_14",
+    "side": "right"
+  },
+  {
+    "name": "影の分身",
+    "image": "enemy_15",
+    "side": "right"
+  },
+  {
+    "name": "星幽の守護者",
+    "image": "enemy_01",
+    "side": "right"
+  },
+  {
+    "name": "漂う亡霊",
+    "image": "enemy_27",
+    "side": "right"
+  },
+  {
+    "name": "里を守る影",
+    "image": "enemy_30",
+    "side": "right"
+  },
+  {
+    "name": "鬼火の群れ",
+    "image": "enemy_27",
+    "side": "right"
+  },
+  {
+    "name": "月姫",
+    "image": "enemy_11",
+    "side": "right"
+  },
+  {
+    "name": "苔の輪の番人",
+    "image": "enemy_06",
+    "side": "right"
+  },
+  {
+    "name": "群生地の番人",
+    "image": "enemy_08",
+    "side": "right"
+  },
+  {
+    "name": "妖精女王",
+    "image": "enemy_01",
+    "side": "right"
+  },
+  {
+    "name": "結晶の欠片獣",
+    "image": "enemy_24",
+    "side": "right"
+  },
+  {
+    "name": "結晶蜘蛛",
+    "image": "enemy_08",
+    "side": "right"
+  },
+  {
+    "name": "砕ける谺",
+    "image": "enemy_02",
+    "side": "right"
+  },
+  {
+    "name": "結晶の王",
+    "image": "enemy_04",
+    "side": "right"
+  },
+  {
+    "name": "灰の小鬼",
+    "image": "enemy_03",
+    "side": "right"
+  },
+  {
+    "name": "黒曜石のゴーレム",
+    "image": "enemy_04",
+    "side": "right"
+  },
+  {
+    "name": "燠火の精",
+    "image": "enemy_03",
+    "side": "right"
+  },
+  {
+    "name": "火蜥蜴の群れ",
+    "image": "enemy_09",
+    "side": "right"
+  },
+  {
+    "name": "溶岩の大蛇",
+    "image": "enemy_12",
+    "side": "right"
+  },
+  {
+    "name": "業火の王",
+    "image": "enemy_16",
+    "side": "right"
+  },
+  {
+    "name": "案内人",
+    "image": "npc_01",
+    "side": "left"
+  },
+  {
+    "name": "国境の衛兵",
+    "image": "npc_27",
+    "side": "left"
+  },
+  {
+    "name": "門番",
+    "image": "npc_29",
+    "side": "left"
+  },
+  {
+    "name": "森の精霊",
+    "image": "npc_08",
+    "side": "left"
+  },
+  {
+    "name": "謎かけの妖精",
+    "image": "npc_20",
+    "side": "left"
+  }
+]

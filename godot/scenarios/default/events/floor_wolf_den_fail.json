@@ -1,0 +1,28 @@
+{
+  "id": "floor_wolf_den_fail",
+  "title": "狼の巣穴(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "wolf_den",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "狼の群れ",
+      "text": "茂みの奥から、複数の唸り声が聞こえる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "数に押され、やむなく退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

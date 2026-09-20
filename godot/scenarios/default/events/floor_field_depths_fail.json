@@ -1,0 +1,28 @@
+{
+  "id": "floor_field_depths_fail",
+  "title": "平原の奥(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "field_depths",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "黒曜石のゴーレム",
+      "text": "平原の奥、黒曜石でできた巨躯がゆっくりと起き上がる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鋭い破片を撒き散らされ、なすすべなく退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

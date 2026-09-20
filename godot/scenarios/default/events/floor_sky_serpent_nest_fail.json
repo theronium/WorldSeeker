@@ -1,0 +1,28 @@
+{
+  "id": "floor_sky_serpent_nest_fail",
+  "title": "空竜蛇の巣(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sky_serpent_nest",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "空竜蛇",
+      "text": "庭園の上空で、細長い影がとぐろを巻くように舞い降りてくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "素早い動きに翻弄され、退かざるを得なかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

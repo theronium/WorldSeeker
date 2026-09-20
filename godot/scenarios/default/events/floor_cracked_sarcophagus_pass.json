@@ -1,0 +1,28 @@
+{
+  "id": "floor_cracked_sarcophagus_pass",
+  "title": "罅割れた石棺(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "cracked_sarcophagus",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "罅割れた石棺",
+      "text": "蓋に大きな亀裂が走った石棺が、静かに横たわっている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "石棺を打ち砕くと、燻んだ銀の聖遺物匣が現れた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

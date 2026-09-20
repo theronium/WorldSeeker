@@ -1,0 +1,28 @@
+{
+  "id": "floor_sleeping_pixie_fail",
+  "title": "眠るピクシー(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sleeping_pixie",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "眠るピクシー",
+      "text": "床の隅、苔の上で小さな羽の生えた何かがすやすやと眠っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "薄暗がりの中では、それが苔の塊にしか見えなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

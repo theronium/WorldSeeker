@@ -1,0 +1,28 @@
+{
+  "id": "floor_old_watchtower_fail",
+  "title": "古い物見塔(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "old_watchtower",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "物見塔の扉",
+      "text": "扉に古代文字の刻まれた仕掛け錠がある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "文字の意味がわからず、扉は開かなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_cracked_geode_pass",
+  "title": "割れた晶洞(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "cracked_geode",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "割れた晶洞",
+      "text": "大きな晶洞が一つ、うっすらとひびの入った状態で転がっている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "晶洞を打ち割ると、中から共鳴する欠片が転がり出た。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_throne_room_fail",
+  "title": "沈める王の間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "throne_room",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "沈める王",
+      "text": "……何用だ、我が眠りを妨げる者よ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "王の力は圧倒的で、生きて広間を後にするのが精一杯だった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

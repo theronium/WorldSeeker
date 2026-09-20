@@ -1,0 +1,28 @@
+{
+  "id": "floor_inferno_lord_fail",
+  "title": "業火の王(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "inferno_lord",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "業火の王",
+      "text": "……小さき者よ、この炎の中で生き延びられると思うてか。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "業火の王の力は底知れず、なすすべなく内殿の外まで押し戻された。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

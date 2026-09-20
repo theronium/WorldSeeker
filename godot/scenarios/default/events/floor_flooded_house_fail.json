@@ -1,0 +1,28 @@
+{
+  "id": "floor_flooded_house_fail",
+  "title": "水没した家(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "flooded_house",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "水没した家",
+      "text": "傾いた家の奥に、固く閉ざされた木箱が沈んでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "錠は固く、こじ開けることはできなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

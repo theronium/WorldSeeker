@@ -1,0 +1,28 @@
+{
+  "id": "floor_court_hall_pass",
+  "title": "妖精の宮廷(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "court_hall",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "妖精の宮廷",
+      "text": "宮廷の門番たちが、来訪者に気の利いた受け答えを求めているようだ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "見事な受け答えに、門番たちは道を譲った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_crystal_monarch_fail",
+  "title": "結晶の王(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "crystal_monarch",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "結晶の王",
+      "text": "……何者だ、この深奥まで辿り着くとは。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "結晶の王の力は底知れず、なすすべなく広間まで退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_thieves_den_fail",
+  "title": "盗賊団のアジト(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "thieves_den",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "盗賊団の頭目",
+      "text": "裏路地に迷い込むとはな……高くつくぜ？",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "一味に囲まれ、命からがら逃げ出した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -14,6 +14,7 @@ func _process(_delta: float) -> bool:
 
 func _run() -> void:
 	var WorldMap = root.get_node("WorldMap")
+	var Scenario = root.get_node("ScenarioEvents") # 2026-09-21: フロアの会話は、WorldMapのノードではなくシナリオのイベントに移った
 	var total := 0
 	var with_event := 0
 	var by_gate := {}
@@ -29,11 +30,11 @@ func _run() -> void:
 			var p: int = g.get("enemy_power", 0)
 			key = "combat"
 		by_gate[key] = by_gate.get(key, 0) + 1
-		if WorldMap.has_event(id):
+		if Scenario.has_gate_event(id):
 			with_event += 1
 			event_by_gate[key] = event_by_gate.get(key, 0) + 1
-			var pass_script: Array = n["event_script_pass"]
-			var fail_script: Array = n["event_script_fail"]
+			var pass_script: Array = Scenario.gate_event(id, true).get("script", [])
+			var fail_script: Array = Scenario.gate_event(id, false).get("script", [])
 			var maxlen := 0
 			var speakers := {}
 			for line in pass_script + fail_script:

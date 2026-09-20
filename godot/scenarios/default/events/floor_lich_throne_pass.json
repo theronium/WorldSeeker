@@ -1,0 +1,28 @@
+{
+  "id": "floor_lich_throne_pass",
+  "title": "リッチの玉座(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "lich_throne",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "リッチ",
+      "text": "……何者だ、我が眠りを騒がす者は。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "死闘の末、リッチの体は崩れ去り、砕けたフィラクテリーの欠片だけが残った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

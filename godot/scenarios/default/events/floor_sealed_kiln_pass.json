@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_kiln_pass",
+  "title": "封じられた窯(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_kiln",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封じられた窯",
+      "text": "窯の扉に、欠片を嵌め込む窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "黒曜石の欠片をはめ込むと、窯の扉が静かに開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

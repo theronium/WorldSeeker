@@ -1,0 +1,28 @@
+{
+  "id": "floor_faint_tremor_pass",
+  "title": "微かな震え(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "faint_tremor",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "結晶の欠片獣",
+      "text": "床の結晶片が、意思を持つようにかたかたと震え出す。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "欠片獣を鎮め、床は再び静けさを取り戻した。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

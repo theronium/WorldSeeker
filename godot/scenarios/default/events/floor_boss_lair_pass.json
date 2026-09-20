@@ -1,0 +1,28 @@
+{
+  "id": "floor_boss_lair_pass",
+  "title": "ゴブリンキングの間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "boss_lair",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "ゴブリンキング",
+      "text": "……よくぞここまで来たか、小僧……",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "激しい戦闘の末、ゴブリンキングは膝をついた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_shattering_echo_pass",
+  "title": "砕ける谺(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "shattering_echo",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "砕ける谺",
+      "text": "回廊の奥で、音そのものが形を成したような何かが唸る。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "谺を打ち払うと、回廊に本来の静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

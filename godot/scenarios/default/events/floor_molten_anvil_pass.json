@@ -1,0 +1,28 @@
+{
+  "id": "floor_molten_anvil_pass",
+  "title": "溶鉱の鉄床(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "molten_anvil",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "溶鉱の鉄床",
+      "text": "今なお赤く熱を帯びた鉄床に、鋼の塊が乗せられたままになっている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鉄床を打つと、鋼塊は形を変えて業火で鍛えられた一塊となった。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

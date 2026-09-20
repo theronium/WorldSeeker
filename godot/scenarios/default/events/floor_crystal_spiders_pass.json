@@ -1,0 +1,28 @@
+{
+  "id": "floor_crystal_spiders_pass",
+  "title": "結晶蜘蛛の巣(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "crystal_spiders",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "結晶蜘蛛",
+      "text": "透き通った脚を持つ蜘蛛の群れが、巣の奥から這い出してくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "結晶蜘蛛を退け、晶洞の間に静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

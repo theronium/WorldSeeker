@@ -1,0 +1,28 @@
+{
+  "id": "floor_throne_room_pass",
+  "title": "沈める王の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "throne_room",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "沈める王",
+      "text": "……何用だ、我が眠りを妨げる者よ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "長き戦いの果て、沈める王はついに崩れ去った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

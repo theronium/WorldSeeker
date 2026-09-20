@@ -1,0 +1,28 @@
+{
+  "id": "floor_court_treasury_pass",
+  "title": "宮廷の宝物庫(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "court_treasury",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "宮廷の宝物庫",
+      "text": "宝物庫の扉には、女王の紋章を象った窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "寵愛の証を窪みにかざすと、扉は静かに開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

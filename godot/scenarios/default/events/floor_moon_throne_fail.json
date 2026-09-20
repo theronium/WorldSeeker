@@ -1,0 +1,28 @@
+{
+  "id": "floor_moon_throne_fail",
+  "title": "月姫の玉座(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "moon_throne",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "月姫",
+      "text": "……久方ぶりだ。この宮を訪れる者があろうとは。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "月姫の力は底知れず、命からがら広間まで退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

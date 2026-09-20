@@ -1,0 +1,28 @@
+{
+  "id": "floor_border_checkpoint_pass",
+  "title": "国境の関所(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "border_checkpoint",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "left",
+      "name": "国境の衛兵",
+      "text": "止まれ。この先は隣国レインヴェールだ。血筋を示せ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "紋章を確かめた衛兵は道を譲った。「……失礼した、お通りください」",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

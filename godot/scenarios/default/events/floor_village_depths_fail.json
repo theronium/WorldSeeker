@@ -1,0 +1,28 @@
+{
+  "id": "floor_village_depths_fail",
+  "title": "里の奥(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "village_depths",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "里を守る影",
+      "text": "沈んだ里の奥から、無数の影がゆっくりと集まってくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "影の群れに押し返され、広場まで逃げ戻った。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

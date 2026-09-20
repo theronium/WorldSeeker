@@ -1,0 +1,28 @@
+{
+  "id": "floor_molten_serpent_pass",
+  "title": "溶岩の大蛇(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "molten_serpent",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "溶岩の大蛇",
+      "text": "火口の底、溶岩そのものが形を成したような大蛇がとぐろを巻く。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "大蛇を退け、火口の底に静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

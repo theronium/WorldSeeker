@@ -1,0 +1,28 @@
+{
+  "id": "floor_cinder_wisps_pass",
+  "title": "燠火の精(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "cinder_wisps",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "燠火の精",
+      "text": "窪みの奥で、赤く燃える小さな精霊たちが群れている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "燠火の精を鎮め、窪みに静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

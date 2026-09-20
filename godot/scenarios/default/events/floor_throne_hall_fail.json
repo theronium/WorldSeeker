@@ -1,0 +1,28 @@
+{
+  "id": "floor_throne_hall_fail",
+  "title": "結晶の広間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "throne_hall",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "結晶の広間",
+      "text": "広間の床一面に、幾何学的な結晶の紋様が広がっている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "紋様の規則は掴めず、道は現れなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

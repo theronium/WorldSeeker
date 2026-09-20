@@ -1,0 +1,28 @@
+{
+  "id": "floor_hidden_vault_pass",
+  "title": "隠し金庫室(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "hidden_vault",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "隠し金庫室",
+      "text": "扉には見覚えのある紋章の凹みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "盗賊団の印章を差し込むと、重い扉が開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

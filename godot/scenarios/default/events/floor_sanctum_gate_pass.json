@@ -1,0 +1,28 @@
+{
+  "id": "floor_sanctum_gate_pass",
+  "title": "聖域の門(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sanctum_gate",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "聖域の門",
+      "text": "門の表面に、星の巡りを描いたような紋様が浮かんでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "星の巡りを読み解くと、門は音もなく開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

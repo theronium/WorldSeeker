@@ -1,0 +1,28 @@
+{
+  "id": "floor_goblin_treasury_pass",
+  "title": "秘密の宝物庫(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "goblin_treasury",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "宝物庫の扉",
+      "text": "護符をはめ込む窪みのある、頑丈な扉だ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "ゴブリンキングの護符が窪みに吸い込まれ、扉が開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

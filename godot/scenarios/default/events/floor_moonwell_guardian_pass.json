@@ -1,0 +1,28 @@
+{
+  "id": "floor_moonwell_guardian_pass",
+  "title": "月の泉の守護者(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "moonwell_guardian",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "月の泉の守護者",
+      "text": "泉の水面が波立ち、古の獣が姿を現す。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "守護者を退け、泉には再び静けさが戻った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

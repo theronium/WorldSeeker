@@ -1,0 +1,28 @@
+{
+  "id": "floor_star_pool_fail",
+  "title": "星映す泉(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "star_pool",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "星映す泉",
+      "text": "泉の水面に、見たこともない星々が揺らめいて映り込んでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "水面は揺らぐばかりで、何も掴むことはできなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

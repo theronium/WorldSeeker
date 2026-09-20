@@ -1,0 +1,28 @@
+{
+  "id": "floor_shattered_pillar_pass",
+  "title": "砕けた石柱(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "shattered_pillar",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "砕けた石柱",
+      "text": "黒曜石でできた石柱が一本、ひび割れながらも立っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "石柱を打ち崩すと、鋭く輝く黒曜石の欠片が転がり出た。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

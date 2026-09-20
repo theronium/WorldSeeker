@@ -1,0 +1,28 @@
+{
+  "id": "floor_astral_guardian_pass",
+  "title": "星幽の守護者(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "astral_guardian",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "星幽の守護者",
+      "text": "……何用だ、この地の深奥に至る者よ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "長き戦いの果て、守護者の姿は星屑となって消えた。後には小さな核だけが残った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

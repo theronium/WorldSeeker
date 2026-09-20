@@ -1,0 +1,31 @@
+{
+  "id": "guide_intro_part1",
+  "title": "導入(前編)",
+  "trigger": {
+    "type": "system",
+    "name": "intro_part1"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "guide",
+  "script": [
+    {
+      "side": "left",
+      "name": "案内人",
+      "text": "ようこそ。ここは、雇った探索者たちを世界へ送り出し、その稼ぎで暮らしを立てていく土地だ。"
+    },
+    {
+      "side": "left",
+      "name": "案内人",
+      "text": "既に「初期パーティ」が1つ、無償で用意されている。まずはこれをどこかのセクション(区画)に割り当てて、探索を始めよう。"
+    },
+    {
+      "side": "left",
+      "name": "案内人",
+      "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)を押してみるといい。そこにパーティを割り当てられる。",
+      "outcome": "ok"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_goblin_outpost_fail",
+  "title": "ゴブリンの前哨基地(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "goblin_outpost",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "ゴブリンの見張り",
+      "text": "坑道の奥から、複数の気配が押し寄せてくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "数の多さに押し切られ、坑道を後にした。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_heat_shimmer_pass",
+  "title": "陽炎の揺らぎ(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "heat_shimmer",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "陽炎の揺らぎ",
+      "text": "熱気で景色が揺らめく先に、何か人工的な輪郭が見え隠れしている気がする。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "揺らぎの奥に、確かに削られた道の跡を見つけた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

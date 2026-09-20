@@ -1,0 +1,28 @@
+{
+  "id": "floor_moonlit_altar_fail",
+  "title": "月光の祭壇(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "moonlit_altar",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "月光の祭壇",
+      "text": "広場の中央、水面から突き出た祭壇に真珠を置く窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "真珠を持たぬ今は、窪みはただ乾いたままだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

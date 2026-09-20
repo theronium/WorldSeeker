@@ -1,0 +1,28 @@
+{
+  "id": "floor_crystal_monarch_pass",
+  "title": "結晶の王(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "crystal_monarch",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "結晶の王",
+      "text": "……何者だ、この深奥まで辿り着くとは。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "死闘の末、結晶の王の体は砕け散り、脈打つ結晶の心臓だけが残った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

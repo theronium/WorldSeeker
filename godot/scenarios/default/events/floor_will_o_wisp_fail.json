@@ -1,0 +1,28 @@
+{
+  "id": "floor_will_o_wisp_fail",
+  "title": "鬼火の群れ(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "will_o_wisp",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "鬼火の群れ",
+      "text": "葦の合間を、青白い火の玉がいくつも漂っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "惑わされて道を見失い、入口まで引き返した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

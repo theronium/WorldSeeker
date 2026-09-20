@@ -1,0 +1,28 @@
+{
+  "id": "floor_mine_vault_fail",
+  "title": "坑道の宝物庫(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "mine_vault",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "坑道の宝物庫",
+      "text": "頑丈な鉄格子の奥に、積み上げられた財宝が見える。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鍵を持たぬ今は、鉄格子を開ける術がない。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

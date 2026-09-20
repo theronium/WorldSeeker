@@ -3,8 +3,8 @@ extends Node
 #
 # 保存対象は「プレイ進行状態」のみ(資金・探索者名簿・ワールド探索の発見/突破状態・掲示板ログ)。
 # ワールドスキーマそのもの(エリア/セクション/フロア/ゲート/イベント台本の定義)は
-# 引き続き`world_data.gd`が開発時コンテンツとして担当する(design.md 8.1の想定通り、
-# 将来そちらをDB化する場合はこのファイルとは別のテーブル/読み込み経路になる)。
+# シナリオ(scenario_store.gd、docs/scenario_editor.md)が正本で、world_schema_db.gdが版管理して
+# スナップショットにする(このファイルとは別のSQLite)。ここが持つのは、そのバージョンID(meta)と進行状態だけ。
 #
 # 保存のたびに全テーブルをDELETEしてから現在の状態を丸ごと再INSERTする(差分更新はしない)。
 # npc_id/skillなどint型のキーはSQLiteのINTEGERカラムに素のint/floatとしてバインドしており、
@@ -26,6 +26,7 @@ const META_PATH := "user://worldseeker_meta.cfg"
 const TABLES := [
 	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory", "parties", "party_members",
 	"world_progress", "section_rewards", "board_entries", "board_threads", "board_thread_entries",
+	"scenario_flags", "scenario_events_fired",
 ]
 
 ## current_slot_idがこの値の間は「起動直後のまっさらな新規プレイ」を表し、どのスロット
@@ -199,17 +200,23 @@ func _peek_db(path: String, slot_id: int) -> Dictionary:
 		"npc_count": npc_count,
 		"schema_version": String(meta.get("schema_version", "")),
 		"saved_at": int(meta.get("saved_at", 0)),
+		"scenario_name": String(meta.get("scenario_name", "")), # 遊んでいるシナリオの名前(旧セーブは空)
 	}
 
 ## Economy/TimeSystem/Npcs/Parties等をまっさらな状態に戻し、design.md 4.7節の初期パーティ
 ## (購入・募集不要の4人)を無償で組む。起動時ブートストラップ(main.gdの_ready())と
 ## create_new_slot()の両方が使う共通処理。ディスクには一切触れない(スロットの作成/切替/
 ## 保存は呼び出し側の責務)。WorldMapの再構築も呼び出し側の責務とする: 起動直後は
-## world_data.gdが起動時に既に最新スキーマで構築済みのため不要だが、既存スロットから
+## WorldSchemaDbが起動時にデフォルトシナリオで既に構築済みのため不要だが、既存スロットから
 ## 新規プレイへ切り替える場合はWorldSchemaDb.import_into_worldmap()で作り直す必要がある。
 func start_fresh_session() -> void:
 	Economy.reset()
 	TimeSystem.reset()
+	# 暦の起点はシナリオが決める(TimeSystem.start_year/start_monthのコメント参照)。呼び出し側は、先にワールドの
+	# スナップショットを読み込んでおくこと(ScenarioEvents.infoがそのシナリオの情報になる)
+	TimeSystem.start_year = int(ScenarioEvents.info.get("start_year", 0))
+	TimeSystem.start_month = int(ScenarioEvents.info.get("start_month", 1))
+	ScenarioEvents.reset_progress()
 	Npcs.reset()
 	Parties.reset()
 	Recruitment.reset()
@@ -221,13 +228,19 @@ func start_fresh_session() -> void:
 ## 新規スロットを作成してアクティブにする(design.md 8.2「スキーマ再プレイ」)。
 ## ワールドスキーマDB(world_schema_db.gd)経由でWorldMapを再構築するため、
 ## GDScript直書き経路と同じ形の「まっさらな世界」から始まることをこの一手が保証する。
-## 新規プレイは常に最新のワールドスキーマ(WorldSchemaDb.current_version_id)を使う。
-func create_new_slot(display_name: String = "") -> int:
+## 新規プレイは常に最新のワールドスキーマ(WorldSchemaDb.current_version_id)を使う。scenario_idを渡すと、
+## そのシナリオ(scenario_source="default"/"custom")を今の内容で読み直して使う(読めなければ、今選んでいる
+## シナリオのまま)。省略すると、今選んでいるシナリオの、今の内容(=エディタで直した最新)を使う。
+func create_new_slot(display_name: String = "", scenario_id: String = "", scenario_source: String = "default") -> int:
 	var next_id := _next_free_slot_id()
 	if current_slot_id != NO_ACTIVE_SLOT:
 		save_game() # 離れる前のスロットを保存(起動直後でまだどのスロットにも属していなければ何もしない)
-	start_fresh_session()
+	if scenario_id != "":
+		WorldSchemaDb.use_scenario(scenario_id, scenario_source)
+	elif not ScenarioEvents.info.is_empty():
+		WorldSchemaDb.use_scenario(String(ScenarioEvents.info.get("id", "")), String(ScenarioEvents.info.get("source", "default")))
 	WorldSchemaDb.import_into_worldmap(WorldSchemaDb.current_version_id)
+	start_fresh_session() # ワールドの読み込みの後(暦の起点などをシナリオの情報から決めるため)
 	_set_active_slot(next_id)
 	current_slot_name = display_name
 	save_game()
@@ -603,6 +616,9 @@ func _ensure_schema(db: SQLite) -> void:
 	db.query("CREATE TABLE IF NOT EXISTS board_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_threads (thread_id TEXT PRIMARY KEY, title TEXT)")
 	db.query("CREATE TABLE IF NOT EXISTS board_thread_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
+	# 2026-09-21追加。シナリオのイベントの進行状態(scenario_events.gd): 立っているフラグと、発生済みのイベント。
+	db.query("CREATE TABLE IF NOT EXISTS scenario_flags (flag TEXT PRIMARY KEY)")
+	db.query("CREATE TABLE IF NOT EXISTS scenario_events_fired (event_id TEXT PRIMARY KEY, count INTEGER, day INTEGER)")
 	db.query("""CREATE TABLE IF NOT EXISTS action_log (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, day INTEGER, event_type TEXT,
 		npc_id INTEGER, node_id TEXT, section_id TEXT, text TEXT
@@ -656,6 +672,7 @@ func save_game() -> void:
 	# WorldMapが今実際に読み込んでいるスキーマバージョンを記録しておく(古いバージョンでも良い。
 	# world_schema_db.gdのコメント参照)。次回このスロットを開く時にswitch_to_slot()が使う。
 	meta["schema_version"] = WorldSchemaDb.active_version_id
+	meta["scenario_name"] = String(ScenarioEvents.info.get("name", ""))
 	for key in meta.keys():
 		db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", [key, meta[key]])
 
@@ -713,6 +730,14 @@ func save_game() -> void:
 			db.query_with_bindings(
 				"INSERT INTO board_thread_entries (thread_id, day, text, importance, source) VALUES (?, ?, ?, ?, ?)",
 				[thread_id, entry["day"], entry["text"], entry["importance"], entry["source"]])
+
+	var scenario_state: Dictionary = ScenarioEvents.save_state()
+	for flag in scenario_state["flags"]:
+		db.query_with_bindings("INSERT INTO scenario_flags (flag) VALUES (?)", [flag])
+	for event_id in scenario_state["fired"].keys():
+		var record: Dictionary = scenario_state["fired"][event_id]
+		db.query_with_bindings("INSERT INTO scenario_events_fired (event_id, count, day) VALUES (?, ?, ?)",
+			[event_id, record["count"], record["day"]])
 
 	ActionLog.flush(db)
 
@@ -888,6 +913,16 @@ func load_game() -> bool:
 		if threads.has(thread_id):
 			threads[thread_id]["entries"].append({"day": row["day"], "text": String(row["text"]), "importance": row["importance"], "source": String(row["source"])})
 	Board.load_state({"entries": entries, "threads": threads})
+
+	var scenario_flags := []
+	db.query("SELECT flag FROM scenario_flags")
+	for row in db.query_result:
+		scenario_flags.append(String(row["flag"]))
+	var scenario_fired := {}
+	db.query("SELECT event_id, count, day FROM scenario_events_fired")
+	for row in db.query_result:
+		scenario_fired[String(row["event_id"])] = {"count": int(row["count"]), "day": int(row["day"])}
+	ScenarioEvents.load_state({"flags": scenario_flags, "fired": scenario_fired})
 
 	db.close_db()
 	return true

@@ -1,0 +1,28 @@
+{
+  "id": "floor_drowned_throne_pass",
+  "title": "溺れし玉座の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "drowned_throne",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "溺れし王の亡霊",
+      "text": "……我が王冠を求め、ここまで来たか。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "亡霊はついに力尽き、水底へと崩れ落ちていった。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

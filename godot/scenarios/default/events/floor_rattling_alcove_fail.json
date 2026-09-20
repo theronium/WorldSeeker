@@ -1,0 +1,28 @@
+{
+  "id": "floor_rattling_alcove_fail",
+  "title": "骨の鳴る窪み(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "rattling_alcove",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "彷徨う骨片",
+      "text": "窪みの奥で、砕けた骨がかたかたと音を立てて動き出す。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "思いのほか手こずり、やむなく引き返した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

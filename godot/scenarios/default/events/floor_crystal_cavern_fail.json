@@ -1,0 +1,28 @@
+{
+  "id": "floor_crystal_cavern_fail",
+  "title": "結晶洞(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "crystal_cavern",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "結晶洞",
+      "text": "暗闇の中、壁一面に無数の結晶が埋まっているのが、目を凝らすとようやく見えてくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "ただの暗い岩壁にしか見えず、何も見つけられなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

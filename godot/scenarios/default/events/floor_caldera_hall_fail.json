@@ -1,0 +1,28 @@
+{
+  "id": "floor_caldera_hall_fail",
+  "title": "火口の内殿(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "caldera_hall",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "火口の内殿",
+      "text": "内殿の熱は尋常でなく、正しい呼吸の作法を知らねば足を踏み入れられないという。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "作法が分からず、灼熱に耐えきれず引き返した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

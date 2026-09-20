@@ -1,0 +1,28 @@
+{
+  "id": "floor_treasure_hall_fail",
+  "title": "王冠の間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "treasure_hall",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "王冠の間",
+      "text": "水底に沈んだ台座に、王冠を収める窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "王冠を持たぬ今は、台座はただ沈黙している。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

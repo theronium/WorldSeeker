@@ -1,0 +1,28 @@
+{
+  "id": "floor_astral_guardian_fail",
+  "title": "星幽の守護者(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "astral_guardian",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "星幽の守護者",
+      "text": "……何用だ、この地の深奥に至る者よ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "星屑のような力に押され、内殿の外まで弾き飛ばされた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

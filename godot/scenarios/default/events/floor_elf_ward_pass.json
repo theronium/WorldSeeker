@@ -1,0 +1,28 @@
+{
+  "id": "floor_elf_ward_pass",
+  "title": "森の結界(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "elf_ward",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "left",
+      "name": "森の精霊",
+      "text": "結界の向こうから声がする。「森人の血を持たぬ者は通さぬ」",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "血の証を認めた結界が、静かに揺らいで道を開いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_moss_ring_pass",
+  "title": "苔の輪(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "moss_ring",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "苔の輪の番人",
+      "text": "円状に生えた苔の輪から、小さな緑色の何かが飛び出してくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "取るに足らない相手を追い払い、苔の輪は静かになった。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

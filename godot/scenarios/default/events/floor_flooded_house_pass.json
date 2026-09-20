@@ -1,0 +1,28 @@
+{
+  "id": "floor_flooded_house_pass",
+  "title": "水没した家(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "flooded_house",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "水没した家",
+      "text": "傾いた家の奥に、固く閉ざされた木箱が沈んでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "箱をこじ開けると、月光を宿したような真珠がひとつ入っていた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_isle_depths_pass",
+  "title": "島影の奥(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "isle_depths",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "島影の番人",
+      "text": "島の裏側、影の濃い場所から気配が立ち上る。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "番人を退け、その奥に架かる橋を見つけた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

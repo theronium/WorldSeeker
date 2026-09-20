@@ -1,0 +1,28 @@
+{
+  "id": "floor_restless_guardian_fail",
+  "title": "彷徨う守護者(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "restless_guardian",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "彷徨う守護者",
+      "text": "前室の隅で、朽ちた鎧の騎士がゆっくりと立ち上がる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "朽ちてなお衰えぬ剣技の前に、退かざるを得なかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

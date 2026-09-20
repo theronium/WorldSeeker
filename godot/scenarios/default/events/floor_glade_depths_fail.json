@@ -1,0 +1,28 @@
+{
+  "id": "floor_glade_depths_fail",
+  "title": "群生地の奥(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "glade_depths",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "群生地の番人",
+      "text": "群生地の奥から、大きな蜘蛛のような影が這い出してくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "糸に絡め取られかけ、慌てて群生地の入口まで戻った。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

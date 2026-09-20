@@ -1,0 +1,34 @@
+{
+  "id": "floor_old_shrine_pass",
+  "title": "古い祠(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "old_shrine",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "古い祠",
+      "text": "祠の奥から声が響く。「三つの問いに答えよ」",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "古い祠",
+      "text": "同行した探索者は静かに考え込み、やがて答えを口にした。",
+      "next": 2
+    },
+    {
+      "side": "none",
+      "name": "古い祠",
+      "text": "……正解だ。道を開けよう。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_moon_throne_pass",
+  "title": "月姫の玉座(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "moon_throne",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "月姫",
+      "text": "……久方ぶりだ。この宮を訪れる者があろうとは。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "壮絶な戦いの末、月姫の姿は水面に溶けるように消え、冠だけが残された。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

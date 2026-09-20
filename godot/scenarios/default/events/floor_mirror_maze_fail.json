@@ -1,0 +1,28 @@
+{
+  "id": "floor_mirror_maze_fail",
+  "title": "鏡の迷路(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "mirror_maze",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "鏡の迷路",
+      "text": "四方を鏡に囲まれ、どちらが本物の道か分からなくなる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鏡像に惑わされ、同じ場所を巡るばかりだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_giant_toadstool_pass",
+  "title": "巨大な茸(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "giant_toadstool",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "巨大な茸",
+      "text": "見上げるほどの茸が一本、傘を大きく広げて立っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "傘を叩き割ると、きらきらと輝く粉塵が舞い散った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

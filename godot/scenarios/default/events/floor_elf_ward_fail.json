@@ -1,0 +1,28 @@
+{
+  "id": "floor_elf_ward_fail",
+  "title": "森の結界(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "elf_ward",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "left",
+      "name": "森の精霊",
+      "text": "結界の向こうから声がする。「森人の血を持たぬ者は通さぬ」",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "結界はびくともせず、弾き返されてしまった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

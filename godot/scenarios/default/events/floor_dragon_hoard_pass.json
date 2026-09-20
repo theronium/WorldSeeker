@@ -1,0 +1,28 @@
+{
+  "id": "floor_dragon_hoard_pass",
+  "title": "竜の財宝(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "dragon_hoard",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "竜の財宝",
+      "text": "山と積まれた財宝の中央に、鱗をはめ込む台座がある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "竜の鱗を捧げると、財宝の間全体が静かに輝きを放った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

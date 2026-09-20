@@ -1,0 +1,28 @@
+{
+  "id": "floor_mirror_maze_pass",
+  "title": "鏡の迷路(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "mirror_maze",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "鏡の迷路",
+      "text": "四方を鏡に囲まれ、どちらが本物の道か分からなくなる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "わずかな違和感を頼りに、本物の道筋を見抜いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

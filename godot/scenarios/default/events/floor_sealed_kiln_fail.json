@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_kiln_fail",
+  "title": "封じられた窯(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_kiln",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封じられた窯",
+      "text": "窯の扉に、欠片を嵌め込む窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "窪みに合う物を持たぬ今は、窯は閉ざされたままだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

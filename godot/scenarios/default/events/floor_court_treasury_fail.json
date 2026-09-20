@@ -1,0 +1,28 @@
+{
+  "id": "floor_court_treasury_fail",
+  "title": "宮廷の宝物庫(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "court_treasury",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "宮廷の宝物庫",
+      "text": "宝物庫の扉には、女王の紋章を象った窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "証を持たぬ今は、扉はぴくりとも動かなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

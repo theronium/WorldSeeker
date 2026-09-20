@@ -1,0 +1,28 @@
+{
+  "id": "floor_star_pool_pass",
+  "title": "星映す泉(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "star_pool",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "星映す泉",
+      "text": "泉の水面に、見たこともない星々が揺らめいて映り込んでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "水面にそっと手を差し入れると、砕けた星の欠片がそっと掌に収まった。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

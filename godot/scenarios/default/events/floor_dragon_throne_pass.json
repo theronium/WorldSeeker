@@ -1,0 +1,28 @@
+{
+  "id": "floor_dragon_throne_pass",
+  "title": "竜の玉座(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "dragon_throne",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "灰塵の竜",
+      "text": "……久しいな、小さき者よ。我が眠りを妨げに来たか。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "壮絶な死闘の末、灰塵の竜はついに力尽きた。その鱗の一枚が床に落ちた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

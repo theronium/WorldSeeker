@@ -1,0 +1,28 @@
+{
+  "id": "floor_warding_circle_pass",
+  "title": "結界の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "warding_circle",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "結界の間",
+      "text": "床一面に描かれた魔法陣が、近づく者を拒むように淡く輝いている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "陣に刻まれた術式を読み解き、結界を静かに解いた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

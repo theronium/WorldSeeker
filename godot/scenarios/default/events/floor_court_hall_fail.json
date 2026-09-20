@@ -1,0 +1,28 @@
+{
+  "id": "floor_court_hall_fail",
+  "title": "妖精の宮廷(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "court_hall",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "妖精の宮廷",
+      "text": "宮廷の門番たちが、来訪者に気の利いた受け答えを求めているようだ。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "気の利いた言葉が出ず、門番たちに追い返された。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

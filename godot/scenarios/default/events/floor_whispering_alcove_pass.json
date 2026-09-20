@@ -1,0 +1,28 @@
+{
+  "id": "floor_whispering_alcove_pass",
+  "title": "囁きの窪み(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "whispering_alcove",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "囁きの窪み",
+      "text": "耳を澄ますと、壁の奥からかすかな囁き声が聞こえてくる気がする。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "声の主は分からないが、誰かの祈りの言葉だけが静かに残った。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

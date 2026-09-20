@@ -1,0 +1,28 @@
+{
+  "id": "floor_old_watchtower_pass",
+  "title": "古い物見塔(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "old_watchtower",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "物見塔の扉",
+      "text": "扉に古代文字の刻まれた仕掛け錠がある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "刻まれた詩の意味を読み解き、錠が外れた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

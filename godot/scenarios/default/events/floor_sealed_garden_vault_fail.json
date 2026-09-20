@@ -1,0 +1,28 @@
+{
+  "id": "floor_sealed_garden_vault_fail",
+  "title": "封じられた庭園の蔵(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sealed_garden_vault",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "封じられた庭園の蔵",
+      "text": "蔦に覆われた小さな蔵。鍵穴の代わりに、星形の窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "窪みに合う物を持たぬ今は、蔦をほどく術がない。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_cliff_shrine_pass",
+  "title": "断崖の祠(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "cliff_shrine",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "断崖の祠",
+      "text": "崖に張り付くように佇む小さな祠。目を凝らすと、壁面にかすかな足がかりが見える。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "見つけた足がかりを頼りに、誰も知らない獣道へと踏み出した。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

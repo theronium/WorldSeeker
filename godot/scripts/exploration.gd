@@ -55,16 +55,11 @@ const LAP_INCOME_PER_POINT := MONTHLY_INCOME_PER_POINT
 # 戦闘力のレベルアップに必要な経験値は10×(レベル+1)なので、Lv0→1が約10日。初期チューニング値(要調整)。
 const RETREAT_TRAINING_EXP_PER_DAY := 1
 
-## 初めて戦闘で撤退した直後だけ再生する説明会話。「ループ」「先へ進む」(design.md 4.7節の
-## post_clear_behavior)は今まさに阻まれている状況には関係なく、セクションを完全に突破し
-## 終えたあとの挙動を決める設定だと誤解されやすいため、その区別を説明する。
-## SaveSystem.tutorial_retreat_seenで一度きりに制御する(_post_retreat_help()/
-## _maybe_show_retreat_tutorial()参照)。
-const RETREAT_TUTORIAL_SCRIPT: Array = [
-	{"side": "left", "name": "案内人", "text": "撤退か……無理はしないのが一番だ。"},
-	{"side": "left", "name": "案内人", "text": "撤退したパーティはしばらく休息が必要だが、休息が終われば自動でまた同じ場所に挑んでくれる。装備を整えたりスキルを鍛えたりして、気長に構えるといい。"},
-	{"side": "left", "name": "案内人", "text": "ちなみに、パーティパネルの「ループ」「先へ進む」の設定は、今のように手強い相手に阻まれている間には関係ない。これはセクションを完全に突破し終えたあとの話だ――「ループ」ならそこに留まって稼ぎ続け、「先へ進む」なら次の未踏破セクションへ自動的に移動する。", "outcome": "ok"},
-]
+## 初めて戦闘で撤退した直後だけ、案内会話(シナリオの場面名"retreat")を再生する。「ループ」「先へ進む」
+## (design.md 4.7節のpost_clear_behavior)は今まさに阻まれている状況には関係なく、セクションを完全に突破し
+## 終えたあとの挙動を決める設定だと誤解されやすいため、その区別を説明する内容(デフォルトシナリオ)。
+## 会話の中身は、2026-09-21にシナリオ(scenarios/<id>/events/guide_retreat.json)へ移した。
+## SaveSystem.tutorial_retreat_seenで一度きりに制御する(_post_retreat_help()/_maybe_show_retreat_tutorial()参照)。
 
 ## 撤退説明会話の予約フラグ: _post_retreat_help()が立て、EventDialogue.finished(または
 ## その場)から_maybe_show_retreat_tutorial()が消化する。true→実際に再生完了までの間、
@@ -95,8 +90,7 @@ func _maybe_show_retreat_tutorial() -> void:
 	# 永続化する(main.gdのINTRO_TUTORIAL_SCRIPT再生箇所のコメント参照。同じ理由で、
 	# 日数を進めるだけの診断がたまたま撤退を発生させても、会話を進めない限り実ファイルは
 	# 汚れない)。
-	EventDialogue.finished.connect(func(_o): SaveSystem.mark_tutorial_retreat_seen(), CONNECT_ONE_SHOT)
-	EventDialogue.play(RETREAT_TUTORIAL_SCRIPT, "guide")
+	ScenarioEvents.play_system("retreat", SaveSystem.mark_tutorial_retreat_seen)
 
 ## 月末の集計タイムで、担当パーティがいる全セクション分の収入をまとめて資金化する。
 ## 完全踏破済みのセクションは対象外(_process_lapによる周回収入に置き換わっている。
@@ -144,6 +138,7 @@ func _on_day_advanced(current_day: int) -> void:
 			_attempt_discovery(party, current_day)
 			_check_blocked(party, current_day) # 勝てない敵しか残っていなければ、退避する
 		_process_lap(party, current_day)
+	ScenarioEvents.check_daily(current_day) # 条件が成り立ったシナリオのイベント(日数・フラグ・到達など)
 
 ## 完全踏破済みセクションでの周回(ループ)処理。対象外(まだ未踏破区間が残っている)なら
 ## 周回状態をリセットしておき、対象になった時点から1周目を始められるようにする。
@@ -277,18 +272,24 @@ func _attempt_discovery(party: Dictionary, current_day: int) -> void:
 func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, node_id: String, current_day: int) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
 
-	if WorldMap.has_event(node_id):
+	if ScenarioEvents.has_gate_event(node_id):
 		if EventDialogue.is_active:
 			return # 今日は既に別の会話中なので見送り、翌日また発見を試みる
 		var milestone := _capture_milestone_state(node_id)
 		WorldMap.mark_found(node_id, true)
 		var gate_result := _attempt_gate(party, node_id, current_day)
-		var script: Array = node["event_script_pass"] if gate_result["passed"] else node["event_script_fail"]
+		var event := ScenarioEvents.gate_event(node_id, gate_result["passed"])
 		var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
+		if event.is_empty() or event["script"].is_empty():
+			# 突破/失敗の片方にだけ会話がある(もう片方は無い)場合は、会話なしで結果だけ反映する
+			_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
+			return
+		# 突破の確定は、会話の結果コード(outcome)で行う。ScenarioEvents.play()は、同じ会話の終了時に後から
+		# 発生済みの記録と効果(フロアの開放など)を適用するので、効果は突破が反映された後に働く。
 		EventDialogue.finished.connect(
 			func(outcome: String): _finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
 			CONNECT_ONE_SHOT)
-		EventDialogue.play(script, WorldMap.event_kind_for_node(node_id), "pass" if gate_result["passed"] else "fail")
+		ScenarioEvents.play(event)
 		return
 
 	var milestone := _capture_milestone_state(node_id)

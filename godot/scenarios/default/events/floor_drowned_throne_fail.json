@@ -1,0 +1,28 @@
+{
+  "id": "floor_drowned_throne_fail",
+  "title": "溺れし玉座の間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "drowned_throne",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "溺れし王の亡霊",
+      "text": "……我が王冠を求め、ここまで来たか。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "圧倒的な力の前に、なすすべなく押し戻された。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

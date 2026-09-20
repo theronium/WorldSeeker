@@ -1,0 +1,28 @@
+{
+  "id": "floor_molten_serpent_fail",
+  "title": "溶岩の大蛇(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "molten_serpent",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "溶岩の大蛇",
+      "text": "火口の底、溶岩そのものが形を成したような大蛇がとぐろを巻く。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "灼熱の体当たりに阻まれ、なすすべなく退いた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

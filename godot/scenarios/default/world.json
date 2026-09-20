@@ -1,0 +1,3064 @@
+{
+  "items": [
+    {
+      "id": "goblin_amulet",
+      "name": "ゴブリンキングの護符"
+    },
+    {
+      "id": "old_expedition_map",
+      "name": "古い探検隊の地図"
+    },
+    {
+      "id": "thief_signet",
+      "name": "盗賊の印章"
+    },
+    {
+      "id": "crown_of_the_deep",
+      "name": "深淵の王冠"
+    },
+    {
+      "id": "dwarven_forge_hammer",
+      "name": "ドワーフの鍛冶槌"
+    },
+    {
+      "id": "warden_key",
+      "name": "坑道主の鍵"
+    },
+    {
+      "id": "ashen_dragon_scale",
+      "name": "灰塵の竜鱗"
+    },
+    {
+      "id": "silver_reliquary",
+      "name": "銀の聖遺物匣"
+    },
+    {
+      "id": "phylactery_shard",
+      "name": "砕けたフィラクテリーの欠片"
+    },
+    {
+      "id": "starlight_fragment",
+      "name": "星の欠片"
+    },
+    {
+      "id": "astral_core",
+      "name": "星幽の核"
+    },
+    {
+      "id": "moonpearl",
+      "name": "月の真珠"
+    },
+    {
+      "id": "moonsoul_crown",
+      "name": "月魄の冠"
+    },
+    {
+      "id": "fae_dust",
+      "name": "妖精の粉塵"
+    },
+    {
+      "id": "queens_favor",
+      "name": "女王の寵愛の証"
+    },
+    {
+      "id": "resonant_shard",
+      "name": "共鳴する欠片"
+    },
+    {
+      "id": "heart_of_crystal",
+      "name": "結晶の心臓"
+    },
+    {
+      "id": "obsidian_shard",
+      "name": "黒曜石の欠片"
+    },
+    {
+      "id": "emberforged_ingot",
+      "name": "業火で鍛えた鋼塊"
+    },
+    {
+      "id": "heart_of_inferno",
+      "name": "業火の心臓"
+    },
+    {
+      "id": "reclass_elixir",
+      "name": "転職の秘薬"
+    }
+  ],
+  "areas": [
+    {
+      "id": "kingdom",
+      "name": "小さな王国"
+    },
+    {
+      "id": "reinvale",
+      "name": "隣国レインヴェール"
+    },
+    {
+      "id": "ashen_peaks",
+      "name": "灰色の山嶺"
+    },
+    {
+      "id": "forgotten_catacombs",
+      "name": "忘れられた地下墓地"
+    },
+    {
+      "id": "spirit_plane",
+      "name": "精霊界"
+    },
+    {
+      "id": "moonlit_lake",
+      "name": "月魄の湖"
+    },
+    {
+      "id": "fae_hollow",
+      "name": "妖精の隠れ里"
+    },
+    {
+      "id": "crystalline_depths",
+      "name": "結晶の深淵"
+    },
+    {
+      "id": "inferno_crater",
+      "name": "業火の火口"
+    }
+  ],
+  "sections": [
+    {
+      "id": "village_area",
+      "name": "始まりの村周辺",
+      "area": "kingdom"
+    },
+    {
+      "id": "old_cave_dungeon",
+      "name": "古い洞窟",
+      "area": "kingdom"
+    },
+    {
+      "id": "whispering_forest",
+      "name": "ささやきの森",
+      "area": "kingdom"
+    },
+    {
+      "id": "border_road",
+      "name": "国境の道",
+      "area": "kingdom"
+    },
+    {
+      "id": "capital_district",
+      "name": "王都",
+      "area": "kingdom"
+    },
+    {
+      "id": "noble_quarter",
+      "name": "貴族街",
+      "area": "kingdom"
+    },
+    {
+      "id": "reinvale_outskirts",
+      "name": "レインヴェール郊外",
+      "area": "reinvale"
+    },
+    {
+      "id": "sunken_ruins",
+      "name": "沈んだ遺跡",
+      "area": "reinvale"
+    },
+    {
+      "id": "elven_woods",
+      "name": "隠れ森の郷",
+      "area": "reinvale"
+    },
+    {
+      "id": "sunken_depths",
+      "name": "遺跡の深層",
+      "area": "reinvale"
+    },
+    {
+      "id": "mountain_pass_road",
+      "name": "峠道",
+      "area": "ashen_peaks"
+    },
+    {
+      "id": "dwarven_hold",
+      "name": "ドワーフの砦",
+      "area": "ashen_peaks"
+    },
+    {
+      "id": "abandoned_mine",
+      "name": "廃坑",
+      "area": "ashen_peaks"
+    },
+    {
+      "id": "dragon_spire",
+      "name": "竜の尖塔",
+      "area": "ashen_peaks"
+    },
+    {
+      "id": "crypt_entrance",
+      "name": "納骨堂入口",
+      "area": "forgotten_catacombs"
+    },
+    {
+      "id": "bone_ossuary",
+      "name": "白骨の回廊",
+      "area": "forgotten_catacombs"
+    },
+    {
+      "id": "sunken_chapel",
+      "name": "沈黙の礼拝堂",
+      "area": "forgotten_catacombs"
+    },
+    {
+      "id": "lich_sanctum",
+      "name": "リッチの聖域",
+      "area": "forgotten_catacombs"
+    },
+    {
+      "id": "plane_threshold",
+      "name": "狭間の境界",
+      "area": "spirit_plane"
+    },
+    {
+      "id": "drifting_isles",
+      "name": "漂う島々",
+      "area": "spirit_plane"
+    },
+    {
+      "id": "mirror_hollow",
+      "name": "鏡影の窪地",
+      "area": "spirit_plane"
+    },
+    {
+      "id": "astral_sanctum",
+      "name": "星幽の聖域",
+      "area": "spirit_plane"
+    },
+    {
+      "id": "lake_shore",
+      "name": "湖畔",
+      "area": "moonlit_lake"
+    },
+    {
+      "id": "sunken_village",
+      "name": "沈んだ里",
+      "area": "moonlit_lake"
+    },
+    {
+      "id": "reed_maze",
+      "name": "葦の迷路",
+      "area": "moonlit_lake"
+    },
+    {
+      "id": "moon_palace",
+      "name": "月宮",
+      "area": "moonlit_lake"
+    },
+    {
+      "id": "hollow_entrance",
+      "name": "隠れ里の入口",
+      "area": "fae_hollow"
+    },
+    {
+      "id": "mushroom_glade",
+      "name": "茸の群生地",
+      "area": "fae_hollow"
+    },
+    {
+      "id": "trickster_maze",
+      "name": "悪戯妖精の迷路",
+      "area": "fae_hollow"
+    },
+    {
+      "id": "fae_court",
+      "name": "妖精の宮廷",
+      "area": "fae_hollow"
+    },
+    {
+      "id": "crystal_descent",
+      "name": "結晶への降下路",
+      "area": "crystalline_depths"
+    },
+    {
+      "id": "geode_hollows",
+      "name": "晶洞の窪み",
+      "area": "crystalline_depths"
+    },
+    {
+      "id": "resonance_halls",
+      "name": "共鳴の回廊",
+      "area": "crystalline_depths"
+    },
+    {
+      "id": "crystal_throne",
+      "name": "結晶の玉座",
+      "area": "crystalline_depths"
+    },
+    {
+      "id": "caldera_rim",
+      "name": "火口の縁",
+      "area": "inferno_crater"
+    },
+    {
+      "id": "obsidian_flats",
+      "name": "黒曜石の平原",
+      "area": "inferno_crater"
+    },
+    {
+      "id": "ember_tunnels",
+      "name": "燠火の坑道",
+      "area": "inferno_crater"
+    },
+    {
+      "id": "molten_forge",
+      "name": "溶鉱の鍛冶場",
+      "area": "inferno_crater"
+    },
+    {
+      "id": "inferno_heart",
+      "name": "業火の中心",
+      "area": "inferno_crater"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "village",
+      "name": "始まりの村",
+      "section": "village_area",
+      "connections": [
+        "forest_edge",
+        "capital_road"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": true
+    },
+    {
+      "id": "forest_edge",
+      "name": "森の入口",
+      "section": "village_area",
+      "connections": [
+        "village",
+        "old_shrine",
+        "cave",
+        "forest_path",
+        "border_path"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": true
+    },
+    {
+      "id": "old_shrine",
+      "name": "古い祠",
+      "section": "village_area",
+      "connections": [
+        "forest_edge"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cave",
+      "name": "洞窟",
+      "section": "old_cave_dungeon",
+      "connections": [
+        "forest_edge",
+        "locked_vault"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "locked_vault",
+      "name": "封印の小部屋",
+      "section": "old_cave_dungeon",
+      "connections": [
+        "cave",
+        "boss_lair"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "boss_lair",
+      "name": "ゴブリンキングの間",
+      "section": "old_cave_dungeon",
+      "connections": [
+        "locked_vault",
+        "goblin_treasury"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 180
+      },
+      "item_reward": "goblin_amulet",
+      "initially_passed": false
+    },
+    {
+      "id": "goblin_treasury",
+      "name": "秘密の宝物庫",
+      "section": "old_cave_dungeon",
+      "connections": [
+        "boss_lair"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "goblin_amulet"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "forest_path",
+      "name": "森の小道",
+      "section": "whispering_forest",
+      "connections": [
+        "forest_edge",
+        "mossy_clearing"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "mossy_clearing",
+      "name": "苔むした広場",
+      "section": "whispering_forest",
+      "connections": [
+        "forest_path",
+        "fallen_log",
+        "old_well"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "old_well",
+      "name": "古井戸",
+      "section": "whispering_forest",
+      "connections": [
+        "mossy_clearing",
+        "well_shaft"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "fallen_log",
+      "name": "倒木の道",
+      "section": "whispering_forest",
+      "connections": [
+        "mossy_clearing",
+        "deep_thicket"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "deep_thicket",
+      "name": "深い茂み",
+      "section": "whispering_forest",
+      "connections": [
+        "fallen_log",
+        "wolf_den"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "wolf_den",
+      "name": "狼の巣穴",
+      "section": "whispering_forest",
+      "connections": [
+        "deep_thicket"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 140
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "border_path",
+      "name": "国境へ続く道",
+      "section": "border_road",
+      "connections": [
+        "forest_edge",
+        "border_checkpoint"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "border_checkpoint",
+      "name": "国境の関所",
+      "section": "border_road",
+      "connections": [
+        "border_path",
+        "reinvale_gate"
+      ],
+      "gate": {
+        "type": "innate_trait",
+        "trait": "bloodline",
+        "value": "王家の落胤"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "capital_road",
+      "name": "王都へ続く街道",
+      "section": "capital_district",
+      "connections": [
+        "village",
+        "capital_gate"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "capital_gate",
+      "name": "王都の門",
+      "section": "capital_district",
+      "connections": [
+        "capital_road",
+        "capital_plaza"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "capital_plaza",
+      "name": "王都広場",
+      "section": "capital_district",
+      "connections": [
+        "capital_gate",
+        "guild_hall",
+        "market_district",
+        "noble_gate"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "guild_hall",
+      "name": "冒険者ギルド",
+      "section": "capital_district",
+      "connections": [
+        "capital_plaza",
+        "archive_room"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 1
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "archive_room",
+      "name": "古文書庫",
+      "section": "capital_district",
+      "connections": [
+        "guild_hall",
+        "royal_library"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "old_expedition_map",
+      "initially_passed": false
+    },
+    {
+      "id": "royal_library",
+      "name": "王立図書館の禁書区画",
+      "section": "capital_district",
+      "connections": [
+        "archive_room"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "old_expedition_map"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "market_district",
+      "name": "商業区",
+      "section": "capital_district",
+      "connections": [
+        "capital_plaza",
+        "back_alley"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "back_alley",
+      "name": "裏路地",
+      "section": "capital_district",
+      "connections": [
+        "market_district",
+        "thieves_den"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "thieves_den",
+      "name": "盗賊団のアジト",
+      "section": "capital_district",
+      "connections": [
+        "back_alley"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 160
+      },
+      "item_reward": "thief_signet",
+      "initially_passed": false
+    },
+    {
+      "id": "noble_gate",
+      "name": "貴族街の門",
+      "section": "noble_quarter",
+      "connections": [
+        "capital_plaza",
+        "manor_garden"
+      ],
+      "gate": {
+        "type": "innate_trait",
+        "trait": "bloodline",
+        "value": "旧家の血筋"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "manor_garden",
+      "name": "屋敷の庭園",
+      "section": "noble_quarter",
+      "connections": [
+        "noble_gate",
+        "hidden_vault",
+        "cathedral_square"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hidden_vault",
+      "name": "隠し金庫室",
+      "section": "noble_quarter",
+      "connections": [
+        "manor_garden"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "thief_signet"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cathedral_square",
+      "name": "大聖堂前広場",
+      "section": "noble_quarter",
+      "connections": [
+        "manor_garden",
+        "bell_tower"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "bell_tower",
+      "name": "大聖堂の鐘楼",
+      "section": "noble_quarter",
+      "connections": [
+        "cathedral_square",
+        "crypt_stairs"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "reinvale_gate",
+      "name": "国境門",
+      "section": "reinvale_outskirts",
+      "connections": [
+        "border_checkpoint",
+        "market_road"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "market_road",
+      "name": "市場通り",
+      "section": "reinvale_outskirts",
+      "connections": [
+        "reinvale_gate",
+        "old_watchtower",
+        "riverside",
+        "elf_ward"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "old_watchtower",
+      "name": "古い物見塔",
+      "section": "reinvale_outskirts",
+      "connections": [
+        "market_road",
+        "mountain_pass"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "riverside",
+      "name": "川辺の道",
+      "section": "reinvale_outskirts",
+      "connections": [
+        "market_road",
+        "sunken_path"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sunken_path",
+      "name": "水没した小道",
+      "section": "sunken_ruins",
+      "connections": [
+        "riverside",
+        "ruin_entrance"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ruin_entrance",
+      "name": "遺跡の入口",
+      "section": "sunken_ruins",
+      "connections": [
+        "sunken_path",
+        "ruin_hall"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ruin_hall",
+      "name": "遺跡の大広間",
+      "section": "sunken_ruins",
+      "connections": [
+        "ruin_entrance",
+        "throne_room"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "throne_room",
+      "name": "沈める王の間",
+      "section": "sunken_ruins",
+      "connections": [
+        "ruin_hall",
+        "depths_stair"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 200
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "elf_ward",
+      "name": "森の結界",
+      "section": "elven_woods",
+      "connections": [
+        "market_road",
+        "elder_grove"
+      ],
+      "gate": {
+        "type": "innate_trait",
+        "trait": "bloodline",
+        "value": "森人の血"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "elder_grove",
+      "name": "長老の木立",
+      "section": "elven_woods",
+      "connections": [
+        "elf_ward",
+        "spirit_shrine",
+        "moonwell_guardian"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "spirit_shrine",
+      "name": "精霊の祠",
+      "section": "elven_woods",
+      "connections": [
+        "elder_grove",
+        "threshold_rift"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "moonwell_guardian",
+      "name": "月の泉の守護者",
+      "section": "elven_woods",
+      "connections": [
+        "elder_grove",
+        "lake_path"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 180
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "depths_stair",
+      "name": "深層へ続く階段",
+      "section": "sunken_depths",
+      "connections": [
+        "throne_room",
+        "flooded_crypt"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "flooded_crypt",
+      "name": "水没した墓所",
+      "section": "sunken_depths",
+      "connections": [
+        "depths_stair",
+        "drowned_throne"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "drowned_throne",
+      "name": "溺れし玉座の間",
+      "section": "sunken_depths",
+      "connections": [
+        "flooded_crypt",
+        "treasure_hall"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 240
+      },
+      "item_reward": "crown_of_the_deep",
+      "initially_passed": false
+    },
+    {
+      "id": "treasure_hall",
+      "name": "王冠の間",
+      "section": "sunken_depths",
+      "connections": [
+        "drowned_throne"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "crown_of_the_deep"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "mountain_pass",
+      "name": "山越えの道",
+      "section": "mountain_pass_road",
+      "connections": [
+        "old_watchtower",
+        "ridge_camp"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ridge_camp",
+      "name": "尾根の野営地",
+      "section": "mountain_pass_road",
+      "connections": [
+        "mountain_pass",
+        "hold_gate",
+        "cliff_shrine"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cliff_shrine",
+      "name": "断崖の祠",
+      "section": "mountain_pass_road",
+      "connections": [
+        "ridge_camp",
+        "spire_trail"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hold_gate",
+      "name": "砦の門",
+      "section": "dwarven_hold",
+      "connections": [
+        "ridge_camp",
+        "hold_square"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hold_square",
+      "name": "砦の広場",
+      "section": "dwarven_hold",
+      "connections": [
+        "hold_gate",
+        "forge_district",
+        "tavern",
+        "mine_entrance_road"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "forge_district",
+      "name": "鍛冶区画",
+      "section": "dwarven_hold",
+      "connections": [
+        "hold_square",
+        "master_forge",
+        "sealed_stockroom"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "master_forge",
+      "name": "大鍛冶場",
+      "section": "dwarven_hold",
+      "connections": [
+        "forge_district"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 3
+      },
+      "item_reward": "dwarven_forge_hammer",
+      "initially_passed": false
+    },
+    {
+      "id": "sealed_stockroom",
+      "name": "封印の資材庫",
+      "section": "dwarven_hold",
+      "connections": [
+        "forge_district"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "dwarven_forge_hammer"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "tavern",
+      "name": "酒場",
+      "section": "dwarven_hold",
+      "connections": [
+        "hold_square",
+        "rumor_room"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "rumor_room",
+      "name": "酒場の奥部屋",
+      "section": "dwarven_hold",
+      "connections": [
+        "tavern"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "mine_entrance_road",
+      "name": "廃坑への道",
+      "section": "abandoned_mine",
+      "connections": [
+        "hold_square",
+        "mine_entrance"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "mine_entrance",
+      "name": "廃坑入口",
+      "section": "abandoned_mine",
+      "connections": [
+        "mine_entrance_road",
+        "collapsed_tunnel"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "collapsed_tunnel",
+      "name": "崩れた坑道",
+      "section": "abandoned_mine",
+      "connections": [
+        "mine_entrance",
+        "deep_shaft"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "deep_shaft",
+      "name": "深部立坑",
+      "section": "abandoned_mine",
+      "connections": [
+        "collapsed_tunnel",
+        "crystal_cavern",
+        "goblin_outpost"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "crystal_cavern",
+      "name": "結晶洞",
+      "section": "abandoned_mine",
+      "connections": [
+        "deep_shaft",
+        "descent_path"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "goblin_outpost",
+      "name": "ゴブリンの前哨基地",
+      "section": "abandoned_mine",
+      "connections": [
+        "deep_shaft",
+        "mine_boss_chamber"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 220
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "mine_boss_chamber",
+      "name": "坑道主の間",
+      "section": "abandoned_mine",
+      "connections": [
+        "goblin_outpost",
+        "mine_vault"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 260
+      },
+      "item_reward": "warden_key",
+      "initially_passed": false
+    },
+    {
+      "id": "mine_vault",
+      "name": "坑道の宝物庫",
+      "section": "abandoned_mine",
+      "connections": [
+        "mine_boss_chamber"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "warden_key"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "spire_trail",
+      "name": "尖塔への隠し道",
+      "section": "dragon_spire",
+      "connections": [
+        "cliff_shrine",
+        "spire_base"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "spire_base",
+      "name": "尖塔の麓",
+      "section": "dragon_spire",
+      "connections": [
+        "spire_trail",
+        "ash_chamber",
+        "spire_ascent"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ash_chamber",
+      "name": "灰塵の間",
+      "section": "dragon_spire",
+      "connections": [
+        "spire_base",
+        "rim_path"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 240
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "spire_ascent",
+      "name": "尖塔の階段",
+      "section": "dragon_spire",
+      "connections": [
+        "spire_base",
+        "sealed_gate"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sealed_gate",
+      "name": "封印の大扉",
+      "section": "dragon_spire",
+      "connections": [
+        "spire_ascent",
+        "dragon_throne"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 5
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "dragon_throne",
+      "name": "竜の玉座",
+      "section": "dragon_spire",
+      "connections": [
+        "sealed_gate",
+        "dragon_hoard"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 300
+      },
+      "item_reward": "ashen_dragon_scale",
+      "initially_passed": false
+    },
+    {
+      "id": "dragon_hoard",
+      "name": "竜の財宝",
+      "section": "dragon_spire",
+      "connections": [
+        "dragon_throne"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "ashen_dragon_scale"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "crypt_stairs",
+      "name": "地下への階段",
+      "section": "crypt_entrance",
+      "connections": [
+        "bell_tower",
+        "crypt_hall"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "crypt_hall",
+      "name": "納骨堂の間",
+      "section": "crypt_entrance",
+      "connections": [
+        "crypt_stairs",
+        "rusted_door",
+        "forgotten_shrine",
+        "bone_corridor"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "rusted_door",
+      "name": "錆びついた格子扉",
+      "section": "crypt_entrance",
+      "connections": [
+        "crypt_hall"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "forgotten_shrine",
+      "name": "忘れられた祭壇",
+      "section": "crypt_entrance",
+      "connections": [
+        "crypt_hall"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "bone_corridor",
+      "name": "白骨の回廊",
+      "section": "bone_ossuary",
+      "connections": [
+        "crypt_hall",
+        "whispering_alcove",
+        "cracked_sarcophagus",
+        "rattling_alcove",
+        "ossuary_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "whispering_alcove",
+      "name": "囁きの窪み",
+      "section": "bone_ossuary",
+      "connections": [
+        "bone_corridor"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cracked_sarcophagus",
+      "name": "罅割れた石棺",
+      "section": "bone_ossuary",
+      "connections": [
+        "bone_corridor"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 2
+      },
+      "item_reward": "silver_reliquary",
+      "initially_passed": false
+    },
+    {
+      "id": "rattling_alcove",
+      "name": "骨の鳴る窪み",
+      "section": "bone_ossuary",
+      "connections": [
+        "bone_corridor"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 280
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ossuary_depths",
+      "name": "骸骨兵の間",
+      "section": "bone_ossuary",
+      "connections": [
+        "bone_corridor",
+        "chapel_stairs",
+        "sealed_crypt_gate"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 300
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sealed_crypt_gate",
+      "name": "封じられた墓所の門",
+      "section": "bone_ossuary",
+      "connections": [
+        "ossuary_depths",
+        "lich_antechamber"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "silver_reliquary"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "chapel_stairs",
+      "name": "礼拝堂への階段",
+      "section": "sunken_chapel",
+      "connections": [
+        "ossuary_depths",
+        "chapel_nave"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "chapel_nave",
+      "name": "礼拝堂の身廊",
+      "section": "sunken_chapel",
+      "connections": [
+        "chapel_stairs",
+        "altar_room",
+        "bell_loft",
+        "confessional_nook"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "altar_room",
+      "name": "祭壇の間",
+      "section": "sunken_chapel",
+      "connections": [
+        "chapel_nave"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "bell_loft",
+      "name": "聖鐘楼",
+      "section": "sunken_chapel",
+      "connections": [
+        "chapel_nave"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "confessional_nook",
+      "name": "懺悔室",
+      "section": "sunken_chapel",
+      "connections": [
+        "chapel_nave"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "lich_antechamber",
+      "name": "リッチの前室",
+      "section": "lich_sanctum",
+      "connections": [
+        "sealed_crypt_gate",
+        "restless_guardian",
+        "warding_circle"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "restless_guardian",
+      "name": "彷徨う守護者",
+      "section": "lich_sanctum",
+      "connections": [
+        "lich_antechamber"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 320
+      },
+      "item_reward": "reclass_elixir",
+      "initially_passed": false
+    },
+    {
+      "id": "warding_circle",
+      "name": "結界の間",
+      "section": "lich_sanctum",
+      "connections": [
+        "lich_antechamber",
+        "lich_throne"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "lich_throne",
+      "name": "リッチの玉座",
+      "section": "lich_sanctum",
+      "connections": [
+        "warding_circle",
+        "lich_vault"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 360
+      },
+      "item_reward": "phylactery_shard",
+      "initially_passed": false
+    },
+    {
+      "id": "lich_vault",
+      "name": "秘宝の間",
+      "section": "lich_sanctum",
+      "connections": [
+        "lich_throne"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "phylactery_shard"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "threshold_rift",
+      "name": "狭間の裂け目",
+      "section": "plane_threshold",
+      "connections": [
+        "spirit_shrine",
+        "drifting_path"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "drifting_path",
+      "name": "漂う小道",
+      "section": "plane_threshold",
+      "connections": [
+        "threshold_rift",
+        "isle_gate",
+        "hollow_mist",
+        "drifting_shrine"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "drifting_shrine",
+      "name": "漂う祠",
+      "section": "plane_threshold",
+      "connections": [
+        "drifting_path"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "isle_gate",
+      "name": "浮島の門",
+      "section": "drifting_isles",
+      "connections": [
+        "drifting_path",
+        "floating_garden"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "floating_garden",
+      "name": "浮遊庭園",
+      "section": "drifting_isles",
+      "connections": [
+        "isle_gate",
+        "wind_shrine",
+        "star_pool",
+        "sky_serpent_nest",
+        "isle_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "wind_shrine",
+      "name": "風の祠",
+      "section": "drifting_isles",
+      "connections": [
+        "floating_garden"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "star_pool",
+      "name": "星映す泉",
+      "section": "drifting_isles",
+      "connections": [
+        "floating_garden",
+        "sealed_garden_vault"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 4
+      },
+      "item_reward": "starlight_fragment",
+      "initially_passed": false
+    },
+    {
+      "id": "sealed_garden_vault",
+      "name": "封じられた庭園の蔵",
+      "section": "drifting_isles",
+      "connections": [
+        "star_pool"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "starlight_fragment"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sky_serpent_nest",
+      "name": "空竜蛇の巣",
+      "section": "drifting_isles",
+      "connections": [
+        "floating_garden"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 340
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "isle_depths",
+      "name": "島影の奥",
+      "section": "drifting_isles",
+      "connections": [
+        "floating_garden",
+        "sanctum_bridge"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 380
+      },
+      "item_reward": "reclass_elixir",
+      "initially_passed": false
+    },
+    {
+      "id": "hollow_mist",
+      "name": "霧のくぼ地",
+      "section": "mirror_hollow",
+      "connections": [
+        "drifting_path",
+        "mirror_maze"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "mirror_maze",
+      "name": "鏡の迷路",
+      "section": "mirror_hollow",
+      "connections": [
+        "hollow_mist",
+        "echo_chamber",
+        "false_reflection",
+        "silent_pool"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "echo_chamber",
+      "name": "谺の間",
+      "section": "mirror_hollow",
+      "connections": [
+        "mirror_maze"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 360
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "false_reflection",
+      "name": "偽りの鏡像",
+      "section": "mirror_hollow",
+      "connections": [
+        "mirror_maze"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "silent_pool",
+      "name": "静寂の水底",
+      "section": "mirror_hollow",
+      "connections": [
+        "mirror_maze"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sanctum_bridge",
+      "name": "星幽への橋",
+      "section": "astral_sanctum",
+      "connections": [
+        "isle_depths",
+        "sanctum_gate"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sanctum_gate",
+      "name": "聖域の門",
+      "section": "astral_sanctum",
+      "connections": [
+        "sanctum_bridge",
+        "sanctum_inner"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 5
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sanctum_inner",
+      "name": "聖域の内殿",
+      "section": "astral_sanctum",
+      "connections": [
+        "sanctum_gate",
+        "astral_guardian"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "astral_guardian",
+      "name": "星幽の守護者",
+      "section": "astral_sanctum",
+      "connections": [
+        "sanctum_inner",
+        "astral_heart"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 420
+      },
+      "item_reward": "astral_core",
+      "initially_passed": false
+    },
+    {
+      "id": "astral_heart",
+      "name": "星幽の中心",
+      "section": "astral_sanctum",
+      "connections": [
+        "astral_guardian"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "astral_core"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "lake_path",
+      "name": "湖への小道",
+      "section": "lake_shore",
+      "connections": [
+        "moonwell_guardian",
+        "lake_dock"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "lake_dock",
+      "name": "湖畔の桟橋",
+      "section": "lake_shore",
+      "connections": [
+        "lake_path",
+        "village_gate",
+        "reed_entrance",
+        "sunken_bell",
+        "drift_wraith"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sunken_bell",
+      "name": "沈んだ鐘",
+      "section": "lake_shore",
+      "connections": [
+        "lake_dock"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "drift_wraith",
+      "name": "漂う亡霊",
+      "section": "lake_shore",
+      "connections": [
+        "lake_dock"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 400
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "village_gate",
+      "name": "沈んだ里の門",
+      "section": "sunken_village",
+      "connections": [
+        "lake_dock",
+        "drowned_square"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "drowned_square",
+      "name": "沈んだ広場",
+      "section": "sunken_village",
+      "connections": [
+        "village_gate",
+        "flooded_house",
+        "moonlit_altar",
+        "hidden_cellar",
+        "village_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "flooded_house",
+      "name": "水没した家",
+      "section": "sunken_village",
+      "connections": [
+        "drowned_square"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 3
+      },
+      "item_reward": "moonpearl",
+      "initially_passed": false
+    },
+    {
+      "id": "moonlit_altar",
+      "name": "月光の祭壇",
+      "section": "sunken_village",
+      "connections": [
+        "drowned_square"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "moonpearl"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hidden_cellar",
+      "name": "隠された地下室",
+      "section": "sunken_village",
+      "connections": [
+        "drowned_square"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "village_depths",
+      "name": "里の奥",
+      "section": "sunken_village",
+      "connections": [
+        "drowned_square",
+        "palace_stairs"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 440
+      },
+      "item_reward": "reclass_elixir",
+      "initially_passed": false
+    },
+    {
+      "id": "reed_entrance",
+      "name": "葦原の入口",
+      "section": "reed_maze",
+      "connections": [
+        "lake_dock",
+        "reed_paths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "reed_paths",
+      "name": "葦の小道",
+      "section": "reed_maze",
+      "connections": [
+        "reed_entrance",
+        "will_o_wisp",
+        "hidden_skiff",
+        "reed_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "will_o_wisp",
+      "name": "鬼火の群れ",
+      "section": "reed_maze",
+      "connections": [
+        "reed_paths"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 420
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hidden_skiff",
+      "name": "隠された小舟",
+      "section": "reed_maze",
+      "connections": [
+        "reed_paths"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "reed_depths",
+      "name": "葦の最奥",
+      "section": "reed_maze",
+      "connections": [
+        "reed_paths"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "palace_stairs",
+      "name": "月宮への階段",
+      "section": "moon_palace",
+      "connections": [
+        "village_depths",
+        "palace_hall"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "palace_hall",
+      "name": "月宮の広間",
+      "section": "moon_palace",
+      "connections": [
+        "palace_stairs",
+        "moon_throne"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 5
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "moon_throne",
+      "name": "月姫の玉座",
+      "section": "moon_palace",
+      "connections": [
+        "palace_hall",
+        "palace_vault"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 480
+      },
+      "item_reward": "moonsoul_crown",
+      "initially_passed": false
+    },
+    {
+      "id": "palace_vault",
+      "name": "秘宝の間",
+      "section": "moon_palace",
+      "connections": [
+        "moon_throne"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "moonsoul_crown"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "well_shaft",
+      "name": "井戸の縦坑",
+      "section": "hollow_entrance",
+      "connections": [
+        "old_well",
+        "hollow_floor"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hollow_floor",
+      "name": "隠れ里の床",
+      "section": "hollow_entrance",
+      "connections": [
+        "well_shaft",
+        "glade_path",
+        "maze_path",
+        "sleeping_pixie",
+        "moss_ring"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "sleeping_pixie",
+      "name": "眠るピクシー",
+      "section": "hollow_entrance",
+      "connections": [
+        "hollow_floor"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "moss_ring",
+      "name": "苔の輪",
+      "section": "hollow_entrance",
+      "connections": [
+        "hollow_floor"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 460
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "glade_path",
+      "name": "茸への小道",
+      "section": "mushroom_glade",
+      "connections": [
+        "hollow_floor",
+        "glade_clearing"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "glade_clearing",
+      "name": "茸の群生地",
+      "section": "mushroom_glade",
+      "connections": [
+        "glade_path",
+        "giant_toadstool",
+        "toadstool_ring",
+        "glade_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "giant_toadstool",
+      "name": "巨大な茸",
+      "section": "mushroom_glade",
+      "connections": [
+        "glade_clearing"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 2
+      },
+      "item_reward": "fae_dust",
+      "initially_passed": false
+    },
+    {
+      "id": "toadstool_ring",
+      "name": "茸の輪",
+      "section": "mushroom_glade",
+      "connections": [
+        "glade_clearing"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "glade_depths",
+      "name": "群生地の奥",
+      "section": "mushroom_glade",
+      "connections": [
+        "glade_clearing",
+        "court_gate"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 500
+      },
+      "item_reward": "reclass_elixir",
+      "initially_passed": false
+    },
+    {
+      "id": "maze_path",
+      "name": "悪戯妖精への道",
+      "section": "trickster_maze",
+      "connections": [
+        "hollow_floor",
+        "maze_heart"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "maze_heart",
+      "name": "迷路の中心",
+      "section": "trickster_maze",
+      "connections": [
+        "maze_path",
+        "riddling_sprite",
+        "illusive_door",
+        "maze_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "riddling_sprite",
+      "name": "謎かけの妖精",
+      "section": "trickster_maze",
+      "connections": [
+        "maze_heart"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "illusive_door",
+      "name": "幻影の扉",
+      "section": "trickster_maze",
+      "connections": [
+        "maze_heart"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "maze_depths",
+      "name": "迷路の最奥",
+      "section": "trickster_maze",
+      "connections": [
+        "maze_heart"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 2
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "court_gate",
+      "name": "宮廷の門",
+      "section": "fae_court",
+      "connections": [
+        "glade_depths",
+        "court_hall"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "court_hall",
+      "name": "妖精の宮廷",
+      "section": "fae_court",
+      "connections": [
+        "court_gate",
+        "fae_queen"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "fae_queen",
+      "name": "妖精女王",
+      "section": "fae_court",
+      "connections": [
+        "court_hall",
+        "court_treasury"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 540
+      },
+      "item_reward": "queens_favor",
+      "initially_passed": false
+    },
+    {
+      "id": "court_treasury",
+      "name": "宮廷の宝物庫",
+      "section": "fae_court",
+      "connections": [
+        "fae_queen"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "queens_favor"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "descent_path",
+      "name": "降下路",
+      "section": "crystal_descent",
+      "connections": [
+        "crystal_cavern",
+        "crystal_floor"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "crystal_floor",
+      "name": "結晶の床",
+      "section": "crystal_descent",
+      "connections": [
+        "descent_path",
+        "geode_path",
+        "resonance_path",
+        "glowing_vein",
+        "faint_tremor"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "glowing_vein",
+      "name": "光る鉱脈",
+      "section": "crystal_descent",
+      "connections": [
+        "crystal_floor"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "faint_tremor",
+      "name": "微かな震え",
+      "section": "crystal_descent",
+      "connections": [
+        "crystal_floor"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 520
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "geode_path",
+      "name": "晶洞への道",
+      "section": "geode_hollows",
+      "connections": [
+        "crystal_floor",
+        "geode_chamber"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "geode_chamber",
+      "name": "晶洞の間",
+      "section": "geode_hollows",
+      "connections": [
+        "geode_path",
+        "cracked_geode",
+        "crystal_spiders",
+        "prismatic_pool",
+        "geode_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cracked_geode",
+      "name": "割れた晶洞",
+      "section": "geode_hollows",
+      "connections": [
+        "geode_chamber"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 3
+      },
+      "item_reward": "resonant_shard",
+      "initially_passed": false
+    },
+    {
+      "id": "crystal_spiders",
+      "name": "結晶蜘蛛の巣",
+      "section": "geode_hollows",
+      "connections": [
+        "geode_chamber"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 560
+      },
+      "item_reward": "reclass_elixir",
+      "initially_passed": false
+    },
+    {
+      "id": "prismatic_pool",
+      "name": "虹色の水溜まり",
+      "section": "geode_hollows",
+      "connections": [
+        "geode_chamber"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "geode_depths",
+      "name": "晶洞の奥",
+      "section": "geode_hollows",
+      "connections": [
+        "geode_chamber",
+        "throne_path"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "resonant_shard"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "resonance_path",
+      "name": "共鳴への道",
+      "section": "resonance_halls",
+      "connections": [
+        "crystal_floor",
+        "resonance_hall"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "resonance_hall",
+      "name": "共鳴の回廊",
+      "section": "resonance_halls",
+      "connections": [
+        "resonance_path",
+        "humming_crystal",
+        "shattering_echo",
+        "resonance_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "humming_crystal",
+      "name": "唸る結晶",
+      "section": "resonance_halls",
+      "connections": [
+        "resonance_hall"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "shattering_echo",
+      "name": "砕ける谺",
+      "section": "resonance_halls",
+      "connections": [
+        "resonance_hall"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 540
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "resonance_depths",
+      "name": "共鳴の最奥",
+      "section": "resonance_halls",
+      "connections": [
+        "resonance_hall"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "throne_path",
+      "name": "玉座への道",
+      "section": "crystal_throne",
+      "connections": [
+        "geode_depths",
+        "throne_hall"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "throne_hall",
+      "name": "結晶の広間",
+      "section": "crystal_throne",
+      "connections": [
+        "throne_path",
+        "crystal_monarch"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "crystal_monarch",
+      "name": "結晶の王",
+      "section": "crystal_throne",
+      "connections": [
+        "throne_hall",
+        "throne_vault"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 600
+      },
+      "item_reward": "heart_of_crystal",
+      "initially_passed": false
+    },
+    {
+      "id": "throne_vault",
+      "name": "王の秘宝庫",
+      "section": "crystal_throne",
+      "connections": [
+        "crystal_monarch"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "heart_of_crystal"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "rim_path",
+      "name": "火口縁への道",
+      "section": "caldera_rim",
+      "connections": [
+        "ash_chamber",
+        "rim_overlook"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "rim_overlook",
+      "name": "火口を見渡す岸",
+      "section": "caldera_rim",
+      "connections": [
+        "rim_path",
+        "obsidian_path",
+        "ember_path",
+        "heat_shimmer",
+        "ash_drift",
+        "cracked_ridge"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "heat_shimmer",
+      "name": "陽炎の揺らぎ",
+      "section": "caldera_rim",
+      "connections": [
+        "rim_overlook"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 4
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ash_drift",
+      "name": "灰の吹き溜まり",
+      "section": "caldera_rim",
+      "connections": [
+        "rim_overlook"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 540
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cracked_ridge",
+      "name": "罅割れた尾根",
+      "section": "caldera_rim",
+      "connections": [
+        "rim_overlook"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "obsidian_path",
+      "name": "黒曜石への道",
+      "section": "obsidian_flats",
+      "connections": [
+        "rim_overlook",
+        "obsidian_field"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "obsidian_field",
+      "name": "黒曜石の平原",
+      "section": "obsidian_flats",
+      "connections": [
+        "obsidian_path",
+        "shattered_pillar",
+        "glass_maze",
+        "field_depths",
+        "forge_path"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "shattered_pillar",
+      "name": "砕けた石柱",
+      "section": "obsidian_flats",
+      "connections": [
+        "obsidian_field",
+        "sealed_kiln"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 3
+      },
+      "item_reward": "obsidian_shard",
+      "initially_passed": false
+    },
+    {
+      "id": "sealed_kiln",
+      "name": "封じられた窯",
+      "section": "obsidian_flats",
+      "connections": [
+        "shattered_pillar"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "obsidian_shard"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "glass_maze",
+      "name": "硝子の迷路",
+      "section": "obsidian_flats",
+      "connections": [
+        "obsidian_field"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "field_depths",
+      "name": "平原の奥",
+      "section": "obsidian_flats",
+      "connections": [
+        "obsidian_field"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 600
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "forge_path",
+      "name": "溶鉱への道",
+      "section": "obsidian_flats",
+      "connections": [
+        "obsidian_field",
+        "forge_floor"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ember_path",
+      "name": "燠火への道",
+      "section": "ember_tunnels",
+      "connections": [
+        "rim_overlook",
+        "ember_hollow"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ember_hollow",
+      "name": "燠火の窪み",
+      "section": "ember_tunnels",
+      "connections": [
+        "ember_path",
+        "cinder_wisps",
+        "buried_cache",
+        "ember_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "cinder_wisps",
+      "name": "燠火の精",
+      "section": "ember_tunnels",
+      "connections": [
+        "ember_hollow"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 560
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "buried_cache",
+      "name": "埋もれた蓄え",
+      "section": "ember_tunnels",
+      "connections": [
+        "ember_hollow"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "LOCKPICKING",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "ember_depths",
+      "name": "燠火の最奥",
+      "section": "ember_tunnels",
+      "connections": [
+        "ember_hollow"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "PERCEPTION",
+        "min_level": 3
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "forge_floor",
+      "name": "溶鉱の鍛冶場",
+      "section": "molten_forge",
+      "connections": [
+        "forge_path",
+        "molten_anvil",
+        "salamander_den",
+        "slag_heap",
+        "forge_depths"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "molten_anvil",
+      "name": "溶鉱の鉄床",
+      "section": "molten_forge",
+      "connections": [
+        "forge_floor"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "DESTRUCTION",
+        "min_level": 3
+      },
+      "item_reward": "emberforged_ingot",
+      "initially_passed": false
+    },
+    {
+      "id": "salamander_den",
+      "name": "火蜥蜴の巣",
+      "section": "molten_forge",
+      "connections": [
+        "forge_floor"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 580
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "slag_heap",
+      "name": "鉱滓の山",
+      "section": "molten_forge",
+      "connections": [
+        "forge_floor"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 520
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "forge_depths",
+      "name": "鍛冶場の奥",
+      "section": "molten_forge",
+      "connections": [
+        "forge_floor",
+        "caldera_gate"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "emberforged_ingot"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "caldera_gate",
+      "name": "火口への門",
+      "section": "inferno_heart",
+      "connections": [
+        "forge_depths",
+        "caldera_floor"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "caldera_floor",
+      "name": "火口の底",
+      "section": "inferno_heart",
+      "connections": [
+        "caldera_gate",
+        "molten_serpent",
+        "caldera_hall"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "molten_serpent",
+      "name": "溶岩の大蛇",
+      "section": "inferno_heart",
+      "connections": [
+        "caldera_floor"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 620
+      },
+      "item_reward": "reclass_elixir",
+      "initially_passed": false
+    },
+    {
+      "id": "caldera_hall",
+      "name": "火口の内殿",
+      "section": "inferno_heart",
+      "connections": [
+        "caldera_floor",
+        "inferno_lord"
+      ],
+      "gate": {
+        "type": "skill",
+        "skill": "WISDOM",
+        "min_level": 5
+      },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "inferno_lord",
+      "name": "業火の王",
+      "section": "inferno_heart",
+      "connections": [
+        "caldera_hall",
+        "inferno_vault"
+      ],
+      "gate": {
+        "type": "combat",
+        "enemy_power": 660
+      },
+      "item_reward": "heart_of_inferno",
+      "initially_passed": false
+    },
+    {
+      "id": "inferno_vault",
+      "name": "業火の秘宝庫",
+      "section": "inferno_heart",
+      "connections": [
+        "inferno_lord"
+      ],
+      "gate": {
+        "type": "item",
+        "item": "heart_of_inferno"
+      },
+      "item_reward": "",
+      "initially_passed": false
+    }
+  ]
+}

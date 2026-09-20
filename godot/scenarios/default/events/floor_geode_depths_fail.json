@@ -1,0 +1,28 @@
+{
+  "id": "floor_geode_depths_fail",
+  "title": "晶洞の奥(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "geode_depths",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "晶洞の奥",
+      "text": "奥の壁面に、欠片を嵌め込むような窪みが並んでいる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "窪みに合う物を持たぬ今は、壁は沈黙したままだった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

@@ -1,0 +1,28 @@
+{
+  "id": "floor_dragon_throne_fail",
+  "title": "竜の玉座(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "dragon_throne",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "灰塵の竜",
+      "text": "……久しいな、小さき者よ。我が眠りを妨げに来たか。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "竜の圧倒的な力の前に、命からがら尖塔を降りた。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

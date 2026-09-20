@@ -1,0 +1,28 @@
+{
+  "id": "floor_sleeping_pixie_pass",
+  "title": "眠るピクシー(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sleeping_pixie",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "眠るピクシー",
+      "text": "床の隅、苔の上で小さな羽の生えた何かがすやすやと眠っている。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "起こさないようそっと見守り、静かにその場を離れた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

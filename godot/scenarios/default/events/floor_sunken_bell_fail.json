@@ -1,0 +1,28 @@
+{
+  "id": "floor_sunken_bell_fail",
+  "title": "沈んだ鐘(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "sunken_bell",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "沈んだ鐘",
+      "text": "湖の底から、かすかに鐘の音が響いてくる気がする。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "聞こえるのはただの水音ばかりで、何も掴めなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

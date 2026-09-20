@@ -1,0 +1,28 @@
+{
+  "id": "floor_cliff_shrine_fail",
+  "title": "断崖の祠(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "cliff_shrine",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "断崖の祠",
+      "text": "崖に張り付くように佇む小さな祠。目を凝らすと、壁面にかすかな足がかりが見える。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "壁は滑らかで、それらしい痕跡は見当たらなかった。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

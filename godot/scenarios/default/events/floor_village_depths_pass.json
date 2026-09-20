@@ -1,0 +1,28 @@
+{
+  "id": "floor_village_depths_pass",
+  "title": "里の奥(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "village_depths",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "里を守る影",
+      "text": "沈んだ里の奥から、無数の影がゆっくりと集まってくる。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "影たちを鎮め、里の奥への道が開けた。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}

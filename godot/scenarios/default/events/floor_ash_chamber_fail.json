@@ -1,0 +1,28 @@
+{
+  "id": "floor_ash_chamber_fail",
+  "title": "灰塵の間(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "ash_chamber",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "灰の幼竜",
+      "text": "灰塵の間の奥で、小さな竜が威嚇するように鳴いた。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "小さくとも竜は竜。歯が立たず退散した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

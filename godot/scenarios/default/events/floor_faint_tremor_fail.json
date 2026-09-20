@@ -1,0 +1,28 @@
+{
+  "id": "floor_faint_tremor_fail",
+  "title": "微かな震え(失敗)",
+  "trigger": {
+    "type": "gate",
+    "floor": "faint_tremor",
+    "result": "fail"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "right",
+      "name": "結晶の欠片獣",
+      "text": "床の結晶片が、意思を持つようにかたかたと震え出す。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "鋭い欠片に手を焼き、やむなく引き返した。",
+      "outcome": "fail"
+    }
+  ],
+  "effects": []
+}

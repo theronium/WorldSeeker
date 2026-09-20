@@ -1,0 +1,28 @@
+{
+  "id": "floor_lich_vault_pass",
+  "title": "秘宝の間(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "lich_vault",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "秘宝の間",
+      "text": "奥の台座に、欠片を嵌め込む窪みがある。",
+      "next": 1
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "フィラクテリーの欠片を捧げると、間に眠っていた秘宝が姿を現した。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": []
+}
