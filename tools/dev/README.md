@@ -30,6 +30,7 @@ APPDATA=<空の隔離ディレクトリ> "$GODOT_EXE" --headless --path godot --
 
 **引数なしで動く**(2026-09-20に、実機のAPKを使い捨てキーから本物のリリース鍵へ切り替えた)。
 
+- **起動のしかた(2026-09-21)**: **Git Bash**で実行する。PowerShell/cmdで`bash tools/dev/android/run_on_phone.sh`と打つと、Windowsに入っている**WSL(Linux)のbash**が起動し、パスが`/mnt/d/...`になって「ビルド道具が見つかりません」と出て動かない(スクリプトは`/d/...`のパスと`cygpath`を前提にしている。WSLで実行された場合は、その旨と正しい起動方法を表示して止まる)。PowerShell/cmdからは`tools\devndroidun_on_phone.cmd`(Git Bashを直接指定して起動する入り口。引数はそのまま渡す)を使う。
 - `run_on_phone.sh ["logcatで待つ正規表現"]`: コンパイル確認 → **リポジトリから直接**リリースAPKをエクスポート(作業ツリーの内容がそのまま載る) → 署名者が本物のキーの指紋と一致するか確認 → `adb install -r`(スマホのセーブは残る) → 起動 → エラーの有無を表示。
   - 署名キーは`C:\Users\thero\worldseeker-signing\`の`worldseeker-release.keystore`と`PASSWORD.txt`を**実行時に読む**(パスワードはスクリプトにもリポジトリにも書かない)。場所は`WS_SIGNING_DIR`などの環境変数で変えられる。
   - **インストールのたびにゲームは再起動し、新規開始になる**。

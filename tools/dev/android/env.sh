@@ -11,6 +11,16 @@
 #   (署名キーはここに置かない。C:\Users\thero\worldseeker-signing\ にある)
 # 探す順: 環境変数WS_TOOLS → D:\DevTools\godot-android → (前のセッションの)Temp配下の作業フォルダ。
 # 置き場を移したら、appdata/Godot/editor_settings-4.7.tres の中のパスも直すこと。
+# このスクリプト群は**Git Bash**用(パスが`/d/...`・`/c/...`で、`cygpath`を使う)。PowerShell/cmdで`bash`と打つと、
+# Windowsに入っているWSL(Linux)のbashが起動し、パスが`/mnt/d/...`になって、ここから先は動かない
+# (2026-09-21、「ビルド道具が見つかりません」と出た原因)。その場合は、原因と正しい起動方法を出して止める。
+if ! command -v cygpath >/dev/null 2>&1; then
+  echo "このスクリプトはGit Bash用です(今のbashはWSLなどで、cygpathがありません)。" >&2
+  echo "PowerShell/cmdからは、次のどちらかで実行してください:" >&2
+  echo "  tools\\dev\\android\\run_on_phone.cmd" >&2
+  echo "  & 'C:\\Program Files\\Git\\bin\\bash.exe' tools/dev/android/run_on_phone.sh" >&2
+  exit 1
+fi
 _has_tools() {
   [ -f "$1/adb/platform-tools/adb.exe" ] && [ -f "$1/appdata/Godot/editor_settings-4.7.tres" ] && [ -d "$1/jdk" ] \
     && ls "$1"/sdk/build-tools/*/apksigner.bat >/dev/null 2>&1
