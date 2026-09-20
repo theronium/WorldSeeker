@@ -24,7 +24,10 @@ test('godotHash: Godotの String.hash() と同じ値(Godotで実測した値)', 
 
 test('デフォルトシナリオ: 保存し直しても、ファイルの中身が1バイトも変わらない(Gitの差分が出ない)', () => {
   for (const f of eventFiles) {
-    const raw = fs.readFileSync(path.join(DEFAULT_DIR, 'events', f), 'utf8');
+    // Gitの改行自動変換(autocrlf)でCRLFになっていても、中身の一致を見る
+    const raw = fs.readFileSync(path.join(DEFAULT_DIR, 'events', f), 'utf8').replace(/
+/g, '
+');
     const rewritten = JSON.stringify(L.canonicalEvent(JSON.parse(raw)), null, 2) + '\n';
     assert.strictEqual(rewritten, raw, f);
   }
