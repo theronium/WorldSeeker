@@ -10,6 +10,7 @@ var npc_detail_label: Label
 var npc_job_label: Label
 var npc_detail_portrait: PanelContainer
 var skill_level_labels: Dictionary = {} # skill:int -> Label(Lv/コスト表示)
+var skill_train_buttons: Dictionary = {} # skill:int -> Button(資金が足りない間は押せなくする。_refresh_train_buttons)
 var reclass_option: OptionButton # 転職先ジョブの選択(design.md 4.8節)
 var reclass_button: Button
 var _selected_npc_id: int = -1
@@ -159,6 +160,12 @@ var autosave_checkbox: CheckBox
 var new_game_confirm: ConfirmationDialog
 var delete_slot_confirm: ConfirmationDialog
 var _pending_delete_slot_id: int = -1
+# セーブのエクスポート/インポート(SaveSystem.export_all_slots/read_import_file/import_slots)。
+var export_file_dialog: FileDialog
+var import_file_dialog: FileDialog
+var import_confirm: ConfirmationDialog
+var import_slot_list: ItemList
+var _import_slots: Array = [] # read_import_file()が返した取り込み候補(import_slot_listの行と同じ順)
 
 var hire_panel: PanelContainer
 var npc_panel: PanelContainer
@@ -1685,6 +1692,7 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 	detail_body.add_child(skill_label)
 
 	skill_level_labels.clear()
+	skill_train_buttons.clear()
 	for skill in SkillTypes.all_skills():
 		var row := HBoxContainer.new()
 		detail_body.add_child(row)
@@ -1712,6 +1720,7 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 		train_button.text = "訓練する"
 		train_button.pressed.connect(_on_train_skill_pressed.bind(skill))
 		row.add_child(train_button)
+		skill_train_buttons[skill] = train_button
 
 	# 転職(design.md 4.8節)。「転職の秘薬」を所持している場合のみ押せる(_refresh_npc_detailで
 	# 有効/無効を切り替える)。転職すると装備は自動で外れる(Npcs.change_job参照)ため、
@@ -1776,6 +1785,7 @@ func _refresh_npc_detail() -> void:
 		npc_job_label.text = ""
 		for skill in skill_level_labels.keys():
 			skill_level_labels[skill].text = ""
+		_refresh_train_buttons()
 		reclass_button.disabled = true
 		return
 	var npc := Npcs.get_npc(_selected_npc_id)
@@ -1808,6 +1818,7 @@ func _refresh_npc_detail() -> void:
 	for skill in skill_level_labels.keys():
 		var level := Npcs.skill_level(_selected_npc_id, skill)
 		skill_level_labels[skill].text = "Lv%d → コスト%d" % [level, Economy.training_cost(level)]
+	_refresh_train_buttons()
 
 	reclass_button.disabled = not Items.has_item(_selected_npc_id, "reclass_elixir")
 
@@ -1821,6 +1832,25 @@ func _npc_status_text(npc: Dictionary) -> String:
 	if party.is_empty() or int(party.get("status", Parties.Status.IDLE)) == Parties.Status.IDLE:
 		return "待機中(未割当)"
 	return _party_status_text(party) # RECOVERING/EXPLORINGの文言は_party_status_text()と共通化
+
+## 訓練ボタンを、資金が足りる間だけ押せるようにする(2026-09-20、「資金がなくても訓練ボタンが押せてしまう」との指摘。
+## 以前は常に押せて、資金が足りなければ押しても何も起きず、押せない理由も分からなかった)。足りない間は、コスト表示を
+## 赤みがかった色にして理由を示す。資金は月末の収入や別の操作でも変わるので、_refresh_funds()からも呼ぶ。
+func _refresh_train_buttons() -> void:
+	var has_selection := _selected_npc_id >= 0 and not Npcs.get_npc(_selected_npc_id).is_empty()
+	for skill in skill_train_buttons.keys():
+		var button: Button = skill_train_buttons[skill]
+		var label: Label = skill_level_labels[skill]
+		if not has_selection:
+			button.disabled = true
+			button.tooltip_text = ""
+			label.modulate = Color.WHITE
+			continue
+		var cost := Economy.training_cost(Npcs.skill_level(_selected_npc_id, skill))
+		var affordable := Economy.can_afford(cost)
+		button.disabled = not affordable
+		button.tooltip_text = "" if affordable else "資金が足りません(必要: %d)" % cost
+		label.modulate = Color.WHITE if affordable else Color(1.0, 0.6, 0.55)
 
 func _on_train_skill_pressed(skill: int) -> void:
 	if _selected_npc_id < 0:
@@ -2627,15 +2657,31 @@ func _on_buy_equipment_pressed(slot: String, tier: int) -> void:
 func _build_slot_ui() -> void:
 	slot_panel = PanelContainer.new()
 	slot_panel.set_anchors_preset(Control.PRESET_CENTER)
+	# タッチUIは、画面の高さ(横向きで約720px)ぎりぎりまで使う。実機は日本語の代替フォントの行が高く、ボタンが
+	# 増えた分もあり、中身が画面をはみ出して、下端のステータス表示が見えなくなっていた(2026-09-20、実機で確認)。
+	# 中身はスクロールできるようにして、どんな画面の高さでも下のボタンまで届くようにする。
 	slot_panel.offset_left = -320
-	slot_panel.offset_top = -260
 	slot_panel.offset_right = 320
-	slot_panel.offset_bottom = 260
+	if _touch_ui:
+		# 実機のUIの領域は、切り欠き・角を避ける分、画面より小さい。ピクセルで高さを決めず、その領域の
+		# 高さに対する割合で上下いっぱい(少しだけ余白)に広げる。
+		slot_panel.anchor_top = 0.03
+		slot_panel.anchor_bottom = 0.97
+		slot_panel.offset_top = 0
+		slot_panel.offset_bottom = 0
+	else:
+		slot_panel.offset_top = -295
+		slot_panel.offset_bottom = 295
 	slot_panel.visible = false
 	add_child(slot_panel)
 
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	slot_panel.add_child(scroll)
 	var col := VBoxContainer.new()
-	slot_panel.add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.add_child(col)
 
 	var header := HBoxContainer.new()
 	col.add_child(header)
@@ -2647,6 +2693,12 @@ func _build_slot_ui() -> void:
 	close_button.text = "閉じる"
 	close_button.pressed.connect(func(): _close_modal(slot_panel))
 	header.add_child(close_button)
+
+	# 操作の結果(保存しました/書き出しました等)。パネルが縦にスクロールしても見える、見出しの直下に置く。
+	manual_save_status_label = Label.new()
+	manual_save_status_label.modulate = Color(1, 1, 1, 0.75)
+	manual_save_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(manual_save_status_label)
 
 	slot_list = ItemList.new()
 	# タッチUIはボタンが高い分、パネル全体が画面の高さ(約650px)を超えてしまうため、一覧の最小高を詰める
@@ -2700,6 +2752,20 @@ func _build_slot_ui() -> void:
 	duplicate_button.pressed.connect(_on_duplicate_slot_pressed)
 	left_col.add_child(duplicate_button)
 
+	# 別の端末/場所へ移すための書き出しと取り込み(2026-09-20)。保存先・取り込み元はOSのファイル選択で選ぶ
+	# (Androidでは、Googleドライブやダウンロードなども選べる画面が開く)。
+	var export_button := Button.new()
+	export_button.text = "全スロットを書き出す"
+	export_button.tooltip_text = "全てのスロットを1つのファイル(zip)にまとめて、選んだ場所へ保存する(バックアップ・別の端末への移行用)"
+	export_button.pressed.connect(_on_export_pressed)
+	left_col.add_child(export_button)
+
+	var import_button := Button.new()
+	import_button.text = "ファイルから取り込む"
+	import_button.tooltip_text = "書き出したファイルからスロットを選んで、新しいスロットとして追加する(今のスロットは変わらない)"
+	import_button.pressed.connect(_on_import_pressed)
+	left_col.add_child(import_button)
+
 	var right_col := VBoxContainer.new()
 	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions_row.add_child(right_col)
@@ -2737,10 +2803,6 @@ func _build_slot_ui() -> void:
 	reset_tutorial_button.pressed.connect(_on_reset_tutorials_pressed)
 	col.add_child(reset_tutorial_button)
 
-	manual_save_status_label = Label.new()
-	manual_save_status_label.modulate = Color(1, 1, 1, 0.75)
-	col.add_child(manual_save_status_label)
-
 	new_game_confirm = ConfirmationDialog.new()
 	new_game_confirm.dialog_text = "現在の進行とは別に、新しいセーブスロットでゼロから始めます。よろしいですか？"
 	new_game_confirm.confirmed.connect(_on_new_game_confirmed)
@@ -2749,6 +2811,48 @@ func _build_slot_ui() -> void:
 	delete_slot_confirm = ConfirmationDialog.new()
 	delete_slot_confirm.confirmed.connect(_on_delete_slot_confirmed)
 	add_child(delete_slot_confirm)
+
+	# OSのファイル選択が使えない環境のための、Godot自身のファイル選択画面(_show_file_dialogが使い分ける)。
+	# 通常はOSのファイル選択(DisplayServer.file_dialog_show)を直接呼ぶ。FileDialogのuse_native_dialogは使わない:
+	# 保存先の選択後に、フィルタの拡張子(.zip)を勝手に付け足すため、Androidの`content://.../document/17`が
+	# `.../document/17.zip`という別のURIになり、書き込みが「権限なし」で失敗した(2026-09-20、実機で確認)。
+	export_file_dialog = FileDialog.new()
+	export_file_dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	export_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	export_file_dialog.title = "セーブの書き出し先"
+	export_file_dialog.add_filter("*.zip", "セーブのファイル(zip)")
+	export_file_dialog.file_selected.connect(_on_export_file_selected)
+	add_child(export_file_dialog)
+
+	import_file_dialog = FileDialog.new()
+	import_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	import_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	import_file_dialog.title = "取り込むセーブのファイル"
+	import_file_dialog.add_filter("*.zip", "セーブのファイル(zip)")
+	import_file_dialog.file_selected.connect(_on_import_file_selected)
+	add_child(import_file_dialog)
+
+	# 取り込むスロットを選ぶ画面(ファイルには複数のスロットが入っている)。最初は全て選択済み。
+	import_confirm = ConfirmationDialog.new()
+	import_confirm.title = "取り込むスロットを選ぶ"
+	import_confirm.ok_button_text = "取り込む"
+	import_confirm.cancel_button_text = "やめる"
+	var import_col := VBoxContainer.new()
+	import_confirm.add_child(import_col)
+	var import_hint := Label.new()
+	import_hint.text = "選んだスロットを、新しいスロットとして追加します(今のスロットは変わりません)。"
+	import_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	import_hint.custom_minimum_size = Vector2(600, 0)
+	import_col.add_child(import_hint)
+	import_slot_list = ItemList.new()
+	# タップで選択の入り切りができるモード。SELECT_MULTIはCtrl/Shiftを押しながら選ぶ前提で、タッチ操作だと
+	# 押したスロットだけが選ばれ、複数を選べなかった(2026-09-20、実機で確認)。
+	import_slot_list.select_mode = ItemList.SELECT_TOGGLE
+	import_slot_list.custom_minimum_size = Vector2(600, 200)
+	import_col.add_child(import_slot_list)
+	import_confirm.confirmed.connect(_on_import_confirmed)
+	import_confirm.canceled.connect(SaveSystem.cancel_import)
+	add_child(import_confirm)
 
 func _on_open_slots_pressed() -> void:
 	_refresh_slot_list()
@@ -2763,8 +2867,8 @@ func _refresh_slot_list() -> void:
 		var active_mark := " (現在)" if slot["slot_id"] == SaveSystem.current_slot_id else ""
 		var label: String = slot["name"] if slot["name"] != "" else "スロット%d" % slot["slot_id"]
 		var idx := slot_list.item_count
-		slot_list.add_item("%s%s — 資金%d / Day%d / 探索者%d人" % [
-			label, active_mark, slot["funds"], slot["day"], slot["npc_count"]])
+		slot_list.add_item("%s%s — %s / 資金%d / Day%d / 探索者%d人" % [
+			label, active_mark, SaveSystem.format_saved_at(slot["saved_at"]), slot["funds"], slot["day"], slot["npc_count"]])
 		slot_list.set_item_metadata(idx, slot["slot_id"])
 
 func _on_open_slot_pressed() -> void:
@@ -2809,6 +2913,70 @@ func _on_duplicate_slot_pressed() -> void:
 	_refresh_slot_list()
 	manual_save_status_label.text = "スロット%dとして複製しました(現在のスロットのまま続けられます)" % new_id
 
+## ファイルを選ぶ画面を開く。OSの画面が使えれば(WindowsとAndroid)それを、無ければGodotの代替画面を出す。
+## 選んだパスは、on_selectedに渡す。書き出し先(save=true)にはMIME形式(application/zip)を付け、Androidが
+## 保存するファイルの種類を取り違えないようにする。取り込み元にはMIME形式を付けない(ドライブなどが、zipを
+## 別の種類として扱うことがあり、選べなくなるのを避ける。中身はSaveSystem.read_import_file()が確かめる)。
+func _show_file_dialog(save: bool, title: String, file_name: String, on_selected: Callable, fallback: FileDialog) -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		var filters := PackedStringArray(["*.zip;セーブのファイル(zip);application/zip" if save else "*.zip;セーブのファイル(zip)"])
+		var mode := DisplayServer.FILE_DIALOG_MODE_SAVE_FILE if save else DisplayServer.FILE_DIALOG_MODE_OPEN_FILE
+		# 選ばれた後の呼び出しは、メインスレッドで行う(OSの画面は別スレッドから知らせてくることがある)。
+		DisplayServer.file_dialog_show(title, "", file_name, false, mode, filters,
+			func(status: bool, paths: PackedStringArray, _filter_index: int):
+				if status and not paths.is_empty():
+					on_selected.call_deferred(paths[0]))
+	else:
+		if save:
+			fallback.current_file = file_name
+		fallback.popup_centered(Vector2i(720, 460))
+
+func _on_export_pressed() -> void:
+	_show_file_dialog(true, "セーブの書き出し先", SaveSystem.default_export_file_name(), _on_export_file_selected, export_file_dialog)
+
+func _on_export_file_selected(path: String) -> void:
+	var count := SaveSystem.export_all_slots(path)
+	if count < 0:
+		manual_save_status_label.text = "書き出しに失敗しました"
+		return
+	_refresh_slot_list() # 今のスロットを保存したので、一覧の資金/日付も更新される
+	manual_save_status_label.text = "%d個のスロットを書き出しました" % count
+
+func _on_import_pressed() -> void:
+	_show_file_dialog(false, "取り込むセーブのファイル", "", _on_import_file_selected, import_file_dialog)
+
+## ファイルを選んだ後: 中身を読んで、含まれるスロットの一覧を出す(ここではまだ何も取り込まない)。
+func _on_import_file_selected(path: String) -> void:
+	var result := SaveSystem.read_import_file(path)
+	if not result["ok"]:
+		manual_save_status_label.text = "取り込めません: %s" % result["error"]
+		return
+	_import_slots = result["slots"]
+	import_slot_list.clear()
+	for slot in _import_slots:
+		var label: String = slot["name"] if slot["name"] != "" else "スロット%d" % slot["key"]
+		var idx := import_slot_list.add_item("%s — %s / 資金%d / Day%d / 探索者%d人" % [
+			label, SaveSystem.format_saved_at(slot["saved_at"]), slot["funds"], slot["day"], slot["npc_count"]])
+		import_slot_list.select(idx, false) # 最初は全て選択済み(false=既に選択済みの行を解除しない)
+	import_confirm.popup_centered()
+
+func _on_import_confirmed() -> void:
+	var keys: Array = []
+	for idx in import_slot_list.get_selected_items():
+		keys.append(_import_slots[idx]["key"])
+	_import_slots = []
+	if keys.is_empty():
+		SaveSystem.cancel_import()
+		manual_save_status_label.text = "スロットが選ばれていないので、取り込みませんでした"
+		return
+	var new_ids := SaveSystem.import_slots(keys)
+	_refresh_slot_list()
+	if new_ids.is_empty():
+		manual_save_status_label.text = "取り込みに失敗しました"
+		return
+	manual_save_status_label.text = "%d個のスロットを取り込みました(スロット%s)" % [
+		new_ids.size(), "、".join(new_ids.map(func(id): return str(id)))]
+
 ## 一度見ると二度と出ない説明用イベント会話4種を、確認用に未視聴の状態へ戻す。導入会話
 ## (INTRO_TUTORIAL_PART1_SCRIPT)は起動時にしかトリガーできないため、リセット直後にこの場で
 ## 再生する(パネルを閉じてから再生しないとdialogue_panelが背後に隠れる。他の会話の再生箇所と
@@ -2851,6 +3019,22 @@ const MAP_ZOOM_MIN := 0.4
 const MAP_ZOOM_MAX := 2.2
 const MAP_ZOOM_STEP := 0.15
 const MAP_ICON_SIZE := 40.0 # パーティ代表アイコンの一辺(2026-09-14、20pxから2倍に拡大)
+# タッチUIでは、マップの文字を(ズーム1.0でも)左メニューのボタンの文字(16px)以上にする(2026-09-20、
+# 実機で「マップの文字が小さすぎる」との指摘)。大きくするのは文字だけで、フロアの箱の大きさ(BASE_MAP_*)は
+# 変えない(箱は文字数に対して十分広い)。セクションの見出しだけは、2行ぶんの文字が収まるよう高さも同じ倍率で
+# 広げる。デスクトップは従来どおり(1.0)。パーティアイコンの中の文字(頭文字・バッジ)は、アイコン自体が
+# 拡大されないので対象外。
+const TOUCH_MAP_FONT_SCALE := 1.3
+
+func _map_font_scale() -> float:
+	return TOUCH_MAP_FONT_SCALE if _touch_ui else 1.0
+
+## マップ上の文字のサイズ。baseはズーム1.0・デスクトップでの大きさ、min_sizeは縮小ズームでも読める下限。
+func _map_font_size(base: int, min_size: int) -> int:
+	return maxi(min_size, roundi(base * _map_zoom * _map_font_scale()))
+
+func _map_section_header() -> float:
+	return BASE_MAP_SECTION_HEADER * _map_font_scale() * _map_zoom
 
 func _map_cell_size() -> Vector2:
 	return BASE_MAP_CELL_SIZE * _map_zoom
@@ -2960,7 +3144,7 @@ func _compute_node_positions() -> Dictionary:
 	var positions := {}
 	var cell_size := _map_cell_size()
 	var outer_margin := BASE_MAP_OUTER_MARGIN * _map_zoom
-	var section_header := BASE_MAP_SECTION_HEADER * _map_zoom
+	var section_header := _map_section_header()
 	var section_gap := BASE_MAP_SECTION_GAP * _map_zoom
 	# 起動直後(スクロール位置0)でもエリア名見出しがフロートのエリアタブバーの
 	# 真裏に隠れないよう、その分もあらかじめ余白として確保しておく。
@@ -2982,7 +3166,7 @@ func _compute_node_positions() -> Dictionary:
 func _section_bounds(member_ids: Array, positions: Dictionary) -> Rect2:
 	var cell_size := _map_cell_size()
 	var padding := BASE_MAP_SECTION_PADDING * _map_zoom
-	var header := BASE_MAP_SECTION_HEADER * _map_zoom
+	var header := _map_section_header()
 	var min_pos: Vector2 = positions[member_ids[0]]
 	var max_pos: Vector2 = positions[member_ids[0]] + cell_size
 	for id in member_ids:
@@ -3001,11 +3185,11 @@ func _section_bounds(member_ids: Array, positions: Dictionary) -> Rect2:
 ## 戻り値はこのリンクの下端Y座標(コンテンツサイズ計算用)。
 func _create_area_link(node_id: String, target_area_id: String, cell_pos: Vector2, link_index: int) -> float:
 	var node_size := _map_node_size()
-	var link_height := 18.0 * _map_zoom
+	var link_height := 18.0 * _map_zoom * _map_font_scale()
 	var link := Button.new()
 	link.text = "→ %s" % WorldMap.areas[target_area_id]["name"]
 	link.flat = true
-	link.add_theme_font_size_override("font_size", max(8, roundi(11 * _map_zoom)))
+	link.add_theme_font_size_override("font_size", _map_font_size(11, 8))
 	link.modulate = Color(0.55, 0.75, 1.0, 1.0)
 	link.position = cell_pos + Vector2(4, node_size.y + 2 + link_index * link_height)
 	link.pressed.connect(_on_area_tab_pressed.bind(target_area_id))
@@ -3042,7 +3226,7 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	title_button.position = bounds.position + Vector2(4, 2) * _map_zoom
 	title_button.custom_minimum_size = Vector2(bounds.size.x - 8 * _map_zoom, 0)
 	title_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	title_button.add_theme_font_size_override("font_size", max(9, roundi(14 * _map_zoom)))
+	title_button.add_theme_font_size_override("font_size", _map_font_size(14, 9))
 	title_button.tooltip_text = "クリックしてこのセクションへパーティを割り当てる"
 	title_button.disabled = not WorldMap.is_section_reachable(section_id)
 	_apply_section_title_button_style(title_button)
@@ -3059,7 +3243,7 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	# 到達状況が変わるたびに_refresh_mapで行うので、ここでは作るだけ(常時mapに常駐させ、
 	# ダブルクリック判定は_on_map_double_clickでこの位置を直接ヒットテストする)。
 	var lock_icon := Label.new()
-	lock_icon.add_theme_font_size_override("font_size", max(9, roundi(12 * _map_zoom)))
+	lock_icon.add_theme_font_size_override("font_size", _map_font_size(12, 9))
 	lock_icon.modulate = Color(1, 0.82, 0.35, 0.95)
 	lock_icon.position = bounds.position + Vector2(6, bounds.size.y + 4 * _map_zoom)
 	map_canvas.add_child(lock_icon)
@@ -3094,12 +3278,12 @@ func _create_node_box(id: String, cell_pos: Vector2) -> void:
 	hbox.add_child(vbox)
 
 	var name_label := Label.new()
-	name_label.add_theme_font_size_override("font_size", max(9, roundi(13 * _map_zoom)))
+	name_label.add_theme_font_size_override("font_size", _map_font_size(13, 9))
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	vbox.add_child(name_label)
 
 	var status_label := Label.new()
-	status_label.add_theme_font_size_override("font_size", max(8, roundi(11 * _map_zoom)))
+	status_label.add_theme_font_size_override("font_size", _map_font_size(11, 8))
 	status_label.modulate = Color(1, 1, 1, 0.7)
 	vbox.add_child(status_label)
 
@@ -3717,10 +3901,18 @@ func _refresh_all() -> void:
 	next_month_button.visible = TimeSystem.is_paused
 
 func _refresh_facility_button() -> void:
-	facility_info_label.text = "雇用上限 +2\nコスト: %d" % Economy.facility_upgrade_cost()
+	var cost := Economy.facility_upgrade_cost()
+	var affordable := Economy.can_afford(cost)
+	facility_info_label.text = "雇用上限 +2\nコスト: %d%s" % [cost, "" if affordable else "(資金が足りません)"]
+	# 訓練ボタンと同じ理由(資金が足りない間は押せなくする)。押しても何も起きない状態を残さない。
+	facility_button.disabled = not affordable
 
 func _refresh_funds() -> void:
 	funds_label.text = "資金: %d / 雇用上限: %d" % [Economy.funds, Economy.employ_cap]
+	# 資金に応じて押せる/押せないが変わるボタンも、ここで一緒に更新する(月末の収入・雇用・購入などで変わるため)
+	if facility_button != null and facility_info_label != null:
+		_refresh_facility_button()
+	_refresh_train_buttons()
 
 func _refresh_time_label() -> void:
 	date_label.text = TimeSystem.format_date()

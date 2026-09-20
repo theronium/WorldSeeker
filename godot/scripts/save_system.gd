@@ -146,8 +146,38 @@ func list_slots() -> Array:
 	return result
 
 func _peek_slot(slot_id: int) -> Dictionary:
+	var path := _slot_path(slot_id)
+	var mtime := int(FileAccess.get_modified_time(path)) # 下の読み取りがファイルを書き換える前に取る
+	var info := _peek_db(path, slot_id)
+	# 最終更新の時刻を持たない古いセーブには、ファイルの更新日時を一度だけ書き足す(以後は、書き出しても取り込んでも
+	# 日時が残る)。次にそのスロットで保存すれば、正確な時刻に置き換わる。
+	if not info.is_empty() and int(info["saved_at"]) == 0 and mtime > 0:
+		_backfill_saved_at(path, mtime)
+		info["saved_at"] = mtime
+	return info
+
+func _backfill_saved_at(path: String, unix_time: int) -> void:
 	var db := SQLite.new()
-	db.path = _slot_path(slot_id)
+	db.path = path
+	if not db.open_db():
+		return
+	db.query_with_bindings("DELETE FROM meta WHERE key = ?", ["saved_at"])
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["saved_at", unix_time])
+	db.close_db()
+
+## UNIX時刻(UTC)を、この端末の現地時刻の「2026/09/20 23:59」にする。記録が無い(0以下)なら「日時不明」。
+func format_saved_at(unix_time: int) -> String:
+	if unix_time <= 0:
+		return "日時不明"
+	var bias_minutes: int = int(Time.get_time_zone_from_system().get("bias", 0))
+	var t := Time.get_datetime_dict_from_unix_time(unix_time + bias_minutes * 60)
+	return "%04d/%02d/%02d %02d:%02d" % [t["year"], t["month"], t["day"], t["hour"], t["minute"]]
+
+## セーブファイル(path)を開いて、一覧表示用の概要だけを読む。slot_idは返す辞書にそのまま入れる
+## (取り込み前の一時ファイルでは、zip内の番号を入れる)。セーブとして読めなければ空の辞書。
+func _peek_db(path: String, slot_id: int) -> Dictionary:
+	var db := SQLite.new()
+	db.path = path
 	if not db.open_db():
 		return {}
 	_ensure_schema(db)
@@ -167,6 +197,8 @@ func _peek_slot(slot_id: int) -> Dictionary:
 		"day": int(meta.get("current_day", 0)),
 		"month": int(meta.get("current_month", 0)),
 		"npc_count": npc_count,
+		"schema_version": String(meta.get("schema_version", "")),
+		"saved_at": int(meta.get("saved_at", 0)),
 	}
 
 ## Economy/TimeSystem/Npcs/Parties等をまっさらな状態に戻し、design.md 4.7節の初期パーティ
@@ -282,6 +314,210 @@ func rename_slot(slot_id: int, new_name: String) -> bool:
 	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["slot_name", new_name])
 	db.close_db()
 	return true
+
+# --- エクスポート/インポート(2026-09-20、Androidで「セーブを別の端末/場所へ移したい」との要望) ---
+#
+# 全スロットを1つのzipにまとめて、プレイヤーが選んだ場所へ書き出す。取り込みは、そのzipを読み、含まれる
+# スロットのうち選んだものを新しいスロットとして追加する(既存のスロットは上書きしない)。
+# 保存先/取り込み元の選択は、OSのファイル選択(main.gdのFileDialog)に任せる。Androidでは
+# ストレージアクセスフレームワークの画面が開き、Googleドライブ・ダウンロード・USBなどを選べる
+# (その場合のパスは`content://`のURIで、FileAccessでそのまま読み書きできる)。
+#
+# zipの中身:
+#   manifest.json                        形式の名前と版。別のzipを取り込もうとして壊さないための確認用
+#   slots/slot_<番号>.sqlite             スロットのセーブファイルそのもの(番号は取り込み時に振り直す)
+#   schemas/schema_<64桁の16進>.sqlite   スロットが使っているワールドスキーマ(world_schema_db.gd)。
+#                                        別のビルドで作ったセーブでも、同じ世界で取り込めるように同梱する
+#                                        (この端末に同じバージョンがあれば使わない)。
+const EXPORT_FORMAT := "worldseeker-saves"
+const EXPORT_FORMAT_VERSION := 1
+const EXPORT_TMP_ZIP := "user://export_tmp.zip"
+const IMPORT_TMP_DIR := "user://import_tmp"
+const IMPORT_MAX_BYTES := 64 * 1024 * 1024 # セーブは1つ数百KB。これを超えるファイルは、別物として取り込まない
+const SQLITE_MAGIC := "SQLite format 3"
+
+## 書き出しファイルの既定の名前(保存先の選択画面に最初から入れておく)。
+func default_export_file_name() -> String:
+	var t := Time.get_datetime_dict_from_system()
+	return "worldseeker_saves_%04d%02d%02d_%02d%02d.zip" % [t["year"], t["month"], t["day"], t["hour"], t["minute"]]
+
+## 全スロットを1つのzipにまとめ、pathへ書く。今のスロットは、先に保存して最新の状態にする。
+## 戻り値は書き出したスロットの数。失敗(スロットが無い/書けない)は-1。
+func export_all_slots(path: String) -> int:
+	if current_slot_id != NO_ACTIVE_SLOT:
+		save_game()
+	var slots := list_slots()
+	if slots.is_empty():
+		return -1
+	var zip := ZIPPacker.new()
+	if zip.open(EXPORT_TMP_ZIP) != OK:
+		return -1
+	var versions := {}
+	var count := 0
+	for slot in slots:
+		var slot_id: int = slot["slot_id"]
+		var bytes := FileAccess.get_file_as_bytes(_slot_path(slot_id))
+		if bytes.is_empty():
+			continue
+		_zip_add(zip, "slots/slot_%d.sqlite" % slot_id, bytes)
+		count += 1
+		var version := String(slot.get("schema_version", ""))
+		if version != "":
+			versions[version] = true
+	for version in versions:
+		var schema_path := WorldSchemaDb.version_file_path(version)
+		if FileAccess.file_exists(schema_path):
+			_zip_add(zip, "schemas/schema_%s.sqlite" % version, FileAccess.get_file_as_bytes(schema_path))
+	var manifest := {
+		"format": EXPORT_FORMAT,
+		"version": EXPORT_FORMAT_VERSION,
+		"exported_at": Time.get_datetime_string_from_system(),
+		"slot_count": count,
+	}
+	_zip_add(zip, "manifest.json", JSON.stringify(manifest).to_utf8_buffer())
+	zip.close()
+	if count == 0:
+		DirAccess.remove_absolute(EXPORT_TMP_ZIP)
+		return -1
+	# 保存先は、まず手元(user://)にzipを完成させてから書き写す。保存先がAndroidの`content://`だと、
+	# ZIPPackerが直接は書けないため。
+	var out := FileAccess.open(path, FileAccess.WRITE)
+	var written := false
+	if out != null:
+		out.store_buffer(FileAccess.get_file_as_bytes(EXPORT_TMP_ZIP))
+		written = out.get_error() == OK
+		out.close()
+	DirAccess.remove_absolute(EXPORT_TMP_ZIP)
+	return count if written else -1
+
+func _zip_add(zip: ZIPPacker, name_in_zip: String, bytes: PackedByteArray) -> void:
+	zip.start_file(name_in_zip)
+	zip.write_file(bytes)
+	zip.close_file()
+
+## 取り込み元のzip(path)を読み、含まれるスロットの一覧を返す。この時点では何も取り込まない
+## (一時フォルダ(user://import_tmp)に展開するだけ)。実際の取り込みはimport_slots()、やめる時はcancel_import()。
+## 戻り値: {"ok": bool, "error": String, "slots": [{"key": int(zip内の番号), "name", "funds", "day", "month", "npc_count", ...}]}
+func read_import_file(path: String) -> Dictionary:
+	cancel_import()
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty():
+		return _import_error("ファイルを読み込めませんでした")
+	if bytes.size() > IMPORT_MAX_BYTES:
+		return _import_error("ファイルが大きすぎます(セーブのファイルではありません)")
+	DirAccess.make_dir_recursive_absolute(IMPORT_TMP_DIR)
+	var tmp_zip := IMPORT_TMP_DIR + "/in.zip"
+	var tmp_file := FileAccess.open(tmp_zip, FileAccess.WRITE)
+	if tmp_file == null:
+		return _import_error("ファイルを一時保存できませんでした")
+	tmp_file.store_buffer(bytes)
+	tmp_file.close()
+	var zip := ZIPReader.new()
+	if zip.open(tmp_zip) != OK:
+		cancel_import()
+		return _import_error("セーブのファイル(zip)ではありません")
+	var files := zip.get_files()
+	var manifest = null
+	if "manifest.json" in files:
+		manifest = JSON.parse_string(zip.read_file("manifest.json").get_string_from_utf8())
+	if not (manifest is Dictionary) or manifest.get("format", "") != EXPORT_FORMAT:
+		zip.close()
+		cancel_import()
+		return _import_error("WorldSeekerのセーブのファイルではありません")
+	if int(manifest.get("version", 0)) > EXPORT_FORMAT_VERSION:
+		zip.close()
+		cancel_import()
+		return _import_error("新しい版のゲームで書き出したファイルです。ゲームを更新してください")
+	# zip内の名前は信用せず、決まった形の名前だけを拾い、一時フォルダには自分で決めた名前で書く
+	# (`../`などで意図しない場所へ書かれるのを防ぐ)。
+	var slot_re := RegEx.create_from_string("^slots/slot_(\\d+)\\.sqlite$")
+	var schema_re := RegEx.create_from_string("^schemas/schema_([0-9a-f]{64})\\.sqlite$")
+	var keys: Array = []
+	for file_name in files:
+		var slot_match := slot_re.search(file_name)
+		var schema_match := schema_re.search(file_name)
+		if slot_match == null and schema_match == null:
+			continue
+		var content := zip.read_file(file_name)
+		if content.size() > IMPORT_MAX_BYTES or not _looks_like_sqlite(content):
+			continue
+		var target := ""
+		if slot_match != null:
+			var key := int(slot_match.get_string(1))
+			keys.append(key)
+			target = "%s/slot_%d.sqlite" % [IMPORT_TMP_DIR, key]
+		else:
+			target = "%s/schema_%s.sqlite" % [IMPORT_TMP_DIR, schema_match.get_string(1)]
+		var target_file := FileAccess.open(target, FileAccess.WRITE)
+		if target_file != null:
+			target_file.store_buffer(content)
+			target_file.close()
+	zip.close()
+	DirAccess.remove_absolute(tmp_zip)
+	keys.sort()
+	var slots: Array = []
+	for key in keys:
+		var info := _peek_db("%s/slot_%d.sqlite" % [IMPORT_TMP_DIR, key], key)
+		if not info.is_empty():
+			info["key"] = key
+			slots.append(info)
+	if slots.is_empty():
+		cancel_import()
+		return _import_error("取り込めるセーブが入っていませんでした")
+	return {"ok": true, "error": "", "slots": slots}
+
+func _import_error(message: String) -> Dictionary:
+	return {"ok": false, "error": message, "slots": []}
+
+func _looks_like_sqlite(content: PackedByteArray) -> bool:
+	return content.size() > 100 and content.slice(0, SQLITE_MAGIC.length()).get_string_from_ascii() == SQLITE_MAGIC
+
+## read_import_file()で読んだスロットのうち、keys(zip内の番号)で選んだものを、新しいスロットとして追加する。
+## 既存のスロットは上書きせず、アクティブなスロットも変えない。追加したスロットの番号の配列を返す。
+## 同梱されていたワールドスキーマのうち、この端末に無いバージョンも一緒に取り込む。
+func import_slots(keys: Array) -> Array:
+	var new_ids: Array = []
+	DirAccess.make_dir_recursive_absolute(WorldSchemaDb.SCHEMA_DIR)
+	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
+	for file_name in DirAccess.get_files_at(IMPORT_TMP_DIR):
+		if file_name.begins_with("schema_"):
+			var dest := "%s/%s" % [WorldSchemaDb.SCHEMA_DIR, file_name]
+			if not FileAccess.file_exists(dest): # 内容が版の名前(ハッシュ)になっているので、同名なら同じ中身
+				DirAccess.copy_absolute("%s/%s" % [IMPORT_TMP_DIR, file_name], dest)
+	for key in keys:
+		var src := "%s/slot_%d.sqlite" % [IMPORT_TMP_DIR, int(key)]
+		if not FileAccess.file_exists(src):
+			continue
+		var new_id := _next_free_slot_id()
+		if DirAccess.copy_absolute(src, _slot_path(new_id)) != OK:
+			continue
+		_repin_missing_schema_version(new_id)
+		new_ids.append(new_id)
+	cancel_import()
+	return new_ids
+
+## 取り込んだスロットが記録しているワールドスキーマのバージョンが、この端末に無ければ(zipに同梱されて
+## いなかった場合)、この端末の最新のバージョンに付け替える。付け替えないと、ロードした時にWorldMapが
+## 更新されず、直前に開いていたスロットの世界のまま進行を上書きしてしまう(switch_to_slotの説明参照)。
+func _repin_missing_schema_version(slot_id: int) -> void:
+	var version := get_slot_schema_version(slot_id)
+	if version == "" or FileAccess.file_exists(WorldSchemaDb.version_file_path(version)):
+		return
+	var db := SQLite.new()
+	db.path = _slot_path(slot_id)
+	if not db.open_db():
+		return
+	db.query_with_bindings("DELETE FROM meta WHERE key = ?", ["schema_version"])
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["schema_version", WorldSchemaDb.current_version_id])
+	db.close_db()
+
+## read_import_file()が一時フォルダに展開したものを消す(取り込みをやめる時、取り込みが終わった時)。
+func cancel_import() -> void:
+	if not DirAccess.dir_exists_absolute(IMPORT_TMP_DIR):
+		return
+	for file_name in DirAccess.get_files_at(IMPORT_TMP_DIR):
+		DirAccess.remove_absolute("%s/%s" % [IMPORT_TMP_DIR, file_name])
+	DirAccess.remove_absolute(IMPORT_TMP_DIR)
 
 ## 行動ログビューアー用: 現在のスロットのaction_logを取得する(npc_id<0で全探索者分)。
 func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
@@ -409,6 +645,9 @@ func save_game() -> void:
 		"speed_multiplier": TimeSystem.speed_multiplier,
 		"start_year": TimeSystem.start_year,
 		"start_month": TimeSystem.start_month,
+		# 最終更新の時刻(UNIX時刻、UTC)。スロット一覧に出す(2026-09-20)。ファイルの更新日時ではなくmetaに持つのは、
+		# 名前の変更や取り込み(ファイルのコピー)でファイルの日時が変わっても、「進行を最後に保存した時刻」を保つため。
+		"saved_at": int(Time.get_unix_time_from_system()),
 	}
 	var npc_data: Dictionary = Npcs.save_state()
 	meta["npc_next_id"] = npc_data["next_id"]

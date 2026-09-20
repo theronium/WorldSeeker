@@ -51,6 +51,11 @@ func _ready() -> void:
 func _version_path(version_id: String) -> String:
 	return "%s/schema_%s.sqlite" % [SCHEMA_DIR, version_id]
 
+## 指定バージョンのスキーマファイルのパス。セーブのエクスポート/インポート(save_system.gd)が、
+## スロットが使っているバージョンをzipに同梱したり、この端末に無いバージョンを取り込んだりするために公開している。
+func version_file_path(version_id: String) -> String:
+	return _version_path(version_id)
+
 ## WorldMap/Itemsの現在の内容を、DB書き込み用のプレーンなDictionaryに変換する。
 ## この関数の出力をJSON化してハッシュ化したものがバージョンIDになるため、
 ## ここに含めた情報の変化だけが「新バージョン」として検出される。
