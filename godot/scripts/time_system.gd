@@ -15,7 +15,11 @@ const SPEED_STEPS := [1.0, 10.0, 100.0, 1000.0]
 
 var current_day: int = 0
 var current_month: int = 0
-var is_paused: bool = false # 月末になると自動でtrueになり、確認操作を待つ
+var is_paused: bool = false # 月末になると自動でtrueになり、確認操作を待つ。セーブされるのは、この「月末の待ち」だけ
+## イベント会話が開いている間、時間を止める印(event_dialogue.gd)。月末の待ち(is_paused)とは別にして、セーブしない。
+## 以前は会話も同じis_pausedを立てていたため、会話が開いている間に保存(その日のオートセーブ、手動セーブ、アプリを閉じる時)
+## されると、月の途中なのに「一時停止」が保存され、ロードすると『次の月へ』が出て時間が止まったままになった(2026-09-21)。
+var dialogue_hold: bool = false
 var speed_multiplier: float = 1.0
 var _accumulated: float = 0.0
 var _last_check_ms: int = 0
@@ -47,7 +51,7 @@ func _process(_delta: float) -> void:
 	var now := Time.get_ticks_msec()
 	var elapsed_sec := (now - _last_check_ms) / 1000.0
 	_last_check_ms = now
-	if is_paused:
+	if is_time_stopped():
 		return
 	_accumulated += elapsed_sec * speed_multiplier
 	if _accumulated >= SECONDS_PER_DAY:
@@ -67,6 +71,10 @@ func _advance_day() -> void:
 	day_advanced.emit(current_day)
 	if month_ending:
 		month_ended.emit(current_month)
+
+## 今、時間が止まっているか(月末の待ち、またはイベント会話の表示中)。
+func is_time_stopped() -> bool:
+	return is_paused or dialogue_hold
 
 func confirm_and_resume() -> void:
 	is_paused = false

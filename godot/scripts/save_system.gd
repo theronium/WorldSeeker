@@ -742,7 +742,12 @@ func load_game() -> bool:
 	Economy.facility_level = int(meta.get("facility_level", Economy.facility_level))
 	TimeSystem.current_day = int(meta.get("current_day", TimeSystem.current_day))
 	TimeSystem.current_month = int(meta.get("current_month", TimeSystem.current_month))
-	TimeSystem.is_paused = bool(int(meta.get("is_paused", 0)))
+	# 保存されるのは「月末の待ち」だけ(月末の日=日数が30の倍数で、開始直後ではない)。それ以外の一時停止は、
+	# 過去のバージョンが会話中の停止を保存してしまったもので、復元すると月の途中で『次の月へ』が出て時間が止まる
+	# (2026-09-21、ロードすると3月22日なのに止まっていた)ため、ロード時に取り除く。
+	var saved_paused := bool(int(meta.get("is_paused", 0)))
+	var at_month_end: bool = TimeSystem.current_day > 0 and TimeSystem.current_day % TimeSystem.DAYS_PER_MONTH == 0
+	TimeSystem.is_paused = saved_paused and at_month_end
 	TimeSystem.speed_multiplier = float(meta.get("speed_multiplier", 1.0))
 	TimeSystem.start_year = int(meta.get("start_year", TimeSystem.start_year))
 	TimeSystem.start_month = int(meta.get("start_month", TimeSystem.start_month))

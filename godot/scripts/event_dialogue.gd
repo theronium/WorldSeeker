@@ -32,7 +32,6 @@ var current_result: String = ""
 
 var _script: Array = []
 var _index: int = 0
-var _time_was_paused: bool = false
 
 func play(script: Array, kind: String = "", result: String = "") -> void:
 	if script.is_empty():
@@ -41,8 +40,10 @@ func play(script: Array, kind: String = "", result: String = "") -> void:
 	_index = 0
 	current_kind = kind
 	current_result = result
-	_time_was_paused = TimeSystem.is_paused
-	TimeSystem.is_paused = true
+	# 会話が開いている間は時間を止める。月末の待ち(is_paused)とは別の印(dialogue_hold)を使う: 同じis_pausedを
+	# 使うと、会話中に保存された「一時停止」が月の途中で復元されて時間が止まったままになり(2026-09-21)、
+	# 会話の上に別の会話が重なった時に「会話が始まる前の状態」として一時停止を覚えてしまい、閉じても再開しなかった。
+	TimeSystem.dialogue_hold = true
 	is_active = true
 	_show_current()
 
@@ -79,5 +80,5 @@ func _show_current() -> void:
 
 func _finish(outcome: String) -> void:
 	is_active = false
-	TimeSystem.is_paused = _time_was_paused
+	TimeSystem.dialogue_hold = false
 	finished.emit(outcome)
