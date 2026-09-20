@@ -1,7 +1,7 @@
 class_name UniqueSkills
-# NPC個体ごとの固有スキル。design.md 4.8節。
+# 探索者個体ごとの固有スキル。design.md 4.8節。
 #
-# プレイヤーからは「そのNPCだけの個性」に見えるが、実装上はジョブ別の事前定義プールから
+# プレイヤーからは「その探索者だけの個性」に見えるが、実装上はジョブ別の事前定義プールから
 # 抽選する(NameGenerator.generate(bloodline)の血筋別名前抽選と同じ仕組み)。
 #
 # 2026-09-14: ジョブごと8種(計40種)に拡充した(design.md 4.8で「ジョブごとに8〜12種を想定」
@@ -109,9 +109,9 @@ const POOL := {
 	],
 }
 
-## const POOL内の辞書をそのまま返すと、同じ固有スキルを抽選/読込した全NPCが同一の
+## const POOL内の辞書をそのまま返すと、同じ固有スキルを抽選/読込した全探索者が同一の
 ## Dictionaryオブジェクト(POOL本体も含む)を参照してしまう。今は誰も書き込んでいないため
-## 実害は無いが、将来の書き込みが全NPC・POOL本体を静かに汚染しないよう、複製して返す。
+## 実害は無いが、将来の書き込みが全探索者・POOL本体を静かに汚染しないよう、複製して返す。
 static func generate(job: int) -> Dictionary:
 	var pool: Array = POOL.get(job, [])
 	return pool[randi() % pool.size()].duplicate() if not pool.is_empty() else {}

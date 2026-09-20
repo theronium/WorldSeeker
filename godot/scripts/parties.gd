@@ -2,8 +2,8 @@ extends Node
 # パーティの編成・担当セクション割り当てを管理する。design.md 4.7節。
 #
 # 2026-09-14のパーティ制導入前は、担当セクション/探索状態/回復待ち/踏破後の挙動は
-# NPC個体ごと(npcs.gd)に持っていたが、これらは全てパーティ単位の概念に置き換わった。
-# NPC個体はスキル/ジョブ/装備/固有スキルなど「個人の資質」だけを持ち続け、
+# 探索者個体ごと(npcs.gd)に持っていたが、これらは全てパーティ単位の概念に置き換わった。
+# 探索者個体はスキル/ジョブ/装備/固有スキルなど「個人の資質」だけを持ち続け、
 # 「どこを探索するか」「今どういう状態か」はこちら(Parties)が持つ。
 
 enum Status { IDLE, EXPLORING, RECOVERING }
@@ -23,11 +23,11 @@ func form_party(member_ids: Array, display_name: String = "") -> int:
 	var seen: Dictionary = {}
 	for npc_id in member_ids:
 		if seen.has(npc_id):
-			return -1 # 同じNPCを2重に含めることはできない
+			return -1 # 同じ探索者を2重に含めることはできない
 		seen[npc_id] = true
 		var npc := Npcs.get_npc(npc_id)
 		if npc.is_empty() or npc["party_id"] != -1:
-			return -1 # 既にどこかのパーティに所属しているNPCは含められない
+			return -1 # 既にどこかのパーティに所属している探索者は含められない
 
 	var id := _next_id
 	_next_id += 1
@@ -50,7 +50,7 @@ func form_party(member_ids: Array, display_name: String = "") -> int:
 	return id
 
 ## パーティ解散(main.gdのパーティ詳細パネル「パーティを解散する」ボタンから呼ばれる)。
-## 全メンバーが未所属に戻る。スキル/ジョブ/装備/固有スキルはNPC個体側が持つため失われない。
+## 全メンバーが未所属に戻る。スキル/ジョブ/装備/固有スキルは探索者個体側が持つため失われない。
 func disband(party_id: int) -> void:
 	if not parties.has(party_id):
 		return

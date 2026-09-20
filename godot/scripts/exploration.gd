@@ -61,9 +61,9 @@ const RETREAT_TRAINING_EXP_PER_DAY := 1
 ## SaveSystem.tutorial_retreat_seenで一度きりに制御する(_post_retreat_help()/
 ## _maybe_show_retreat_tutorial()参照)。
 const RETREAT_TUTORIAL_SCRIPT: Array = [
-	{"side": "none", "name": "案内人", "text": "撤退か……無理はしないのが一番だ。"},
-	{"side": "none", "name": "案内人", "text": "撤退したパーティはしばらく休息が必要だが、休息が終われば自動でまた同じ場所に挑んでくれる。装備を整えたりスキルを鍛えたりして、気長に構えるといい。"},
-	{"side": "none", "name": "案内人", "text": "ちなみに、パーティパネルの「ループ」「先へ進む」の設定は、今のように手強い相手に阻まれている間には関係ない。これはセクションを完全に突破し終えたあとの話だ――「ループ」ならそこに留まって稼ぎ続け、「先へ進む」なら次の未踏破セクションへ自動的に移動する。", "outcome": "ok"},
+	{"side": "left", "name": "案内人", "text": "撤退か……無理はしないのが一番だ。"},
+	{"side": "left", "name": "案内人", "text": "撤退したパーティはしばらく休息が必要だが、休息が終われば自動でまた同じ場所に挑んでくれる。装備を整えたりスキルを鍛えたりして、気長に構えるといい。"},
+	{"side": "left", "name": "案内人", "text": "ちなみに、パーティパネルの「ループ」「先へ進む」の設定は、今のように手強い相手に阻まれている間には関係ない。これはセクションを完全に突破し終えたあとの話だ――「ループ」ならそこに留まって稼ぎ続け、「先へ進む」なら次の未踏破セクションへ自動的に移動する。", "outcome": "ok"},
 ]
 
 ## 撤退説明会話の予約フラグ: _post_retreat_help()が立て、EventDialogue.finished(または
@@ -198,7 +198,7 @@ func _heal_idle_party(party: Dictionary) -> void:
 		if not npc.is_empty():
 			npc["hp"] = npc["max_hp"]
 
-## 野良NPC(wild_npcs.gd)がゲート無しのフロアを先に発見・突破してしまうと、found=trueに
+## 野良探索者(wild_npcs.gd)がゲート無しのフロアを先に発見・突破してしまうと、found=trueに
 ## なった時点でfrontier_for_section/_retry_gatesのどちらの対象からも永久に外れてしまい、
 ## そのフロアを実際に担当しているパーティが常駐していても「誰か(灰色)」表示のまま二度と
 ## 「自身(青)」に塗り替わらなかった(ささやきの森「森の小道」で報告された不具合)。
@@ -297,7 +297,7 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 	var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 	_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
 
-## 野良NPC(wild_npcs.gd)からも使う、ステータス不問の簡易発見処理。
+## 野良探索者(wild_npcs.gd)からも使う、ステータス不問の簡易発見処理。
 ## ゲートがあるノードは「発見済みだが進めない」までしか進められない(実際の突破は雇用パーティの役目)。
 func wild_discover(node_id: String, current_day: int) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
@@ -400,7 +400,7 @@ func apply_post_clear_behavior(party: Dictionary, current_day: int) -> bool:
 	var next_section_name: String = WorldMap.sections[next_section]["name"]
 	Parties.assign_section(party["id"], next_section)
 	Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
-	# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログのNPC別フィルタで、
+	# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログの探索者別フィルタで、
 	# そのメンバーで絞り込んだ時にも配置転換イベントが見えるようにするため)。
 	ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], party["member_ids"][0], "", next_section)
 	return true
@@ -453,7 +453,7 @@ func _check_blocked(party: Dictionary, current_day: int) -> void:
 		Parties.retreat_for_training(party["id"], safe_section, section_id, blocker)
 		text = "%sは「%s」の「%s」に勝つ見込みが無いため、「%s」へ戻って力を付けることにした" % [party["name"], section_name, blocker_name, safe_name]
 	Board.post(current_day, text, Board.Importance.MINOR, "reassignment")
-	# npc_idには代表としてパーティ先頭メンバーを記録する(配置転換と同じ。行動ログのNPC別フィルタ用)
+	# npc_idには代表としてパーティ先頭メンバーを記録する(配置転換と同じ。行動ログの探索者別フィルタ用)
 	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], blocker, section_id)
 
 ## 戦力不足で退避(待機)中のパーティの日次処理。戻り先のフロアにまだ勝てないなら、パーティ全員が戦闘力の
@@ -524,7 +524,7 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, result: String, enemy_power: int) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
 	var verb := "力及ばず敗れて撤退した" if result == "defeat" else "苦戦して撤退した"
-	var text := "%sは「%s」で%s(相手の戦闘力: %d)。突破のヒント: ①武器防具屋で装備を強化する ②NPC管理パネルで「戦闘力」スキルを訓練する ③このまま何度も挑み続ければ、戦闘の経験値で自然に強くなる。いずれか(または組み合わせ)を試してみてください。" % [
+	var text := "%sは「%s」で%s(相手の戦闘力: %d)。突破のヒント: ①武器防具屋で装備を強化する ②探索者管理パネルで「戦闘力」スキルを訓練する ③このまま何度も挑み続ければ、戦闘の経験値で自然に強くなる。いずれか(または組み合わせ)を試してみてください。" % [
 		party["name"], node["name"], verb, enemy_power]
 	var section_id: String = node["section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
@@ -535,7 +535,7 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 		_retreat_tutorial_pending = true
 		call_deferred("_maybe_show_retreat_tutorial")
 
-## NPC管理パネルの「予測」ボタン用: 指定パーティを指定セクションに置いた場合の、実際には
+## 探索者管理パネルの「予測」ボタン用: 指定パーティを指定セクションに置いた場合の、実際には
 ## 配置転換しない今月(TimeSystem.DAYS_PER_MONTH日)の見込みだけを計算する。
 ##
 ## セクション内の未突破ノードを、現在到達済みの場所から辿れる順に「発見にかかる予想日数」
@@ -557,7 +557,7 @@ func forecast_section(party_id: int, section_id: String) -> Dictionary:
 	var eta_days: Dictionary = {} # node_id -> float(このノードの発見が見込まれる日数)
 	var queue: Array = []
 
-	# 既に発見済みだが未突破のゲート(野良NPCの先行発見や、前回このセクションを担当していた
+	# 既に発見済みだが未突破のゲート(野良探索者の先行発見や、前回このセクションを担当していた
 	# 時に見つけたがまだ突破できていないもの)は、_retry_gates()により配置初日から毎日無条件で
 	# 再挑戦される。以前はfrontier_for_section()が返す未発見ノードしか見ておらず(BFSも
 	# neighbor["found"]を弾く作り)、こうした「既発見だが未突破」のノードが予測から漏れて

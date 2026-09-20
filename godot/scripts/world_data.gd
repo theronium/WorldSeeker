@@ -40,8 +40,8 @@ func _define_items() -> void:
 	Items.define("heart_of_inferno", "業火の心臓")
 	# design.md 4.8節「転職」用の消費アイテム。後半〜終盤の各エリア(4〜9番目)の
 	# 手強い戦闘ゲート6箇所(いずれも既存の報酬チェーンに含まれない箇所)にそれぞれ設置し、
-	# 同じアイテムIDなので複数箇所から繰り返し入手できる(1体のNPCが同時に複数個は持てない、
-	# Items.grant()の仕様どおり)。消費すると任意のジョブへ転職できる(NPC管理パネル)。
+	# 同じアイテムIDなので複数箇所から繰り返し入手できる(1体の探索者が同時に複数個は持てない、
+	# Items.grant()の仕様どおり)。消費すると任意のジョブへ転職できる(探索者管理パネル)。
 	Items.define("reclass_elixir", "転職の秘薬")
 
 func _build_kingdom() -> void:
@@ -81,12 +81,12 @@ func _build_kingdom() -> void:
 	WorldMap.set_event_scripts("old_shrine",
 		[
 			{"side": "none", "name": "古い祠", "text": "祠の奥から声が響く。「三つの問いに答えよ」", "next": 1},
-			{"side": "none", "name": "古い祠", "text": "同行したNPCは静かに考え込み、やがて答えを口にした。", "next": 2},
+			{"side": "none", "name": "古い祠", "text": "同行した探索者は静かに考え込み、やがて答えを口にした。", "next": 2},
 			{"side": "none", "name": "古い祠", "text": "……正解だ。道を開けよう。", "outcome": "pass"},
 		],
 		[
 			{"side": "none", "name": "古い祠", "text": "祠の奥から声が響く。「三つの問いに答えよ」", "next": 1},
-			{"side": "none", "name": "古い祠", "text": "NPCは首をひねるばかりで、答えが出てこない。", "outcome": "fail"},
+			{"side": "none", "name": "古い祠", "text": "探索者は首をひねるばかりで、答えが出てこない。", "outcome": "fail"},
 		])
 
 	WorldMap.set_event_scripts("boss_lair",

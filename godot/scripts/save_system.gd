@@ -1,7 +1,7 @@
 extends Node
 # ワールドの進行状態をSQLite(addons/godot-sqlite)で保存・復元する(docs/design.md 8.2/10章)。
 #
-# 保存対象は「プレイ進行状態」のみ(資金・NPC名簿・ワールド探索の発見/突破状態・掲示板ログ)。
+# 保存対象は「プレイ進行状態」のみ(資金・探索者名簿・ワールド探索の発見/突破状態・掲示板ログ)。
 # ワールドスキーマそのもの(エリア/セクション/フロア/ゲート/イベント台本の定義)は
 # 引き続き`world_data.gd`が開発時コンテンツとして担当する(design.md 8.1の想定通り、
 # 将来そちらをDB化する場合はこのファイルとは別のテーブル/読み込み経路になる)。
@@ -125,7 +125,7 @@ func autosave() -> void:
 	if autosave_enabled:
 		save_game()
 
-## 既存スロット一覧(スロットID順)。各スロットのDBを開いて概要(資金/日付/NPC数)だけ読む。
+## 既存スロット一覧(スロットID順)。各スロットのDBを開いて概要(資金/日付/探索者数)だけ読む。
 func list_slots() -> Array:
 	var result := []
 	DirAccess.make_dir_recursive_absolute(SLOT_DIR)
@@ -283,7 +283,7 @@ func rename_slot(slot_id: int, new_name: String) -> bool:
 	db.close_db()
 	return true
 
-## 行動ログビューアー用: 現在のスロットのaction_logを取得する(npc_id<0で全NPC分)。
+## 行動ログビューアー用: 現在のスロットのaction_logを取得する(npc_id<0で全探索者分)。
 func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
 	var result := []
 	var db := SQLite.new()
@@ -564,7 +564,7 @@ func load_game() -> bool:
 			npc["job"] = best_job
 			npc["unique_skill"] = UniqueSkills.generate(best_job)
 			# Npcs.hire()と同様、"max_hp_flat"固有スキルなら最大HPを底上げする(既存のhpは
-			# そのまま、最大値だけ引き上げる。負傷中のNPCを不当に全回復させないため)。
+			# そのまま、最大値だけ引き上げる。負傷中の探索者を不当に全回復させないため)。
 			if npc["unique_skill"].get("effect_type", "") == "max_hp_flat":
 				npc["max_hp"] = float(npc["max_hp"]) + float(npc["unique_skill"]["value"])
 		# 2026-09-14追加: portrait==""は旧セーブ由来(または移行直後でまだ未割り当て)の印。
@@ -599,8 +599,8 @@ func load_game() -> bool:
 		for npc_id in Parties.parties[party_id]["member_ids"]:
 			Npcs.set_party(npc_id, party_id)
 
-	# 旧セーブ(パーティ制導入前)は誰もパーティに所属していない。NPCをid順に4人ずつ
-	# グループ化して新規パーティを組む。旧モデルでは1NPC=1セクションの個別割り当てだった
+	# 旧セーブ(パーティ制導入前)は誰もパーティに所属していない。探索者をid順に4人ずつ
+	# グループ化して新規パーティを組む。旧モデルでは1探索者=1セクションの個別割り当てだった
 	# ため、4人纏めた際にどのセクションを継承すべきか一意に決まらない。安全側に倒し、
 	# 各パーティのassigned_sectionは空のまま(プレイヤーに手動で再割り当てしてもらう)にする。
 	if not had_saved_parties and not Npcs.roster.is_empty():

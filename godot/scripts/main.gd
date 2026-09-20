@@ -3,9 +3,9 @@ extends Control
 var candidates_grid: GridContainer # 候補者の肖像カード(2026-09-14、ItemListのテキスト行から変更)
 var _selected_candidate_index: int = -1
 var hire_status_label: Label
-var roster_grid: GridContainer # NPCごとの正方形ポートレートカード(画像/名前/状態)を並べる
-var npc_roster_view: Control # NPC管理パネル: 一覧ビュー(既定で表示)
-var npc_detail_view: Control # NPC管理パネル: 選択中NPCの詳細ビュー(ステータス+スキル訓練)
+var roster_grid: GridContainer # 探索者ごとの正方形ポートレートカード(画像/名前/状態)を並べる
+var npc_roster_view: Control # 探索者管理パネル: 一覧ビュー(既定で表示)
+var npc_detail_view: Control # 探索者管理パネル: 選択中探索者の詳細ビュー(ステータス+スキル訓練)
 var npc_detail_label: Label
 var npc_job_label: Label
 var npc_detail_portrait: PanelContainer
@@ -16,12 +16,12 @@ var _selected_npc_id: int = -1
 var facility_button: Button
 
 # パーティ編成パネル(design.md 4.7節)。担当セクション割り当て・予測・完全踏破後の設定は
-# NPC単位ではなくパーティ単位の操作になった(旧npc_panelの[担当]タブから移設)。
+# 探索者単位ではなくパーティ単位の操作になった(旧npc_panelの[担当]タブから移設)。
 var party_panel: PanelContainer
 var party_roster_view: Control
 var party_detail_view: Control
 var party_grid: GridContainer
-var party_form_list: ItemList # 未所属NPCから最大4人を選ぶ簡易選択(多重選択)
+var party_form_list: ItemList # 未所属探索者から最大4人を選ぶ簡易選択(多重選択)
 var party_form_status_label: Label
 var party_detail_label: Label
 # パーティ詳細は2つのタブ(メンバー・並び順/担当セクション)に分けてある(2026-09-19)。
@@ -60,7 +60,7 @@ var node_labels: Dictionary = {} # node_id -> Label(状態表示)
 var node_name_labels: Dictionary = {} # node_id -> Label(名前表示。未発見なら????)
 var node_boxes: Dictionary = {} # node_id -> PanelContainer(自身/誰か/未踏破の色分け対象)
 var node_centers: Dictionary = {} # node_id -> Vector2(map_canvas内での中心座標。接続線描画用)
-var node_icon_rows: Dictionary = {} # node_id -> HBoxContainer(担当NPCアイコンを現在フロアに表示)
+var node_icon_rows: Dictionary = {} # node_id -> HBoxContainer(担当探索者アイコンを現在フロアに表示)
 var section_bounds_cache: Dictionary = {} # section_id -> Rect2(エリア選択ボタンのスクロール先計算用)
 var section_lock_icons: Dictionary = {} # section_id -> Control(未到達セクションの鍵アイコン)
 var section_title_buttons: Dictionary = {} # section_id -> Button(セクション名ボタン。到達状況でdisabledを更新)
@@ -171,9 +171,9 @@ var modal_blocker: ColorRect
 ## INTRO_TUTORIAL_PART2_SCRIPT(初めて実際に割り当てを行った直後に再生。
 ## _maybe_show_assignment_followup_tutorial()参照)。
 const INTRO_TUTORIAL_PART1_SCRIPT: Array = [
-	{"side": "none", "name": "案内人", "text": "ようこそ。ここは、雇ったNPCたちに代わりに世界を探索させ、その稼ぎで暮らしを立てていく土地だ。"},
-	{"side": "none", "name": "案内人", "text": "既に「初期パーティ」が1つ、無償で用意されている。まずはこれをどこかのセクション(区画)に割り当てて、探索を始めよう。"},
-	{"side": "none", "name": "案内人", "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)を押してみるといい。そこにパーティを割り当てられる。", "outcome": "ok"},
+	{"side": "left", "name": "案内人", "text": "ようこそ。ここは、雇った探索者たちを世界へ送り出し、その稼ぎで暮らしを立てていく土地だ。"},
+	{"side": "left", "name": "案内人", "text": "既に「初期パーティ」が1つ、無償で用意されている。まずはこれをどこかのセクション(区画)に割り当てて、探索を始めよう。"},
+	{"side": "left", "name": "案内人", "text": "マップに並ぶ、枠で囲まれたセクション名(📍のついたボタンになっている)を押してみるといい。そこにパーティを割り当てられる。", "outcome": "ok"},
 ]
 
 ## 導入会話・後編。初めて実際にパーティ割り当てを行った直後に再生する(マップのセクション名
@@ -181,20 +181,20 @@ const INTRO_TUTORIAL_PART1_SCRIPT: Array = [
 ## 収入の仕組み/行ける場所の増やし方/進行速度について説明する。
 ## SaveSystem.tutorial_assignment_followup_seenで一度きりに制御する。
 const INTRO_TUTORIAL_PART2_SCRIPT: Array = [
-	{"side": "none", "name": "案内人", "text": "よし、これで探索が始まった。割り当てたパーティが、毎日自動で発見・突破に挑んでくれる。"},
-	{"side": "none", "name": "案内人", "text": "資金は、担当セクションで突破したフロアの数に応じて毎月自動的に入る。フロアを突破するほど、そしてセクションを完全に突破しきるほど、実入りは大きくなる。"},
-	{"side": "none", "name": "案内人", "text": "セクションを突破しきれば、その先の新しいセクションやエリアへの道も開ける。行ける場所を増やしたいなら、目の前を突破し続けるのが一番の近道だ。"},
-	{"side": "none", "name": "案内人", "text": "進行速度は画面左上の「1x/10x/100x/1000x」でいつでも変えられる。月末には自動で一時停止するので、収支を確かめてから次の月へ進めるといい。"},
-	{"side": "none", "name": "案内人", "text": "困ったら、NPC管理やパーティのパネルを開いて様子を見るといい。……それでは、健闘を祈る。", "outcome": "ok"},
+	{"side": "left", "name": "案内人", "text": "よし、これで探索が始まった。割り当てたパーティが、毎日自動で発見・突破に挑んでくれる。"},
+	{"side": "left", "name": "案内人", "text": "資金は、担当セクションで突破したフロアの数に応じて毎月自動的に入る。フロアを突破するほど、そしてセクションを完全に突破しきるほど、実入りは大きくなる。"},
+	{"side": "left", "name": "案内人", "text": "セクションを突破しきれば、その先の新しいセクションやエリアへの道も開ける。行ける場所を増やしたいなら、目の前を突破し続けるのが一番の近道だ。"},
+	{"side": "left", "name": "案内人", "text": "進行速度は画面左上の「1x/10x/100x/1000x」でいつでも変えられる。月末には自動で一時停止するので、収支を確かめてから次の月へ進めるといい。"},
+	{"side": "left", "name": "案内人", "text": "困ったら、探索者管理やパーティのパネルを開いて様子を見るといい。……それでは、健闘を祈る。", "outcome": "ok"},
 ]
 
-## 初めてNPCを雇用した直後だけ再生する説明会話。雇っただけではまだ働けず、パーティ編成
+## 初めて探索者を雇用した直後だけ再生する説明会話。雇っただけではまだ働けず、パーティ編成
 ## (1人でも組める)が必要なことを教える。SaveSystem.tutorial_party_seenで一度きりに制御する
 ## (_on_hire_pressed()参照)。
 const PARTY_TUTORIAL_SCRIPT: Array = [
-	{"side": "none", "name": "案内人", "text": "新しい仲間が加わった。……とはいえ、雇っただけではまだ働けない。"},
-	{"side": "none", "name": "案内人", "text": "「パーティ」パネルを開いて、雇ったNPCを選び、パーティを編成しよう。1人だけでもパーティは組める――まずは1人で始めて、あとから仲間を増やしても構わない。"},
-	{"side": "none", "name": "案内人", "text": "パーティが組めたら、担当セクションを割り当てるといい。あとは毎日自動で探索に挑んでくれる。", "outcome": "ok"},
+	{"side": "left", "name": "案内人", "text": "新しい仲間が加わった。……とはいえ、雇っただけではまだ働けない。"},
+	{"side": "left", "name": "案内人", "text": "「パーティ」パネルを開いて、雇った探索者を選び、パーティを編成しよう。1人だけでもパーティは組める――まずは1人で始めて、あとから仲間を増やしても構わない。"},
+	{"side": "left", "name": "案内人", "text": "パーティが組めたら、担当セクションを割り当てるといい。あとは毎日自動で探索に挑んでくれる。", "outcome": "ok"},
 ]
 
 func _ready() -> void:
@@ -231,7 +231,7 @@ func _ready() -> void:
 	EventDialogue.line_shown.connect(_on_dialogue_line_shown)
 	EventDialogue.finished.connect(_on_dialogue_finished)
 	_refresh_all()
-	# 初回起動時だけ、遊び方(NPCの配置/稼ぎ方/行ける場所の増やし方/進行速度)を説明する
+	# 初回起動時だけ、遊び方(探索者の配置/稼ぎ方/行ける場所の増やし方/進行速度)を説明する
 	# 導入会話を挟む。スロットに紐付かず(SaveSystem.tutorial_intro_seen)、新規プレイを
 	# 何度始めても一度見せたら二度と出さない。この時点ではまだ他の会話は動いていないので、
 	# そのまま直接EventDialogue.play()してよい(節末の「イベント会話まわりの実装メモ」参照)。
@@ -593,7 +593,7 @@ func _build_ui() -> void:
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(root)
 
-	# 雇用/NPC管理/行動ログ/セーブは全て画面中央に開くポップアップなので、
+	# 雇用/探索者管理/行動ログ/セーブは全て画面中央に開くポップアップなので、
 	# 同時に開けると重なってしまう。開いている間は背後に敷いて他の操作を受け付けない
 	# 半透明の遮断レイヤー(常に1枚だけ存在し、_open_modal/_close_modalで使い回す)。
 	modal_blocker = ColorRect.new()
@@ -675,7 +675,7 @@ func _build_ui() -> void:
 	left.add_child(hire_button)
 
 	var npc_button := Button.new()
-	npc_button.text = "NPC管理"
+	npc_button.text = "探索者管理"
 	npc_button.pressed.connect(_on_open_npc_panel_pressed)
 	left.add_child(npc_button)
 
@@ -842,7 +842,7 @@ func _on_area_step_pressed(direction: int) -> void:
 	var target: int = clampi(current + direction, 0, area_ids.size() - 1)
 	_on_area_tab_pressed(area_ids[target])
 
-## 雇用/NPC管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
+## 雇用/探索者管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
 	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel, license_panel]:
@@ -919,6 +919,14 @@ func _make_portrait_slot(base_color: Color) -> VBoxContainer:
 	rect.custom_minimum_size = Vector2(140, 160)
 	rect.color = base_color
 	slot.add_child(rect)
+	# 話者の画像(EventPortraits)。画像が無い間は隠しておき、色付きの四角(base_color)がそのまま見える。
+	var image_rect := TextureRect.new()
+	image_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	image_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	image_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	image_rect.visible = false
+	rect.add_child(image_rect)
 	var name_plate := Label.new()
 	name_plate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	slot.add_child(name_plate)
@@ -932,6 +940,18 @@ func _dim_portrait_slot(slot: VBoxContainer) -> void:
 func _highlight_portrait_slot(slot: VBoxContainer, character_name: String) -> void:
 	slot.modulate = Color(1, 1, 1, 1)
 	slot.get_child(1).text = character_name
+
+## 枠に話者の画像を出す(portrait_idが空、または画像が無ければ隠す)。画像は、その枠が次に別の話者で
+## 埋まるか会話が終わるまで残り、話していない間は_dim_portrait_slotで暗くなるだけで消えない。
+func _set_portrait_slot_image(slot: VBoxContainer, portrait_id: String) -> void:
+	var image_rect: TextureRect = slot.get_child(0).get_child(0)
+	var path := PortraitLibrary.texture_path(portrait_id) if portrait_id != "" else ""
+	if path != "" and ResourceLoader.exists(path):
+		image_rect.texture = load(path)
+		image_rect.visible = true
+	else:
+		image_rect.texture = null
+		image_rect.visible = false
 
 ## イベント会話の種別ごとの表示スタイル(2026-09-20)。パネルの縁と背景、発言者名、種別バッジ、次へ/選択肢の
 ## ボタンが、この色(accent)で揃う。種別はEventDialogue.play()の引数で決まる(フロアのイベントは、ゲートの種類から
@@ -1010,15 +1030,21 @@ func _on_dialogue_line_shown(line: Dictionary) -> void:
 	dialogue_panel.visible = true
 	speaker_name_label.text = line.get("name", "")
 	dialogue_text_label.text = line.get("text", "")
-	_apply_dialogue_style(line.get("kind", EventDialogue.current_kind), line.get("result", EventDialogue.current_result))
+	var kind: String = line.get("kind", EventDialogue.current_kind)
+	_apply_dialogue_style(kind, line.get("result", EventDialogue.current_result))
 
 	var side: String = line.get("side", "none")
+	var speaker: String = line.get("name", "")
 	if side == "left":
-		_highlight_portrait_slot(left_slot, line.get("name", ""))
+		if speaker != "":
+			_set_portrait_slot_image(left_slot, EventPortraits.portrait_id(speaker, kind))
+		_highlight_portrait_slot(left_slot, speaker)
 	else:
 		_dim_portrait_slot(left_slot)
 	if side == "right":
-		_highlight_portrait_slot(right_slot, line.get("name", ""))
+		if speaker != "":
+			_set_portrait_slot_image(right_slot, EventPortraits.portrait_id(speaker, kind))
+		_highlight_portrait_slot(right_slot, speaker)
 	else:
 		_dim_portrait_slot(right_slot)
 
@@ -1039,6 +1065,8 @@ func _on_dialogue_finished(_outcome: String) -> void:
 	# ゲーム状態への反映(ゲート突破の適用など)はExploration側が個別に処理する。
 	# ここではUIを閉じて最新状態を反映するだけ。
 	dialogue_panel.visible = false
+	_set_portrait_slot_image(left_slot, "") # 次の会話に前の話者の顔が残らないようにする
+	_set_portrait_slot_image(right_slot, "")
 	_refresh_board()
 	_refresh_map()
 	# 導入会話・後編(INTRO_TUTORIAL_PART2_SCRIPT)の予約消化。他の会話(フロア発見時のVN等)
@@ -1078,7 +1106,7 @@ func _close_any_modal() -> void:
 	modal_blocker.visible = false
 
 ## 行動ログビューアー(design.md 8.2「記録再生」)。掲示板と違い、DBの`action_log`テーブルを
-## その場でクエリして表示する(常時メモリに保持しない)。NPCで絞り込める。
+## その場でクエリして表示する(常時メモリに保持しない)。探索者で絞り込める。
 func _build_action_log_ui() -> void:
 	action_log_panel = PanelContainer.new()
 	action_log_panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -1422,7 +1450,7 @@ func _refresh_section_assign_list() -> void:
 		child.queue_free()
 	var parties := Parties.get_parties()
 	if parties.is_empty():
-		section_assign_status_label.text = "まだパーティがありません。NPCを雇用してパーティを編成してください。"
+		section_assign_status_label.text = "まだパーティがありません。探索者を雇用してパーティを編成してください。"
 		return
 	section_assign_status_label.text = ""
 	# 未割当のパーティを先頭に並べ、対応が必要なものを見つけやすくする。
@@ -1539,10 +1567,10 @@ func _on_open_hire_pressed() -> void:
 	hire_status_label.text = ""
 	_open_modal(hire_panel)
 
-## NPC管理パネル(名簿・担当セクション割り当て・スキル訓練・施設拡張)。
-## サイドバーの「NPC管理」ボタンから開く。
+## 探索者管理パネル(名簿・担当セクション割り当て・スキル訓練・施設拡張)。
+## サイドバーの「探索者管理」ボタンから開く。
 ##
-## 一覧ビュー(NPCの正方形ポートレートカードを並べただけの画面)を既定で表示し、
+## 一覧ビュー(探索者の正方形ポートレートカードを並べただけの画面)を既定で表示し、
 ## カードをクリックすると詳細ビューに切り替わる(担当及びスキルは一覧には出さない)。
 ## 詳細ビューは[ステータス(スキル訓練込み)][担当]の2タブに分け、常時2カラムで
 ## 詰め込んでいた旧UIより縦横それぞれを広く使えるようにした。
@@ -1562,7 +1590,7 @@ func _build_npc_ui() -> void:
 	var header := HBoxContainer.new()
 	col.add_child(header)
 	var title := Label.new()
-	title.text = "NPC管理"
+	title.text = "探索者管理"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(title)
 	var close_button := Button.new()
@@ -1603,7 +1631,7 @@ func _build_npc_roster_view(col: VBoxContainer) -> void:
 	facility_info_label.modulate = Color(1, 1, 1, 0.75)
 	npc_roster_view.add_child(facility_info_label)
 
-## 詳細ビュー: 一覧でNPCを選ぶとここに切り替わる。上部に「一覧へ戻る」と身元表示
+## 詳細ビュー: 一覧で探索者を選ぶとここに切り替わる。上部に「一覧へ戻る」と身元表示
 ## (ジョブ・固有スキル・装備・戦力込み、npc_detail_label/npc_job_labelに集約)、
 ## 下にスキル訓練を並べる。担当セクション割り当て・予測・完全踏破後の設定は
 ## パーティ単位の操作になったため、パーティパネル(_build_party_ui)に移設した。
@@ -1703,12 +1731,12 @@ func _build_npc_detail_view(col: VBoxContainer) -> void:
 	reclass_button.pressed.connect(_on_reclass_pressed)
 	reclass_row.add_child(reclass_button)
 
-## 一覧ビューを表示する(NPC管理パネルを開いた時の既定表示)。
+## 一覧ビューを表示する(探索者管理パネルを開いた時の既定表示)。
 func _show_npc_roster_view() -> void:
 	npc_roster_view.visible = true
 	npc_detail_view.visible = false
 
-## 詳細ビューを表示する(一覧でNPCを選んだ時、またはマップのNPCアイコンから直接開いた時)。
+## 詳細ビューを表示する(一覧で探索者を選んだ時、またはマップの探索者アイコンから直接開いた時)。
 func _show_npc_detail_view() -> void:
 	npc_roster_view.visible = false
 	npc_detail_view.visible = true
@@ -1717,10 +1745,10 @@ func _on_npc_detail_back_pressed() -> void:
 	_refresh_roster() # 詳細側での訓練/割り当て変更をカードに反映してから一覧へ戻る
 	_show_npc_roster_view()
 
-## NPC管理パネルを開く共通処理。show_detailがtrueなら選択中NPCの詳細から始める
-## (マップのNPCアイコンをクリックした場合)。falseなら一覧ビューから始める
-## (サイドバーの「NPC管理」ボタンから開いた場合。一覧を中心に見せるため、以前選択して
-## いたNPCがあっても毎回一覧からにする)。
+## 探索者管理パネルを開く共通処理。show_detailがtrueなら選択中探索者の詳細から始める
+## (マップの探索者アイコンをクリックした場合)。falseなら一覧ビューから始める
+## (サイドバーの「探索者管理」ボタンから開いた場合。一覧を中心に見せるため、以前選択して
+## いた探索者があっても毎回一覧からにする)。
 func _open_npc_panel(show_detail: bool) -> void:
 	_refresh_roster()
 	_refresh_facility_button()
@@ -1744,7 +1772,7 @@ func _on_roster_card_pressed(npc_id: int) -> void:
 ## (詳しくは「パーティ」パネルへ)。
 func _refresh_npc_detail() -> void:
 	if _selected_npc_id < 0 or Npcs.get_npc(_selected_npc_id).is_empty():
-		npc_detail_label.text = "左の一覧からNPCを選択してください"
+		npc_detail_label.text = "左の一覧から探索者を選択してください"
 		npc_job_label.text = ""
 		for skill in skill_level_labels.keys():
 			skill_level_labels[skill].text = ""
@@ -1784,7 +1812,7 @@ func _refresh_npc_detail() -> void:
 	reclass_button.disabled = not Items.has_item(_selected_npc_id, "reclass_elixir")
 
 ## 探索中/回復中(あと何日か)/未所属を文字にする。パーティ単位の状態(parties.gd)を
-## そのNPCの所属パーティから読む。
+## その探索者の所属パーティから読む。
 func _npc_status_text(npc: Dictionary) -> String:
 	var party_id: int = npc["party_id"]
 	if party_id == -1:
@@ -1820,10 +1848,10 @@ func _on_reclass_pressed() -> void:
 	_refresh_roster()
 	_refresh_npc_detail()
 
-## パーティ編成パネル(design.md 4.7節)。NPC管理パネルと同じ一覧/詳細の2画面構成。
+## パーティ編成パネル(design.md 4.7節)。探索者管理パネルと同じ一覧/詳細の2画面構成。
 ## 一覧ビュー: 既存パーティのカード一覧+「新しいパーティを編成」の簡易選択。
 ## 詳細ビュー: 並び順(戦闘での対戦順)・担当セクション割り当て・予測・完全踏破後の設定
-## (旧NPC管理パネルの[担当]タブから移設。担当割り当ての単位がNPCからパーティに変わったため)。
+## (旧探索者管理パネルの[担当]タブから移設。担当割り当ての単位が探索者からパーティに変わったため)。
 func _build_party_ui() -> void:
 	party_panel = PanelContainer.new()
 	party_panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -1867,7 +1895,7 @@ func _build_party_roster_view(col: VBoxContainer) -> void:
 	roster_scroll.add_child(party_grid)
 
 	var form_label := Label.new()
-	form_label.text = "新しいパーティを編成する(未所属NPCから最大%d人を選択)" % Parties.MAX_PARTY_SIZE
+	form_label.text = "新しいパーティを編成する(未所属探索者から最大%d人を選択)" % Parties.MAX_PARTY_SIZE
 	form_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	party_roster_view.add_child(form_label)
 
@@ -1877,7 +1905,7 @@ func _build_party_roster_view(col: VBoxContainer) -> void:
 	party_roster_view.add_child(party_form_list)
 
 	var form_button := Button.new()
-	form_button.text = "選択したNPCでパーティを編成する"
+	form_button.text = "選択した探索者でパーティを編成する"
 	form_button.pressed.connect(_on_form_party_pressed)
 	party_roster_view.add_child(form_button)
 
@@ -2081,7 +2109,7 @@ func _on_party_detail_back_pressed() -> void:
 	_refresh_party_roster()
 	_show_party_roster_view()
 
-## パーティ解散(design.md 4.7節): 装備・スキル経験値・固有スキルはNPC個体側に残るため、
+## パーティ解散(design.md 4.7節): 装備・スキル経験値・固有スキルは探索者個体側に残るため、
 ## 解散してもメンバーの育成は失われない。メンバーは全員未所属(party_id=-1)に戻り、
 ## 別のパーティへ再編成できる。取り消せない操作なので確認ダイアログを挟む
 ## (新規プレイ/スロット削除と同じConfirmationDialogのパターン)。
@@ -2121,7 +2149,7 @@ func _open_party_panel(party_id: int = -1) -> void:
 func _on_open_party_panel_pressed() -> void:
 	_open_party_panel()
 
-## セクション選択肢をエリア→セクションの2階層に組む(旧NPC管理パネルの同名関数を移設。
+## セクション選択肢をエリア→セクションの2階層に組む(旧探索者管理パネルの同名関数を移設。
 ## WorldMapのみに依存する汎用ロジックなので内容は変更なし)。割り当て先として選べるのは、
 ## 既に誰かが到達しているか、隣接する突破済みノードから発見を試みられるセクションだけにする
 ## (WorldMap.is_section_reachable)。
@@ -2252,7 +2280,7 @@ func _on_party_card_pressed(party_id: int) -> void:
 func _on_form_party_pressed() -> void:
 	var selected := party_form_list.get_selected_items()
 	if selected.is_empty():
-		party_form_status_label.text = "NPCを選択してください"
+		party_form_status_label.text = "探索者を選択してください"
 		return
 	if selected.size() > Parties.MAX_PARTY_SIZE:
 		party_form_status_label.text = "パーティは最大%d人までです" % Parties.MAX_PARTY_SIZE
@@ -2477,7 +2505,7 @@ func _on_forecast_pressed() -> void:
 		section_forecast_label.text = "予測報酬(1ヶ月): 約%d資金(通常時は約%d資金) / 撤退リスク: 約%d%%(「%s」で撤退の恐れ)" % [
 			result["predicted_income"], result["base_income"], roundi(result["retreat_probability"] * 100), result["risk_node_name"]]
 
-## 武器防具屋パネル(design.md 6.2節)。選んだNPCのジョブに応じた武器種別・防具カテゴリの
+## 武器防具屋パネル(design.md 6.2節)。選んだ探索者のジョブに応じた武器種別・防具カテゴリの
 ## 材質等級ボタンを並べ、購入するとその場で装備が切り替わる(既に装備中の等級はボタンを無効化)。
 func _build_shop_ui() -> void:
 	shop_panel = PanelContainer.new()
@@ -2562,7 +2590,7 @@ func _refresh_shop_offers() -> void:
 	for tier in Equipment.all_tiers():
 		shop_armor_row.add_child(_create_shop_tier_button(tier, armor_kind_name, "armor", current_armor_tier))
 
-## current_tierは今そのNPCが装備している等級(未装備なら-1)。Tierは等級が上がるほど戦力・価格が
+## current_tierは今その探索者が装備している等級(未装備なら-1)。Tierは等級が上がるほど戦力・価格が
 ## 単調に増える設計(equipment.gd参照)なので、現在の装備より下位の等級は「買っても損しかない」
 ## 選択肢であり、押せないようにする(2026-09-15、「武器防具にメリットがないのにランク下の
 ## ものを買えてしまう」というバグ報告への対応)。current_tier==-1(転職直後で未装備等)の場合は
@@ -2702,7 +2730,7 @@ func _build_slot_ui() -> void:
 	# 「イベント確認が出来ない」という要望への対応(2026-09-14)。一度見ると二度と出ない
 	# 導入/初雇用/初撤退/初割り当ての説明会話4種を、確認のためだけに何度でも見返せるように、
 	# 「見た」フラグを丸ごとリセットするボタンを設定(セーブスロットパネル)に置く。
-	# セーブデータ自体(資金/NPC等)には触れない。
+	# セーブデータ自体(資金/探索者等)には触れない。
 	var reset_tutorial_button := Button.new()
 	reset_tutorial_button.text = "イベント会話をリセットする(確認用)"
 	reset_tutorial_button.tooltip_text = "導入/初雇用/初撤退/初割り当ての説明会話を、もう一度見られるようにします"
@@ -2735,7 +2763,7 @@ func _refresh_slot_list() -> void:
 		var active_mark := " (現在)" if slot["slot_id"] == SaveSystem.current_slot_id else ""
 		var label: String = slot["name"] if slot["name"] != "" else "スロット%d" % slot["slot_id"]
 		var idx := slot_list.item_count
-		slot_list.add_item("%s%s — 資金%d / Day%d / NPC%d人" % [
+		slot_list.add_item("%s%s — 資金%d / Day%d / 探索者%d人" % [
 			label, active_mark, slot["funds"], slot["day"], slot["npc_count"]])
 		slot_list.set_item_metadata(idx, slot["slot_id"])
 
@@ -2813,7 +2841,7 @@ const MAP_COLUMNS := 5
 const BASE_MAP_CELL_SIZE := Vector2(268, 100)
 const BASE_MAP_NODE_SIZE := Vector2(248, 74)
 const BASE_MAP_SECTION_GAP := 60.0
-const BASE_MAP_SECTION_HEADER := 40.0 # タイトル行+担当NPCアイコン行の2段分の高さ
+const BASE_MAP_SECTION_HEADER := 40.0 # タイトル行+担当探索者アイコン行の2段分の高さ
 const BASE_MAP_SECTION_PADDING := 12.0
 const BASE_MAP_OUTER_MARGIN := Vector2(20, 20)
 # マップ上部にフロートで重ねているエリアタブバー(_build_ui参照)のおおよその高さ。
@@ -2862,7 +2890,7 @@ func _seed_demo_world() -> void:
 	# ワールドの中身(エリア/セクション/フロア/イベント)はworld_data.gdが
 	# オートロードとして既に流し込み済み。ここではWorldMapの内容を
 	# UI(ノードグラフ)として描画するだけ。担当セクションの選択肢(section_tree)は
-	# NPC管理パネルを開くたびに_populate_section_treeで組み直す。
+	# 探索者管理パネルを開くたびに_populate_section_treeで組み直す。
 	for child in map_canvas.get_children():
 		child.queue_free()
 
@@ -3369,7 +3397,7 @@ func _on_map_canvas_draw() -> void:
 			drawn[pair] = true
 			map_canvas.draw_line(node_centers[id], node_centers[neighbor], Color(1, 1, 1, 0.3), 2.0)
 
-## 状態テキストに加えて、自身(雇用NPCが到達済み)/誰か(野良NPCのみが発見)/未踏破の3色に
+## 状態テキストに加えて、自身(雇用探索者が到達済み)/誰か(野良探索者のみが発見)/未踏破の3色に
 ## ノードを塗り分ける。未踏破の場所は名前も????にして隠す。踏破待ち(発見済みだが未突破)は
 ## 半透明にして「まだ先に進めない」ことを示す。
 func _refresh_map() -> void:
@@ -3596,7 +3624,7 @@ func _on_recruit_pressed() -> void:
 
 func _on_hire_pressed() -> void:
 	if Npcs.get_roster().size() >= Economy.employ_cap:
-		hire_status_label.text = "雇用上限(%d)に達しています。NPC管理パネルから施設を拡張すると増やせます" % Economy.employ_cap
+		hire_status_label.text = "雇用上限(%d)に達しています。探索者管理パネルから施設を拡張すると増やせます" % Economy.employ_cap
 		return
 	if _selected_candidate_index < 0 or _selected_candidate_index >= Recruitment.current_candidates.size():
 		hire_status_label.text = "候補を一覧から選択してください"
@@ -3628,7 +3656,7 @@ func _on_view_thread_pressed() -> void:
 		return
 	_open_section_thread(section_id)
 
-## セクションの掲示板スレッドを開く。NPC管理パネルの「このセクションのログを見る」ボタンと、
+## セクションの掲示板スレッドを開く。探索者管理パネルの「このセクションのログを見る」ボタンと、
 ## マップ上でセクション枠をダブルクリックした場合の両方から使う共通処理。
 func _open_section_thread(section_id: String) -> void:
 	viewing_thread_id = section_id
@@ -3663,7 +3691,7 @@ func _on_day_advanced(_day: int) -> void:
 	_refresh_roster()
 	_refresh_npc_detail()
 	_refresh_party_roster()
-	_refresh_party_detail() # NPCパネルと同様、パーティパネルを開いたまま倍速で進めても情報が古くならないようにする
+	_refresh_party_detail() # 探索者パネルと同様、パーティパネルを開いたまま倍速で進めても情報が古くならないようにする
 	_refresh_funds() # セクション攻略の一時金は月末を待たずその日のうちに入るため、日次でも反映する
 	SaveSystem.autosave()
 
@@ -3802,7 +3830,7 @@ const STATUS_COLORS := {
 	Parties.Status.IDLE: Color(0.35, 0.35, 0.38),
 }
 
-## NPC個人には状態を持たせていない(所属パーティの状態、design.md 4.7節)。未所属ならIDLE扱い。
+## 探索者個人には状態を持たせていない(所属パーティの状態、design.md 4.7節)。未所属ならIDLE扱い。
 func _npc_status_via_party(npc: Dictionary) -> int:
 	var party_id: int = npc["party_id"]
 	if party_id == -1:
@@ -3832,8 +3860,8 @@ const CANDIDATE_CARD_WIDTH := 130.0
 
 ## ロースターの正方形ポートレートカード1枚: [画像(正方形)]の下に[名前][状態]を並べる。
 ## 画像は未実装のため、血筋色の正方形+頭文字で代用している(将来ここをTextureRectへ
-## 差し替え、NPCごとの画像を表示する想定)。カード全体をtoggle_mode付きButtonにして、
-## どこをクリックしてもそのNPCの詳細ビューに切り替わるようにする(中の子要素は
+## 差し替え、探索者ごとの画像を表示する想定)。カード全体をtoggle_mode付きButtonにして、
+## どこをクリックしてもその探索者の詳細ビューに切り替わるようにする(中の子要素は
 ## mouse_filter=IGNOREにしてクリックをButtonまで素通りさせる)。
 ## 肖像画像(portrait_library.gd、2026-09-14追加)があればそれを表示し、無ければ血筋色+頭文字の
 ## 従来プレースホルダにフォールバックする(旧セーブ由来で未割り当ての場合の保険)。

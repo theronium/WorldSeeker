@@ -4,8 +4,9 @@ extends Node
 #
 # スクリプト形式(Array[Dictionary]):
 #   {
-#     "side": "left" | "right" | "none",
-#     "name": "表示名",
+#     "side": "left" | "right" | "none",   # left/rightは、その枠に話者の画像(EventPortraits)を出して明るくする。
+#                                          # 戦闘の敵はright、人物(衛兵・案内人など)はleft。noneは物の語りやナレーションで画像なし
+#     "name": "表示名",                    # 画像は、この名前(と会話の種別)から決まる(EventPortraits.portrait_id)
 #     "text": "セリフ",
 #     "next": int,                 # 省略時は現在の行+1。分岐なしの通常行はこれで進む
 #     "outcome": String,           # このキーがあれば、この行の表示後に即終了してoutcomeを通知

@@ -1,8 +1,8 @@
 extends Node
-# 雇用NPCの名簿管理。
+# 雇用探索者の名簿管理。
 #
 # 2026-09-14のパーティ制導入により、担当セクション/探索状態/回復待ち/踏破後の挙動は
-# パーティ単位(parties.gd)に移った。ここではNPC個人の資質(血筋/ジョブ/スキル/装備/
+# パーティ単位(parties.gd)に移った。ここでは探索者個人の資質(血筋/ジョブ/スキル/装備/
 # 固有スキル/所持品/HP/戦闘方針)だけを扱う。
 
 enum CombatAction { USE_ITEM, RETREAT }
@@ -12,7 +12,7 @@ var roster: Dictionary = {} # id -> npc data
 
 ## portrait_idを省略(空文字)すると血筋から新規抽選する。Recruitment側で候補提示の時点
 ## (雇用ボタンを押す前)から肖像を確定・表示しておきたいため、明示的に渡せるようにしてある
-## (雇用パネルのプレビューと実際に雇用されるNPCの肖像を一致させるため)。
+## (雇用パネルのプレビューと実際に雇用される探索者の肖像を一致させるため)。
 func hire(display_name: String, innate_traits: Dictionary, base_skills: Dictionary = {}, job: int = Jobs.Job.WARRIOR, portrait_id: String = "") -> int:
 	var id := _next_id
 	_next_id += 1
@@ -94,7 +94,7 @@ func power(id: int) -> int:
 		total += int(unique["value"])
 	return total
 
-## 装備。slotは"weapon"か"armor"。種類(Jobs.WeaponType/ArmorCategory)はそのNPCのジョブから
+## 装備。slotは"weapon"か"armor"。種類(Jobs.WeaponType/ArmorCategory)はその探索者のジョブから
 ## 一意に決まるため引数に取らず、材質等級(tier)だけを指定する(design.md 6.2節)。
 func equip(id: int, slot: String, tier: int) -> bool:
 	if not roster.has(id):
@@ -108,7 +108,7 @@ func equip(id: int, slot: String, tier: int) -> bool:
 			return false
 	return true
 
-## 転職(design.md 4.8節、半固定)。スキルLv・経験値・固有スキルは変化しない(そのNPC個人の
+## 転職(design.md 4.8節、半固定)。スキルLv・経験値・固有スキルは変化しない(その探索者個人の
 ## 資質として維持される)。装備している武器・防具は新ジョブでは種類が合わなくなるため、
 ## 転職時に自動で外す(プレイヤーは武器防具屋で新ジョブに合った装備を買い直す)。
 func change_job(id: int, new_job: int) -> void:
@@ -140,7 +140,7 @@ func load_state(data: Dictionary) -> void:
 		# 旧セーブ(スキル追加前に保存されたもの)には、後から追加されたスキル(例: 2026-09-15の
 		# HEALING)の行がnpc_skillsテーブルに一切無い。ここで補わないと、skill_level()等の
 		# roster[id]["skills"][skill]アクセスがキー不在でエラーになる(Lv0からのスタートとして
-		# 補完すれば、新スキルも既存NPCが後から普通に鍛えられる)。
+		# 補完すれば、新スキルも既存探索者が後から普通に鍛えられる)。
 		for skill in SkillTypes.all_skills():
 			if not skills.has(skill):
 				skills[skill] = {"level": 0, "exp": 0}

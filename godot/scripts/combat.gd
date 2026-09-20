@@ -86,7 +86,7 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 	return {"result": "defeat" if any_defeated else "retreat"}
 
 ## exploration.gdのforecast_section(「予測」ボタン)用の非破壊シミュレーション。
-## resolve_party_encounter()と同じ計算式を使うが、NPCの実際のHP/経験値/回復状態には
+## resolve_party_encounter()と同じ計算式を使うが、探索者の実際のHP/経験値/回復状態には
 ## 一切書き込まない(dry run)。
 ## assume_full_hpをtrueにすると、今のHPではなく全員が満タンだった場合の結果を返す(「満タンでも勝てない=勝ち目が
 ## 無い」の判定用。exploration.gdの_is_hopeless_gate)。

@@ -2,7 +2,7 @@ extends Node
 # ワールドの階層構造(エリア > セクション > フロア)とノードグラフを保持する。
 #
 # - エリア(area)   : 国や地方などの最上位区分
-# - セクション(section): ダンジョンやフィールドなど、NPCの担当エリア割り当ての単位
+# - セクション(section): ダンジョンやフィールドなど、探索者の担当エリア割り当ての単位
 # - フロア(node)   : 個々の場所(ノードグラフの1ノード)
 #
 # ノードは3状態を取る:
@@ -10,8 +10,8 @@ extends Node
 #   発見済みだが進めない  found=true,  passed=false (ゲート未突破)
 #   突破済み         found=true,  passed=true
 #
-# さらに found=true のノードは、雇用NPC自身が到達したか(found_by_employed)を区別する。
-# 野良NPCだけが見つけた場所はfound=true/found_by_employed=falseのままになる
+# さらに found=true のノードは、雇用探索者自身が到達したか(found_by_employed)を区別する。
+# 野良探索者だけが見つけた場所はfound=true/found_by_employed=falseのままになる
 # (マップ表示で「自身/誰か/未踏破」の3色に塗り分けるための情報。design.md参照)。
 
 var areas: Dictionary = {} # area_id -> {id, name}
@@ -104,7 +104,7 @@ func is_area_reachable(area_id: String) -> bool:
 			return true
 	return false
 
-## NPCの担当割り当て先として選べるセクションかどうか。既に誰か(雇用/野良問わず)が
+## 探索者の担当割り当て先として選べるセクションかどうか。既に誰か(雇用/野良問わず)が
 ## 足を踏み入れているか、まだ誰も入っていなくても隣接する突破済みノードから
 ## 発見を試みられる状態(frontier_for_sectionが空でない)なら選べる。どちらでもない
 ## (世界のどこからも繋がっていない未到達地帯)セクションは選択肢から隠す対象になる。
@@ -230,7 +230,7 @@ func is_section_reward_claimed(section_id: String) -> bool:
 func mark_section_reward_claimed(section_id: String) -> void:
 	section_reward_claimed[section_id] = true
 
-## 踏破後の自動再配置(NPCのpost_clear_behavior=MOVE_ON)用: 同じエリア内でまだ完全攻略されていない
+## 踏破後の自動再配置(探索者のpost_clear_behavior=MOVE_ON)用: 同じエリア内でまだ完全攻略されていない
 ## セクションを優先し、無ければ次のエリア以降から順に探す。全て埋まっていれば空文字を返す。
 ## まだ世界のどこからも繋がっていない(is_section_reachable=false)セクションは選ばない: 配置転換しても
 ## 何も発見できず、パーティがそこで動けなくなるため。繋がった時に、改めて選ばれる(exploration.gdが毎日判定する)。

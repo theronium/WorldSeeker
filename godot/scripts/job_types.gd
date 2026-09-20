@@ -1,5 +1,5 @@
 class_name Jobs
-# NPCのジョブ(職業)定義。design.md 4.8節。SkillTypesと同じ静的定義パターン(オートロードではない)。
+# 探索者のジョブ(職業)定義。design.md 4.8節。SkillTypesと同じ静的定義パターン(オートロードではない)。
 # 既存5スキル(SkillTypes.Skill)に1対1対応する5職を用意する。
 
 enum Job { WARRIOR, HEAVY_WARRIOR, THIEF, SAGE, SCOUT }
