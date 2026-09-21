@@ -2665,9 +2665,14 @@ func _build_slot_ui() -> void:
 	# タッチUIは、画面の高さ(横向きで約720px)ぎりぎりまで使う。実機は日本語の代替フォントの行が高く、ボタンが
 	# 増えた分もあり、中身が画面をはみ出して、下端のステータス表示が見えなくなっていた(2026-09-20、実機で確認)。
 	# 中身はスクロールできるようにして、どんな画面の高さでも下のボタンまで届くようにする。
-	slot_panel.offset_left = -320
-	slot_panel.offset_right = 320
+	# 横3分割(一覧|ボタン1列|ボタン2列)にしたので、横長の画面を広く使う(2026-09-21)。
+	slot_panel.offset_left = -540
+	slot_panel.offset_right = 540
 	if _touch_ui:
+		slot_panel.anchor_left = 0.03
+		slot_panel.anchor_right = 0.97
+		slot_panel.offset_left = 0
+		slot_panel.offset_right = 0
 		# 実機のUIの領域は、切り欠き・角を避ける分、画面より小さい。ピクセルで高さを決めず、その領域の
 		# 高さに対する割合で上下いっぱい(少しだけ余白)に広げる。
 		slot_panel.anchor_top = 0.03
@@ -2677,6 +2682,14 @@ func _build_slot_ui() -> void:
 	else:
 		slot_panel.offset_top = -295
 		slot_panel.offset_bottom = 295
+	# 横に広げたので、既定の半透明のままだと背面の文字(資金・左のメニュー)が透けて重なる。ほぼ不透明にする。
+	var slot_panel_style := StyleBoxFlat.new()
+	slot_panel_style.bg_color = Color(0.10, 0.11, 0.15, 0.98)
+	slot_panel_style.border_color = Color(0.35, 0.40, 0.55)
+	slot_panel_style.set_border_width_all(2)
+	slot_panel_style.set_corner_radius_all(6)
+	slot_panel_style.set_content_margin_all(10)
+	slot_panel.add_theme_stylebox_override("panel", slot_panel_style)
 	slot_panel.visible = false
 	add_child(slot_panel)
 
@@ -2705,18 +2718,30 @@ func _build_slot_ui() -> void:
 	manual_save_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(manual_save_status_label)
 
+	# 横3分割(2026-09-21、「ボタンが大半を占めるようになったので、リスト・ボタン1列・ボタン2列の3列にした方が
+	# 良いかも」との提案): 左=スロットの一覧と名前、中=スロットへの操作(1列)、右=新規プレイとシナリオ・ファイル系(2列)。
+	# 横長の画面を使って、縦に並べていた時の縦スクロールをなくす。
+	var body := HBoxContainer.new()
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 12)
+	col.add_child(body)
+
+	# --- 左: 一覧と名前 ---
+	var list_col := VBoxContainer.new()
+	list_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_col.size_flags_stretch_ratio = 2.3
+	body.add_child(list_col)
+
 	slot_list = ItemList.new()
-	# タッチUIはボタンが高い分、パネル全体が画面の高さ(約650px)を超えてしまうため、一覧の最小高を詰める
-	# (一覧自体はスクロールできるので、スロットが多くても操作はできる)。
-	slot_list.custom_minimum_size = Vector2(0, 110 if _touch_ui else 220)
+	slot_list.custom_minimum_size = Vector2(0, 260)
 	slot_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(slot_list)
+	list_col.add_child(slot_list)
 
 	# スロットに名前を付けられるように(2026-09-14)。1つの入力欄を、選択中スロットの
 	# 「名前を変更する」と、次に「新規プレイを開始する」際の名前付けの両方で使い回す
 	# (どちらのボタンを押した時点のテキストを使うかは各ハンドラ側で決まる)。
 	var name_row := HBoxContainer.new()
-	col.add_child(name_row)
+	list_col.add_child(name_row)
 	var name_label := Label.new()
 	name_label.text = "名前:"
 	name_row.add_child(name_label)
@@ -2725,20 +2750,16 @@ func _build_slot_ui() -> void:
 	slot_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_row.add_child(slot_name_input)
 	var rename_button := Button.new()
-	rename_button.text = "選択中の名前を変更"
-	rename_button.tooltip_text = "一覧で選択中のスロットの名前を、上の入力欄の内容に変更する"
+	rename_button.text = "名前を変更"
+	rename_button.tooltip_text = "一覧で選択中のスロットの名前を、左の入力欄の内容に変更する"
 	rename_button.pressed.connect(_on_rename_slot_pressed)
 	name_row.add_child(rename_button)
 
-	# ボタンを全部縦に並べると数が増えるたびにパネルの下端からはみ出してしまっていたため、
-	# 2列に分けて縦の高さを抑える。左列は「今どのスロットに対しても行う」保存系の操作、
-	# 右列はリストで選択したスロットに対する操作+新規プレイ、という分担。
-	var actions_row := HBoxContainer.new()
-	col.add_child(actions_row)
-
-	var left_col := VBoxContainer.new()
-	left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	actions_row.add_child(left_col)
+	# --- 中: スロットへの操作(1列) ---
+	var op_col := VBoxContainer.new()
+	op_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	op_col.size_flags_stretch_ratio = 1.0
+	body.add_child(op_col)
 
 	# オートセーブ(日次/終了時)とは別に、プレイヤーが好きなタイミングで明示的に保存できる
 	# 手段が無く、「新規プレイを開始する」の内部処理(離れる前のスロットを保存)頼みになって
@@ -2746,7 +2767,12 @@ func _build_slot_ui() -> void:
 	var manual_save_button := Button.new()
 	manual_save_button.text = "今すぐセーブする"
 	manual_save_button.pressed.connect(_on_manual_save_pressed)
-	left_col.add_child(manual_save_button)
+	op_col.add_child(manual_save_button)
+
+	var open_button := Button.new()
+	open_button.text = "このスロットをロードする"
+	open_button.pressed.connect(_on_open_slot_pressed)
+	op_col.add_child(open_button)
 
 	# 「新規プレイ」は進行をゼロから作り直してしまうため、今の進行を保ったまま別スロットへ
 	# 分岐させたい(色々試す前のチェックポイントを残したい)場合の手段が無かった。ファイルを
@@ -2755,59 +2781,32 @@ func _build_slot_ui() -> void:
 	duplicate_button.text = "進行を複製する(分岐用)"
 	duplicate_button.tooltip_text = "現在の進行を複製する(分岐用の新規スロットを作る)"
 	duplicate_button.pressed.connect(_on_duplicate_slot_pressed)
-	left_col.add_child(duplicate_button)
-
-	# 別の端末/場所へ移すための書き出しと取り込み(2026-09-20)。保存先・取り込み元はOSのファイル選択で選ぶ
-	# (Androidでは、Googleドライブやダウンロードなども選べる画面が開く)。
-	var export_button := Button.new()
-	export_button.text = "全スロットを書き出す"
-	export_button.tooltip_text = "全てのスロットを1つのファイル(zip)にまとめて、選んだ場所へ保存する(バックアップ・別の端末への移行用)"
-	export_button.pressed.connect(_on_export_pressed)
-	left_col.add_child(export_button)
-
-	var import_button := Button.new()
-	import_button.text = "ファイルから取り込む"
-	import_button.tooltip_text = "書き出したファイルからスロットを選んで、新しいスロットとして追加する(今のスロットは変わらない)"
-	import_button.pressed.connect(_on_import_pressed)
-	left_col.add_child(import_button)
-
-	var right_col := VBoxContainer.new()
-	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	actions_row.add_child(right_col)
-
-	# エディタ(PC)で作ったシナリオのzipを取り込む・スマホに入っているカスタムシナリオを整理する(2026-09-21)。
-	# 取り込んだシナリオは、上の「シナリオ:」の一覧に出る(新規プレイで遊べる)。
-	var scenario_actions_row := HBoxContainer.new()
-	col.add_child(scenario_actions_row)
-
-	var scenario_import_button := Button.new()
-	scenario_import_button.text = "シナリオを取り込む"
-	scenario_import_button.tooltip_text = "エディタで書き出したシナリオのファイル(zip)を選んで、カスタムシナリオとして追加する(同じIDが既にあれば、確認して上書き)"
-	scenario_import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scenario_import_button.pressed.connect(_on_scenario_import_pressed)
-	scenario_actions_row.add_child(scenario_import_button)
-
-	var scenario_manage_button := Button.new()
-	scenario_manage_button.text = "カスタムシナリオの管理"
-	scenario_manage_button.tooltip_text = "取り込んだカスタムシナリオの一覧を見て、いらないものを削除する"
-	scenario_manage_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scenario_manage_button.pressed.connect(_on_scenario_manage_pressed)
-	scenario_actions_row.add_child(scenario_manage_button)
-
-	var open_button := Button.new()
-	open_button.text = "このスロットをロードする"
-	open_button.pressed.connect(_on_open_slot_pressed)
-	right_col.add_child(open_button)
+	op_col.add_child(duplicate_button)
 
 	var delete_button := Button.new()
 	delete_button.text = "選択したスロットを削除する"
 	delete_button.pressed.connect(_on_delete_slot_pressed)
-	right_col.add_child(delete_button)
+	op_col.add_child(delete_button)
+
+	# オートセーブを切りたい(手動セーブだけで管理したい)という要望への対応。
+	# チェック状態はworldseeker_meta.cfgに永続化し、次回起動後も引き継ぐ(SaveSystem.autosave_enabled)。
+	autosave_checkbox = CheckBox.new()
+	autosave_checkbox.text = "オートセーブを有効にする"
+	autosave_checkbox.tooltip_text = "日次/終了時に、自動でセーブする"
+	autosave_checkbox.button_pressed = SaveSystem.autosave_enabled
+	autosave_checkbox.toggled.connect(SaveSystem.set_autosave_enabled)
+	op_col.add_child(autosave_checkbox)
+
+	# --- 右: 新規プレイとシナリオ・ファイル系(2列) ---
+	var new_col := VBoxContainer.new()
+	new_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	new_col.size_flags_stretch_ratio = 1.7
+	body.add_child(new_col)
 
 	# 新規プレイで遊ぶシナリオ(2026-09-21、docs/scenario_editor.md)。エディタで作った/直した内容は、
 	# ここで選んで新規プレイを始めた時に読み込まれる(遊び始めたスロットは、その時点の内容のまま続く)。
 	var scenario_row := HBoxContainer.new()
-	right_col.add_child(scenario_row)
+	new_col.add_child(scenario_row)
 	var scenario_label := Label.new()
 	scenario_label.text = "シナリオ:"
 	scenario_row.add_child(scenario_label)
@@ -2820,15 +2819,44 @@ func _build_slot_ui() -> void:
 	var new_game_button := Button.new()
 	new_game_button.text = "新規プレイを開始する"
 	new_game_button.pressed.connect(_on_new_game_pressed)
-	right_col.add_child(new_game_button)
+	new_col.add_child(new_game_button)
 
-	# オートセーブを切りたい(手動セーブだけで管理したい)という要望への対応。
-	# チェック状態はworldseeker_meta.cfgに永続化し、次回起動後も引き継ぐ(SaveSystem.autosave_enabled)。
-	autosave_checkbox = CheckBox.new()
-	autosave_checkbox.text = "オートセーブを有効にする(日次/終了時)"
-	autosave_checkbox.button_pressed = SaveSystem.autosave_enabled
-	autosave_checkbox.toggled.connect(SaveSystem.set_autosave_enabled)
-	col.add_child(autosave_checkbox)
+	var transfer_grid := GridContainer.new()
+	transfer_grid.columns = 2
+	transfer_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	new_col.add_child(transfer_grid)
+
+	# エディタ(PC)で作ったシナリオのzipを取り込む・スマホに入っているカスタムシナリオを整理する(2026-09-21)。
+	# 取り込んだシナリオは、上の「シナリオ:」の一覧に出る(新規プレイで遊べる)。
+	var scenario_import_button := Button.new()
+	scenario_import_button.text = "シナリオを取り込む"
+	scenario_import_button.tooltip_text = "エディタで書き出したシナリオのファイル(zip)を選んで、カスタムシナリオとして追加する(同じIDが既にあれば、確認して上書き)"
+	scenario_import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scenario_import_button.pressed.connect(_on_scenario_import_pressed)
+	transfer_grid.add_child(scenario_import_button)
+
+	var scenario_manage_button := Button.new()
+	scenario_manage_button.text = "シナリオの管理"
+	scenario_manage_button.tooltip_text = "取り込んだカスタムシナリオの一覧を見て、いらないものを削除する"
+	scenario_manage_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scenario_manage_button.pressed.connect(_on_scenario_manage_pressed)
+	transfer_grid.add_child(scenario_manage_button)
+
+	# 別の端末/場所へ移すための書き出しと取り込み(2026-09-20)。保存先・取り込み元はOSのファイル選択で選ぶ
+	# (Androidでは、Googleドライブやダウンロードなども選べる画面が開く)。
+	var export_button := Button.new()
+	export_button.text = "全スロットを書き出す"
+	export_button.tooltip_text = "全てのスロットを1つのファイル(zip)にまとめて、選んだ場所へ保存する(バックアップ・別の端末への移行用)"
+	export_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	export_button.pressed.connect(_on_export_pressed)
+	transfer_grid.add_child(export_button)
+
+	var import_button := Button.new()
+	import_button.text = "セーブを取り込む"
+	import_button.tooltip_text = "書き出したファイルからスロットを選んで、新しいスロットとして追加する(今のスロットは変わらない)"
+	import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	import_button.pressed.connect(_on_import_pressed)
+	transfer_grid.add_child(import_button)
 
 	# 「イベント確認が出来ない」という要望への対応(2026-09-14)。一度見ると二度と出ない
 	# 導入/初雇用/初撤退/初割り当ての説明会話4種を、確認のためだけに何度でも見返せるように、
@@ -2838,7 +2866,7 @@ func _build_slot_ui() -> void:
 	reset_tutorial_button.text = "イベント会話をリセットする(確認用)"
 	reset_tutorial_button.tooltip_text = "導入/初雇用/初撤退/初割り当ての説明会話を、もう一度見られるようにします"
 	reset_tutorial_button.pressed.connect(_on_reset_tutorials_pressed)
-	col.add_child(reset_tutorial_button)
+	new_col.add_child(reset_tutorial_button)
 
 	new_game_confirm = ConfirmationDialog.new()
 	new_game_confirm.dialog_text = "現在の進行とは別に、新しいセーブスロットでゼロから始めます。よろしいですか？"
