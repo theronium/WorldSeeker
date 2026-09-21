@@ -16,6 +16,9 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
 
+const zip = require('./zip.js');
+const Logic = require('./public/logic.js');
+
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 
 function argValue(name) {
@@ -54,7 +57,8 @@ const MIME = {
 };
 
 class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  // extra: 応答のJSONに足す項目(例: 取り込みで同じIDが既にある時の {exists: true, id, name})
+  constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; }
 }
 
 function rootFor(source) {
@@ -155,6 +159,26 @@ function validateEventShape(event, eventId) {
 
 const WORLD_ID = /^[a-z0-9][a-z0-9_]{0,60}$/;
 
+// ゲートの形の検査。ゲームは、種類ごとの決まったキーを、存在を前提に読む(WorldMap.can_pass_gate)ので、無いと読み込み後にエラーになる。
+// 技能名は、ゲームがSkillTypes.Skillの名前で引く(不正な名前は、読み込みの時点でエラーになる)
+function validateGateShape(gate, floorId) {
+  const type = gate.type;
+  if (type === undefined) {
+    if (Object.keys(gate).length) throw new HttpError(400, `フロア(${floorId})のゲートに種類がありません`);
+    return;
+  }
+  const number = (key) => typeof gate[key] === 'number' && Number.isFinite(gate[key]);
+  const text = (key) => typeof gate[key] === 'string';
+  const bad = (what) => { throw new HttpError(400, `フロア(${floorId})のゲートの${what}が正しくありません`); };
+  if (type === 'combat') { if (gate.enemy_power !== undefined && !number('enemy_power')) bad('敵の戦闘力'); }
+  else if (type === 'skill') {
+    if (!text('skill') || !Object.prototype.hasOwnProperty.call(Logic.SKILL_NAMES, gate.skill)) bad('技能');
+    if (!number('min_level')) bad('必要レベル');
+  } else if (type === 'item') { if (!text('item')) bad('アイテム'); }
+  else if (type === 'innate_trait') { if (!text('trait') || !text('value')) bad('特性'); }
+  else throw new HttpError(400, `フロア(${floorId})のゲートの種類が正しくありません: ${type}`);
+}
+
 // world.jsonの形の検査。意味の検証(参照の整合など)は、エディタ側(worldlogic.js)とゲームの読み込みが受け持つ。
 // ここでは、ゲームが読めなくなるほどの形の崩れ(型・ID)だけを止める
 function validateWorldShape(world) {
@@ -174,6 +198,7 @@ function validateWorldShape(world) {
     if (typeof node.section !== 'string') throw new HttpError(400, `フロア(${node.id})にセクションがありません`);
     if (!Array.isArray(node.connections) || node.connections.some((c) => typeof c !== 'string')) throw new HttpError(400, `フロア(${node.id})の接続が正しくありません`);
     if (!node.gate || typeof node.gate !== 'object' || Array.isArray(node.gate)) throw new HttpError(400, `フロア(${node.id})のゲートが正しくありません`);
+    validateGateShape(node.gate, node.id);
   }
   return { items: world.items, areas: world.areas, sections: world.sections, nodes: world.nodes };
 }
@@ -193,6 +218,148 @@ async function saveWorld(dir, body) {
   for (const event of events) await writeJson(path.join(dir, 'events', `${event.id}.json`), event);
   await writeJson(path.join(dir, 'world.json'), world);
   return { ok: true, eventsUpdated: events.length };
+}
+
+// --- シナリオのzip(書き出し/取り込み。docs/scenario_editor.md「スマホへの持ち込み」) ---
+// 中身は、manifest.json(形式の印)と、シナリオのフォルダの中身そのまま(scenario.json / world.json / cast.json /
+// events/*.json / images/*.png)。ゲーム(godot/scripts/scenario_transfer.gd)も、同じ形を、同じ規則で検査して読む。
+
+const ZIP_FORMAT = 'worldseeker-scenario';
+const ZIP_FORMAT_VERSION = 1;
+const MAX_ZIP_BYTES = 48 * 1024 * 1024;
+const ZIP_LIMITS = { maxEntries: 1500, maxEntryBytes: MAX_IMAGE_BYTES, maxTotalBytes: 64 * 1024 * 1024 };
+const ZIP_JSON_FILE = /^(manifest|scenario|world|cast)\.json$/;
+const ZIP_EVENT_FILE = /^events\/([a-z0-9][a-z0-9_]{0,80})\.json$/;
+const ZIP_IMAGE_FILE = /^images\/([A-Za-z0-9_-]{1,60}\.png)$/;
+
+async function buildScenarioZip(dir, id) {
+  const meta = await readJson(path.join(dir, 'scenario.json'), null);
+  if (!meta) throw new HttpError(404, 'シナリオが見つかりません');
+  const manifest = { format: ZIP_FORMAT, version: ZIP_FORMAT_VERSION, id, name: meta.name || id, exported_at: new Date().toISOString() };
+  const entries = [{ name: 'manifest.json', data: Buffer.from(stringify(manifest)) }];
+  for (const file of ['scenario.json', 'world.json', 'cast.json']) {
+    try { entries.push({ name: file, data: await fsp.readFile(path.join(dir, file)) }); }
+    catch (e) { if (e.code !== 'ENOENT') throw e; }
+  }
+  let names = [];
+  try { names = (await fsp.readdir(path.join(dir, 'events'))).sort(); } catch { /* イベント無し */ }
+  for (const file of names) {
+    if (file.endsWith('.json') && EVENT_ID.test(file.slice(0, -5))) entries.push({ name: `events/${file}`, data: await fsp.readFile(path.join(dir, 'events', file)) });
+  }
+  try { names = (await fsp.readdir(path.join(dir, 'images'))).sort(); } catch { names = []; }
+  for (const file of names) {
+    if (IMAGE_NAME.test(file)) entries.push({ name: `images/${file}`, data: await fsp.readFile(path.join(dir, 'images', file)), store: true });
+  }
+  return zip.createZip(entries);
+}
+
+function parseJsonEntry(entry) {
+  if (entry.data.length > MAX_JSON_BYTES) throw new HttpError(400, `${entry.name}が大きすぎます`);
+  try { return JSON.parse(entry.data.toString('utf8')); } catch { throw new HttpError(400, `${entry.name}をJSONとして読めません`); }
+}
+
+const CONDITION_KEYS = { day_min: [['day', 'number']], flag: [['flag', 'string']], floor_found: [['floor', 'string']], floor_passed: [['floor', 'string']], section_entered: [['section', 'string']], area_entered: [['area', 'string']] };
+const EFFECT_KEYS = { set_flag: [['flag', 'string']], funds: [['amount', 'number']], grant_item: [['item', 'string']], open_floor: [['floor', 'string']] };
+
+// 取り込むイベントの検査。ゲーム(ScenarioEvents)が、種類ごとの決まったキーを、存在を前提に読む(無いと発生の時にエラーになる)
+function validateEventDeep(event, fileId) {
+  validateEventShape(event, fileId);
+  const where = `イベント(${fileId})`;
+  if (!['gate', 'conditions', 'system'].includes(event.trigger.type)) throw new HttpError(400, `${where}の発生のしかたが正しくありません: ${event.trigger.type}`);
+  const isObject = (x) => x && typeof x === 'object' && !Array.isArray(x);
+  const checkList = (list, table, what) => {
+    for (const item of list || []) {
+      if (!isObject(item) || !table[item.type]) throw new HttpError(400, `${where}の${what}に、対応していない種類があります: ${isObject(item) ? item.type : '(形式不正)'}`);
+      for (const [key, kind] of table[item.type]) {
+        if (typeof item[key] !== kind) throw new HttpError(400, `${where}の${what}(${item.type})の${key}が正しくありません`);
+      }
+    }
+  };
+  checkList(event.conditions, CONDITION_KEYS, '条件');
+  checkList(event.effects, EFFECT_KEYS, '効果');
+  for (const line of event.script) {
+    if (!isObject(line)) throw new HttpError(400, `${where}の会話に、形式が正しくない行があります`);
+    if (line.choices !== undefined && (!Array.isArray(line.choices) || line.choices.some((c) => !isObject(c)))) throw new HttpError(400, `${where}の選択肢の形式が正しくありません`);
+  }
+}
+
+// zipを読み、決まった名前のファイルだけを拾って、全て検査する(ファイル名は信用しない)。
+// 戻り値: {meta, world, files: [{name(フォルダ内の相対パス), data}], summary}。何も書かない
+function parseScenarioZip(buffer) {
+  let entries;
+  try { entries = zip.readZip(buffer, ZIP_LIMITS); }
+  catch (e) { if (e instanceof zip.ZipError) throw new HttpError(400, e.message); throw e; }
+  const json = {};
+  const events = new Map();
+  const images = new Map();
+  let ignored = 0;
+  for (const entry of entries) {
+    let m;
+    if ((m = ZIP_JSON_FILE.exec(entry.name))) json[m[1]] = entry;
+    else if ((m = ZIP_EVENT_FILE.exec(entry.name))) events.set(m[1], entry);
+    else if ((m = ZIP_IMAGE_FILE.exec(entry.name))) images.set(m[1], entry);
+    else ignored++;
+  }
+  if (!json.manifest) throw new HttpError(400, 'WorldSeekerのシナリオのファイルではありません');
+  const manifest = parseJsonEntry(json.manifest);
+  if (!manifest || manifest.format !== ZIP_FORMAT) {
+    throw new HttpError(400, manifest && manifest.format === 'worldseeker-saves' ? 'これはセーブのファイルです(シナリオのファイルではありません)' : 'WorldSeekerのシナリオのファイルではありません');
+  }
+  if (Number(manifest.version) > ZIP_FORMAT_VERSION) throw new HttpError(400, '新しい版のエディタで書き出したファイルです。エディタを更新してください');
+  if (!json.scenario || !json.world) throw new HttpError(400, 'シナリオの必須ファイル(scenario.json / world.json)がありません');
+  const meta = parseJsonEntry(json.scenario);
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta) || typeof meta.id !== 'string' || !SCENARIO_ID.test(meta.id)) throw new HttpError(400, 'scenario.jsonのIDが正しくありません');
+  if (meta.format !== undefined && Number(meta.format) > 1) throw new HttpError(400, 'scenario.jsonが新しい形式です。エディタを更新してください');
+  if (typeof meta.name !== 'string') throw new HttpError(400, 'scenario.jsonに名前がありません');
+  const world = validateWorldShape(parseJsonEntry(json.world));
+  const files = [{ name: 'scenario.json', data: json.scenario.data }, { name: 'world.json', data: json.world.data }];
+  if (json.cast) {
+    const cast = parseJsonEntry(json.cast);
+    if (!Array.isArray(cast) || cast.some((c) => !c || typeof c !== 'object' || typeof c.name !== 'string')) throw new HttpError(400, 'cast.jsonの形式が正しくありません');
+    files.push({ name: 'cast.json', data: json.cast.data });
+  }
+  for (const [id, entry] of events) {
+    validateEventDeep(parseJsonEntry(entry), id);
+    files.push({ name: `events/${id}.json`, data: entry.data });
+  }
+  for (const [name, entry] of images) {
+    if (!pngInfo(entry.data)) throw new HttpError(400, `画像がPNGではありません: ${name}`);
+    files.push({ name: `images/${name}`, data: entry.data });
+  }
+  return { meta, world, files, summary: { eventCount: events.size, floorCount: world.nodes.length, imageCount: images.size, ignored } };
+}
+
+// 検査済みのシナリオをフォルダへ書く。同じIDが既にある時は、overwriteの時だけ置き換える(一時フォルダに完成させてから入れ替える)
+async function installScenario(source, parsed, overwrite) {
+  const id = parsed.meta.id;
+  if (source === 'default' && id === 'default') throw new HttpError(400, '標準のシナリオ(default)は上書きできません');
+  const root = rootFor(source);
+  const target = path.join(root, id);
+  const already = await exists(target);
+  if (already && !overwrite) {
+    const current = await readJson(path.join(target, 'scenario.json'), null).catch(() => null);
+    throw new HttpError(409, `同じIDのシナリオが既にあります: ${id}`, { exists: true, id, name: (current && current.name) || id });
+  }
+  await fsp.mkdir(root, { recursive: true });
+  const tmp = path.join(root, `.import_${process.pid}_${Date.now()}`);
+  const old = `${tmp}_old`;
+  try {
+    for (const file of parsed.files) {
+      await fsp.mkdir(path.dirname(path.join(tmp, file.name)), { recursive: true });
+      await fsp.writeFile(path.join(tmp, file.name), file.data);
+    }
+    if (already) {
+      await fsp.rename(target, old);
+      try { await fsp.rename(tmp, target); } catch (e) { await fsp.rename(old, target); throw e; }
+      await fsp.rm(old, { recursive: true, force: true });
+    } else {
+      await fsp.rename(tmp, target);
+    }
+  } catch (e) {
+    await fsp.rm(tmp, { recursive: true, force: true });
+    throw e;
+  }
+  return { source, id, name: parsed.meta.name, overwritten: already, ...parsed.summary };
 }
 
 async function copyDir(from, to) {
@@ -293,6 +460,12 @@ async function handleApi(req, res, url) {
     if (method === 'GET') return sendJson(res, 200, await listScenarios());
     if (method === 'POST') return sendJson(res, 201, await createScenario(await readJsonBody(req)));
   }
+  if (method === 'POST' && parts.length === 2 && parts[1] === 'import') {
+    const source = url.searchParams.get('source') || 'custom';
+    rootFor(source);
+    const parsed = parseScenarioZip(await readBody(req, MAX_ZIP_BYTES));
+    return sendJson(res, 200, await installScenario(source, parsed, url.searchParams.get('overwrite') === '1'));
+  }
 
   const [, source, id, section, name] = parts;
   const dir = scenarioDir(source, id);
@@ -313,6 +486,11 @@ async function handleApi(req, res, url) {
     if (section === 'cast' && !Array.isArray(body)) throw new HttpError(400, '配列にしてください');
     await writeJson(path.join(dir, section === 'meta' ? 'scenario.json' : 'cast.json'), section === 'meta' ? { ...body, id } : body);
     return sendJson(res, 200, { ok: true });
+  }
+  if (parts.length === 4 && method === 'GET' && section === 'export') {
+    const data = await buildScenarioZip(dir, id);
+    res.writeHead(200, { 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="worldseeker_scenario_${id}.zip"`, 'Cache-Control': 'no-store' });
+    return res.end(data);
   }
   if (parts.length === 4 && method === 'PUT' && section === 'world') {
     return sendJson(res, 200, await saveWorld(dir, await readJsonBody(req)));
@@ -378,7 +556,7 @@ function createServer() {
       if (res.headersSent) { res.end(); return; }
       const status = err instanceof HttpError ? err.status : 500;
       if (status === 500) console.error(err);
-      sendJson(res, status, { error: err.message });
+      sendJson(res, status, { error: err.message, ...(err.extra || {}) });
     });
   });
 }
@@ -413,4 +591,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createServer, config };
+module.exports = { createServer, config, buildScenarioZip, parseScenarioZip };

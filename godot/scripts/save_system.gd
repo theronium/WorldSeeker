@@ -95,6 +95,17 @@ func reset_tutorial_flags() -> void:
 		cfg.set_value(key[0], key[1], false)
 	cfg.save(META_PATH)
 
+## カスタムシナリオを削除した時に、そのシナリオの案内会話の「見た」記録も消す(同じIDで取り込み直したら、
+## 導入会話がまた流れるように)。セーブスロットには触れない。
+func forget_scenario_records(source: String, scenario_id: String) -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(META_PATH) != OK:
+		return
+	var section := "tutorial_seen.%s.%s" % [source, scenario_id]
+	if cfg.has_section(section):
+		cfg.erase_section(section)
+		cfg.save(META_PATH)
+
 func _slot_path(slot_id: int) -> String:
 	return "%s/slot_%d.sqlite" % [SLOT_DIR, slot_id]
 

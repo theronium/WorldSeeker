@@ -168,6 +168,16 @@ var import_file_dialog: FileDialog
 var import_confirm: ConfirmationDialog
 var import_slot_list: ItemList
 var _import_slots: Array = [] # read_import_file()が返した取り込み候補(import_slot_listの行と同じ順)
+# シナリオの取り込み・カスタムシナリオの管理(ScenarioTransfer。docs/scenario_editor.md「スマホへの持ち込み」)。
+var scenario_import_file_dialog: FileDialog
+var scenario_import_confirm: ConfirmationDialog
+var scenario_manage_dialog: ConfirmationDialog
+var scenario_manage_list: ItemList
+var scenario_manage_hint: Label
+var scenario_import_label: Label
+var scenario_delete_confirm: ConfirmationDialog
+var _scenario_manage_entries: Array = [] # scenario_manage_listの行と同じ順のカスタムシナリオ
+var _pending_delete_scenario: Dictionary = {}
 
 var hire_panel: PanelContainer
 var npc_panel: PanelContainer
@@ -261,8 +271,10 @@ func _save_and_quit() -> void:
 ## 終了してしまった)。内側から順に、閉じられるものを1つだけ閉じる。何も開いていなければ
 ## 「もう一度押すと終了」を出し、猶予内にもう一度押されたときだけ終了する(誤操作対策)。
 func _on_go_back_requested() -> void:
-	for dialog in [new_game_confirm, delete_slot_confirm]:
+	for dialog in [new_game_confirm, delete_slot_confirm, scenario_import_confirm, scenario_manage_dialog, scenario_delete_confirm]:
 		if dialog.visible:
+			if dialog == scenario_import_confirm:
+				ScenarioTransfer.cancel_import() # 取り込みをやめる(展開した一時ファイルを消す)
 			dialog.hide()
 			return
 	if npc_panel.visible and npc_detail_view.visible:
@@ -2763,6 +2775,25 @@ func _build_slot_ui() -> void:
 	right_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions_row.add_child(right_col)
 
+	# エディタ(PC)で作ったシナリオのzipを取り込む・スマホに入っているカスタムシナリオを整理する(2026-09-21)。
+	# 取り込んだシナリオは、上の「シナリオ:」の一覧に出る(新規プレイで遊べる)。
+	var scenario_actions_row := HBoxContainer.new()
+	col.add_child(scenario_actions_row)
+
+	var scenario_import_button := Button.new()
+	scenario_import_button.text = "シナリオを取り込む"
+	scenario_import_button.tooltip_text = "エディタで書き出したシナリオのファイル(zip)を選んで、カスタムシナリオとして追加する(同じIDが既にあれば、確認して上書き)"
+	scenario_import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scenario_import_button.pressed.connect(_on_scenario_import_pressed)
+	scenario_actions_row.add_child(scenario_import_button)
+
+	var scenario_manage_button := Button.new()
+	scenario_manage_button.text = "カスタムシナリオの管理"
+	scenario_manage_button.tooltip_text = "取り込んだカスタムシナリオの一覧を見て、いらないものを削除する"
+	scenario_manage_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scenario_manage_button.pressed.connect(_on_scenario_manage_pressed)
+	scenario_actions_row.add_child(scenario_manage_button)
+
 	var open_button := Button.new()
 	open_button.text = "このスロットをロードする"
 	open_button.pressed.connect(_on_open_slot_pressed)
@@ -2860,14 +2891,63 @@ func _build_slot_ui() -> void:
 	import_confirm.canceled.connect(SaveSystem.cancel_import)
 	add_child(import_confirm)
 
+	# シナリオの取り込み(2026-09-21): ファイルの選択 → 検査 → 内容の確認(同じIDが既にあれば、上書きの確認を兼ねる)→ 取り込み。
+	scenario_import_file_dialog = FileDialog.new()
+	scenario_import_file_dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	scenario_import_file_dialog.access = FileDialog.ACCESS_FILESYSTEM
+	scenario_import_file_dialog.title = "取り込むシナリオのファイル"
+	scenario_import_file_dialog.add_filter("*.zip", "シナリオのファイル(zip)")
+	scenario_import_file_dialog.file_selected.connect(_on_scenario_import_file_selected)
+	add_child(scenario_import_file_dialog)
+
+	scenario_import_confirm = ConfirmationDialog.new()
+	scenario_import_confirm.title = "シナリオを取り込む"
+	scenario_import_confirm.ok_button_text = "取り込む"
+	scenario_import_confirm.cancel_button_text = "やめる"
+	scenario_import_label = Label.new()
+	scenario_import_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART # 日本語はAUTOWRAP_WORDだとAndroidで折り返されない
+	scenario_import_label.custom_minimum_size = Vector2(600, 0)
+	scenario_import_confirm.add_child(scenario_import_label)
+	scenario_import_confirm.confirmed.connect(_on_scenario_import_confirmed)
+	scenario_import_confirm.canceled.connect(ScenarioTransfer.cancel_import)
+	add_child(scenario_import_confirm)
+
+	# カスタムシナリオの管理(一覧と削除)。「選んだシナリオを削除」を押すと、確認を挟んで削除し、一覧を開き直す(続けて消せる)。
+	scenario_manage_dialog = ConfirmationDialog.new()
+	scenario_manage_dialog.title = "カスタムシナリオの管理"
+	scenario_manage_dialog.ok_button_text = "選んだシナリオを削除"
+	scenario_manage_dialog.cancel_button_text = "閉じる"
+	var manage_col := VBoxContainer.new()
+	scenario_manage_dialog.add_child(manage_col)
+	scenario_manage_hint = Label.new()
+	scenario_manage_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	scenario_manage_hint.custom_minimum_size = Vector2(600, 0)
+	manage_col.add_child(scenario_manage_hint)
+	scenario_manage_list = ItemList.new()
+	scenario_manage_list.custom_minimum_size = Vector2(600, 220)
+	scenario_manage_list.item_selected.connect(func(_index: int): scenario_manage_dialog.get_ok_button().disabled = false)
+	manage_col.add_child(scenario_manage_list)
+	scenario_manage_dialog.confirmed.connect(_on_scenario_manage_confirmed)
+	add_child(scenario_manage_dialog)
+
+	scenario_delete_confirm = ConfirmationDialog.new()
+	scenario_delete_confirm.ok_button_text = "削除する"
+	scenario_delete_confirm.cancel_button_text = "やめる"
+	scenario_delete_confirm.confirmed.connect(_on_scenario_delete_confirmed)
+	scenario_delete_confirm.canceled.connect(_on_scenario_manage_pressed.call_deferred) # やめたら、一覧へ戻る
+	add_child(scenario_delete_confirm)
+
 ## 新規プレイで選べるシナリオの一覧を作り直す。開いていたシナリオ(今の世界)を初期の選択にする。
 ## パネルを開くたびに呼ぶので、エディタで足した/消したシナリオが、ゲームを再起動せずに一覧へ出る。
-func _refresh_scenario_options() -> void:
+func _refresh_scenario_options(force_source: String = "", force_id: String = "") -> void:
 	var previous: Dictionary = {}
 	if new_game_scenario_option.selected >= 0:
 		previous = new_game_scenario_option.get_item_metadata(new_game_scenario_option.selected)
 	var preferred_id := String(previous.get("id", ScenarioEvents.info.get("id", "")))
 	var preferred_source := String(previous.get("source", ScenarioEvents.info.get("source", "default")))
+	if force_id != "": # 取り込んだシナリオを、新規プレイの選択にする
+		preferred_id = force_id
+		preferred_source = force_source
 	new_game_scenario_option.clear()
 	for entry in ScenarioStore.list_scenarios():
 		var label: String = entry["name"] if entry["source"] == "default" else "%s (カスタム)" % entry["name"]
@@ -2955,9 +3035,9 @@ func _on_duplicate_slot_pressed() -> void:
 ## 選んだパスは、on_selectedに渡す。書き出し先(save=true)にはMIME形式(application/zip)を付け、Androidが
 ## 保存するファイルの種類を取り違えないようにする。取り込み元にはMIME形式を付けない(ドライブなどが、zipを
 ## 別の種類として扱うことがあり、選べなくなるのを避ける。中身はSaveSystem.read_import_file()が確かめる)。
-func _show_file_dialog(save: bool, title: String, file_name: String, on_selected: Callable, fallback: FileDialog) -> void:
+func _show_file_dialog(save: bool, title: String, file_name: String, on_selected: Callable, fallback: FileDialog, filter_label: String = "セーブのファイル(zip)") -> void:
 	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
-		var filters := PackedStringArray(["*.zip;セーブのファイル(zip);application/zip" if save else "*.zip;セーブのファイル(zip)"])
+		var filters := PackedStringArray(["*.zip;%s;application/zip" % filter_label if save else "*.zip;%s" % filter_label])
 		var mode := DisplayServer.FILE_DIALOG_MODE_SAVE_FILE if save else DisplayServer.FILE_DIALOG_MODE_OPEN_FILE
 		# 選ばれた後の呼び出しは、メインスレッドで行う(OSの画面は別スレッドから知らせてくることがある)。
 		DisplayServer.file_dialog_show(title, "", file_name, false, mode, filters,
@@ -3014,6 +3094,67 @@ func _on_import_confirmed() -> void:
 		return
 	manual_save_status_label.text = "%d個のスロットを取り込みました(スロット%s)" % [
 		new_ids.size(), "、".join(new_ids.map(func(id): return str(id)))]
+
+## シナリオのzipを選んだ後: 中身を検査して、取り込む内容を見せる(ここではまだ何も取り込まない)。
+func _on_scenario_import_pressed() -> void:
+	_show_file_dialog(false, "取り込むシナリオのファイル", "", _on_scenario_import_file_selected, scenario_import_file_dialog, "シナリオのファイル(zip)")
+
+func _on_scenario_import_file_selected(path: String) -> void:
+	var result := ScenarioTransfer.read_import_file(path)
+	if not result["ok"]:
+		manual_save_status_label.text = "取り込めません: %s" % result["error"]
+		return
+	var lines := PackedStringArray()
+	lines.append("シナリオ「%s」(ID: %s)を取り込みます。" % [result["name"], result["id"]])
+	lines.append("フロア%d・イベント%d本・画像%d枚" % [result["floors"], result["events"], result["images"]])
+	if result["author"] != "":
+		lines.append("作者: %s" % result["author"])
+	if result["description"] != "":
+		lines.append(result["description"])
+	if result["exists"]:
+		lines.append("")
+		lines.append("同じIDのカスタムシナリオが既にあります。上書きします(元の内容には戻せません)。遊び始めているセーブは、そのまま遊べます。")
+	scenario_import_confirm.ok_button_text = "上書きして取り込む" if result["exists"] else "取り込む"
+	scenario_import_label.text = "\n".join(lines)
+	scenario_import_confirm.popup_centered()
+
+func _on_scenario_import_confirmed() -> void:
+	var result := ScenarioTransfer.install_import()
+	if not result["ok"]:
+		manual_save_status_label.text = "取り込めません: %s" % result["error"]
+		return
+	_refresh_scenario_options("custom", String(result["id"]))
+	manual_save_status_label.text = "シナリオ「%s」を%s取り込みました(「新規プレイを開始する」で遊べます)" % [
+		result["name"], "上書きして" if result["replaced"] else ""]
+
+## 取り込んだカスタムシナリオの一覧を開く。
+func _on_scenario_manage_pressed() -> void:
+	_scenario_manage_entries = ScenarioTransfer.list_custom()
+	scenario_manage_list.clear()
+	for entry in _scenario_manage_entries:
+		scenario_manage_list.add_item("%s (%s) — フロア%d・イベント%d本・画像%d枚" % [entry["name"], entry["id"], entry["floors"], entry["events"], entry["images"]])
+	scenario_manage_hint.text = "取り込んだカスタムシナリオです。削除しても、遊び始めているセーブは、そのまま遊べます。" if not _scenario_manage_entries.is_empty() else "カスタムシナリオは入っていません(「シナリオを取り込む」で追加できます)。"
+	scenario_manage_dialog.get_ok_button().disabled = true # 一覧で選ぶまで、削除は押せない
+	scenario_manage_dialog.popup_centered()
+
+func _on_scenario_manage_confirmed() -> void:
+	var selected := scenario_manage_list.get_selected_items()
+	if selected.is_empty():
+		return
+	_pending_delete_scenario = _scenario_manage_entries[selected[0]]
+	scenario_delete_confirm.dialog_text = "カスタムシナリオ「%s」を削除します。元に戻せません。\n(遊び始めているセーブは、そのまま遊べます)" % _pending_delete_scenario["name"]
+	scenario_delete_confirm.popup_centered()
+
+func _on_scenario_delete_confirmed() -> void:
+	var entry := _pending_delete_scenario
+	_pending_delete_scenario = {}
+	if not entry.is_empty() and ScenarioTransfer.delete_custom(String(entry["id"])):
+		SaveSystem.forget_scenario_records("custom", String(entry["id"])) # 同じIDで取り込み直したら、導入会話がまた流れるように
+		_refresh_scenario_options()
+		manual_save_status_label.text = "カスタムシナリオ「%s」を削除しました" % entry["name"]
+	else:
+		manual_save_status_label.text = "削除に失敗しました"
+	_on_scenario_manage_pressed.call_deferred() # 続けて他のシナリオも削除できるよう、一覧を開き直す
 
 ## 一度見ると二度と出ない説明用イベント会話4種を、確認用に未視聴の状態へ戻す。導入会話
 ## ("intro_part1")は起動時にしかトリガーできないため、リセット直後にこの場で

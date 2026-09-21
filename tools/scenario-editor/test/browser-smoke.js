@@ -8,7 +8,8 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const assert = require('assert');
-const { createServer, config } = require('../server.js');
+const { createServer, config, buildScenarioZip } = require('../server.js');
+const zipLib = require('../zip.js');
 
 const CANDIDATES = [
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
@@ -273,6 +274,37 @@ async function main() {
     check('新規シナリオ: カスタムとして作られ、開く', await waitFor(`document.querySelector('.source-badge.custom') !== null`));
     check('新規シナリオ: フォルダができる', fs.existsSync(path.join(config.customRoot, 'smoke_test', 'scenario.json')));
     check('新規シナリオ: 元(デフォルト)のコピー(先に足した1本を含む171本)', (await evaluate(`document.querySelector('.list-panel .muted').textContent`)).includes('171'));
+
+    // zipの書き出しと取り込み(スマホへの持ち込み。docs/scenario_editor.md)
+    const exportInfo = await evaluate(`(async () => { const r = await fetch('/api/scenarios/default/default/export'); return r.status + ':' + r.headers.get('content-type') + ':' + (await r.arrayBuffer()).byteLength; })()`);
+    check('zip書き出し: 標準のシナリオをzipで取得できる', exportInfo.startsWith('200:application/zip:'), exportInfo);
+    check('zip書き出し: ボタンがある', await evaluate(`document.getElementById('export-btn') !== null && document.getElementById('import-btn') !== null`));
+    const standardEntries = zipLib.readZip(await buildScenarioZip(path.join(config.defaultRoot, 'default'), 'default'));
+    const importedEntries = standardEntries.map((f) => (f.name === 'scenario.json'
+      ? { name: f.name, data: Buffer.from(JSON.stringify({ ...JSON.parse(f.data.toString('utf8')), id: 'imported_one', name: '取り込み試験' })) } : f));
+    const zipPath = path.join(tmp, 'imported_one.zip');
+    fs.writeFileSync(zipPath, zipLib.createZip(importedEntries));
+    const pickFile = async (filePath) => {
+      await click('#import-btn');
+      await waitFor(`document.querySelector('#import-file') !== null`);
+      const doc = await send('DOM.getDocument', { depth: -1 });
+      const found = await send('DOM.querySelector', { nodeId: doc.result.root.nodeId, selector: '#import-file' });
+      await send('DOM.setFileInputFiles', { nodeId: found.result.nodeId, files: [filePath] });
+      await click('.modal-buttons button', '取り込む');
+    };
+    await pickFile(zipPath);
+    check('zip取り込み: カスタムとして取り込まれ、そのシナリオが開く', await waitFor(`document.querySelector('#scenario-select').selectedOptions[0].textContent.includes('取り込み試験')`));
+    const importedEvents = path.join(config.customRoot, 'imported_one', 'events');
+    check('zip取り込み: フォルダに中身が入る', fs.existsSync(path.join(config.customRoot, 'imported_one', 'world.json')) && fs.readdirSync(importedEvents).length === fs.readdirSync(path.join(config.defaultRoot, 'default', 'events')).length);
+    await shot('08_imported');
+    await pickFile(zipPath);
+    check('zip取り込み: 同じIDが既にあると、上書きの確認が出る', await waitFor(`[...document.querySelectorAll('.modal')].some(m => m.textContent.includes('既にあります') && m.textContent.includes('取り込み試験'))`));
+    await click('.modal-buttons button', '上書き');
+    check('zip取り込み: 上書きして取り込める', await waitFor(`[...document.querySelectorAll('.toast')].some(t => t.textContent.includes('上書きして取り込みました'))`));
+    const notZip = path.join(tmp, 'not_a_zip.zip');
+    fs.writeFileSync(notZip, 'これはzipではありません。ただの文字列です。これはzipではありません。');
+    await pickFile(notZip);
+    check('zip取り込み: zipでないファイルは、エラーで断られる', await waitFor(`[...document.querySelectorAll('.toast.error')].some(t => t.textContent.includes('取り込めません'))`));
 
     check('JSエラーが出ていない', problems.length === 0, problems.join(' | '));
     ws.close();

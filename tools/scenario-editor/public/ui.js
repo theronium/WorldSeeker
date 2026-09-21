@@ -42,7 +42,12 @@ window.WS = window.WS || { state: {} };
     else if (body !== undefined) { init.body = JSON.stringify(body); init.headers['Content-Type'] = 'application/json'; }
     const res = await fetch(url, init);
     const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data && data.error ? data.error : `通信に失敗しました (HTTP ${res.status})`);
+    if (!res.ok) {
+      const error = new Error(data && data.error ? data.error : `通信に失敗しました (HTTP ${res.status})`);
+      error.status = res.status;
+      error.data = data; // 応答のJSON(取り込みで同じIDが既にある時の {exists, id, name} など)
+      throw error;
+    }
     return data;
   }
 

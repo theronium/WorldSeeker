@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const http = require('http');
 const { createServer, config } = require('../server.js');
+const { createZip, readZip } = require('../zip.js');
 
 const REAL_DEFAULT = path.resolve(__dirname, '..', '..', '..', 'godot', 'scenarios');
 // 最小のPNG(1x1)
@@ -137,6 +138,131 @@ test('マップの保存: 世界とイベントの書き換えを一緒に保存
   assert.strictEqual(r.status, 404); // 新しいイベントは、このAPIでは作れない
   r = await api('PUT', '/api/scenarios/custom/my_story/world', { world, events: [{ id: 'x', trigger: { type: 'conditions' } }] });
   assert.strictEqual(r.status, 400);
+});
+
+async function rawApi(method, url, body) {
+  const res = await fetch(base + url, { method, headers: { 'X-WS-Editor': '1' }, body });
+  const buffer = Buffer.from(await res.arrayBuffer());
+  let data;
+  try { data = JSON.parse(buffer.toString('utf8')); } catch { data = null; }
+  return { status: res.status, headers: res.headers, buffer, data };
+}
+
+test('シナリオのzip: 書き出し→削除→取り込みで元どおりになり、同じIDは確認(409)、overwriteで上書き', async () => {
+  const exported = await rawApi('GET', '/api/scenarios/custom/my_story/export');
+  assert.strictEqual(exported.status, 200);
+  assert.strictEqual(exported.headers.get('content-type'), 'application/zip');
+  assert.ok(exported.headers.get('content-disposition').includes('worldseeker_scenario_my_story.zip'));
+  const files = readZip(exported.buffer);
+  const names = files.map((f) => f.name);
+  assert.ok(['manifest.json', 'scenario.json', 'world.json', 'cast.json'].every((n) => names.includes(n)), names.slice(0, 6).join(','));
+  assert.strictEqual(names.filter((n) => n.startsWith('events/')).length, 170);
+  const manifest = JSON.parse(files.find((f) => f.name === 'manifest.json').data.toString('utf8'));
+  assert.strictEqual(manifest.format, 'worldseeker-scenario');
+  assert.strictEqual(manifest.id, 'my_story');
+
+  const before = await api('GET', '/api/scenarios/custom/my_story');
+  assert.strictEqual((await api('DELETE', '/api/scenarios/custom/my_story')).status, 200);
+  let r = await rawApi('POST', '/api/scenarios/import?source=custom', exported.buffer);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.data));
+  assert.strictEqual(r.data.id, 'my_story');
+  assert.strictEqual(r.data.overwritten, false);
+  assert.strictEqual(r.data.eventCount, 170);
+  const after = await api('GET', '/api/scenarios/custom/my_story');
+  assert.deepStrictEqual(after.data.world, before.data.world);
+  assert.deepStrictEqual(after.data.events, before.data.events);
+  assert.deepStrictEqual(after.data.meta, before.data.meta);
+  assert.deepStrictEqual(after.data.cast, before.data.cast);
+
+  r = await rawApi('POST', '/api/scenarios/import?source=custom', exported.buffer);
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual(r.data.exists, true);
+  assert.strictEqual(r.data.id, 'my_story');
+  await api('PUT', '/api/scenarios/custom/my_story/cast', []); // 取り込みで元に戻ることを見るため、先に変える
+  r = await rawApi('POST', '/api/scenarios/import?source=custom&overwrite=1', exported.buffer);
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.data.overwritten, true);
+  assert.deepStrictEqual((await api('GET', '/api/scenarios/custom/my_story')).data.cast, before.data.cast);
+  assert.deepStrictEqual(fs.readdirSync(config.customRoot).filter((n) => n.startsWith('.')), [], '一時フォルダが残っていない');
+});
+
+test('シナリオのzip: 画像も往復し、標準のシナリオ(default)は上書きできない', async () => {
+  assert.strictEqual((await api('POST', '/api/scenarios/custom/my_story/images?name=hero.png', PNG)).status, 200);
+  const exported = await rawApi('GET', '/api/scenarios/custom/my_story/export');
+  assert.ok(readZip(exported.buffer).some((f) => f.name === 'images/hero.png' && f.data.equals(PNG)));
+  await api('DELETE', '/api/scenarios/custom/my_story');
+  assert.strictEqual((await rawApi('POST', '/api/scenarios/import?source=custom', exported.buffer)).status, 200);
+  assert.strictEqual((await fetch(`${base}/scenario-images/custom/my_story/hero.png`)).status, 200);
+  await api('DELETE', '/api/scenarios/custom/my_story/images/hero.png');
+
+  // 標準のシナリオ(default/default)を、zipで上書きすることはできない(カスタムに同じIDで入れるのは可)
+  const std = await rawApi('GET', '/api/scenarios/default/default/export');
+  assert.strictEqual((await rawApi('POST', '/api/scenarios/import?source=default&overwrite=1', std.buffer)).status, 400);
+  assert.strictEqual((await rawApi('POST', '/api/scenarios/import?source=custom', std.buffer)).status, 200);
+  assert.strictEqual((await api('DELETE', '/api/scenarios/custom/default')).status, 200);
+});
+
+test('シナリオのzip: 不正なファイルを拒否する(zipでない・形式違い・不正なゲート/イベント/ID・展開爆弾)', async () => {
+  const good = readZip((await rawApi('GET', '/api/scenarios/default/default/export')).buffer);
+  const get = (name) => good.find((f) => f.name === name).data;
+  const json = (name) => JSON.parse(get(name).toString('utf8'));
+  const build = (mutate) => {
+    const entries = good.map((f) => ({ ...f }));
+    mutate(entries);
+    return createZip(entries.map((e) => ({ name: e.name, data: Buffer.isBuffer(e.data) ? e.data : Buffer.from(JSON.stringify(e.data)) })));
+  };
+  const setJson = (entries, name, value) => { entries.find((e) => e.name === name).data = Buffer.from(JSON.stringify(value)); };
+  const expectRejected = async (label, buffer, pattern) => {
+    const r = await rawApi('POST', '/api/scenarios/import?source=custom&overwrite=1', buffer);
+    assert.strictEqual(r.status, 400, `${label}: ${r.status} ${JSON.stringify(r.data)}`);
+    if (pattern) assert.match(r.data.error, pattern, label);
+  };
+  assert.ok(good.length > 100);
+
+  await expectRejected('zipでない', Buffer.from('not a zip file at all, just some plain text here'), /zip/);
+  await expectRejected('マニフェスト無し', build((e) => e.splice(e.findIndex((x) => x.name === 'manifest.json'), 1)), /シナリオのファイルではありません/);
+  await expectRejected('セーブのファイル', build((e) => setJson(e, 'manifest.json', { format: 'worldseeker-saves', version: 1 })), /セーブのファイル/);
+  await expectRejected('新しい版', build((e) => setJson(e, 'manifest.json', { format: 'worldseeker-scenario', version: 99 })), /新しい版/);
+  await expectRejected('IDが不正', build((e) => setJson(e, 'scenario.json', { ...json('scenario.json'), id: '../evil' })), /ID/);
+  await expectRejected('必須ファイル無し', build((e) => e.splice(e.findIndex((x) => x.name === 'world.json'), 1)), /必須ファイル/);
+  const badWorld = (mutate) => build((e) => { const w = json('world.json'); mutate(w); setJson(e, 'world.json', w); });
+  await expectRejected('不正な技能名', badWorld((w) => { w.nodes.find((n) => n.gate.type === 'skill').gate.skill = 'NOPE'; }), /技能/);
+  await expectRejected('技能ゲートにレベル無し', badWorld((w) => { delete w.nodes.find((n) => n.gate.type === 'skill').gate.min_level; }), /必要レベル/);
+  await expectRejected('不明なゲート種別', badWorld((w) => { w.nodes[3].gate = { type: 'magic' }; }), /種類/);
+  await expectRejected('IDの重複', badWorld((w) => { w.nodes.push({ ...w.nodes[0] }); }), /重複/);
+  const baseEvent = () => ({ id: 'zip_test_event', title: 'テスト', trigger: { type: 'conditions' }, conditions: [{ type: 'day_min', day: 3 }], repeat: false, priority: 0, kind: '', script: [{ side: 'none', name: '', text: 'x', outcome: 'ok' }], effects: [{ on: '*', type: 'funds', amount: 100 }] });
+  const withEvent = (mutate) => build((e) => { const ev = baseEvent(); mutate(ev); e.push({ name: 'events/zip_test_event.json', data: Buffer.from(JSON.stringify(ev)) }); });
+  // 正常な例は通る(下の失敗が、変更した点のせいだと分かるように)
+  const okResult = await rawApi('POST', '/api/scenarios/import?source=custom&overwrite=1', withEvent(() => {}));
+  assert.strictEqual(okResult.status, 200, JSON.stringify(okResult.data));
+  await expectRejected('効果のキー欠け', withEvent((ev) => { delete ev.effects[0].amount; }), /効果/);
+  await expectRejected('効果の値の型', withEvent((ev) => { ev.effects[0].amount = 'many'; }), /効果/);
+  await expectRejected('不明な効果', withEvent((ev) => { ev.effects[0].type = 'explode'; }), /効果/);
+  await expectRejected('条件のキー欠け', withEvent((ev) => { delete ev.conditions[0].day; }), /条件/);
+  await expectRejected('不明な発生のしかた', withEvent((ev) => { ev.trigger.type = 'magic'; }), /発生のしかた/);
+  await expectRejected('選択肢が配列でない', withEvent((ev) => { ev.script[0].choices = 'x'; }), /選択肢/);
+  await expectRejected('行がオブジェクトでない', withEvent((ev) => { ev.script.push('text'); }), /行/);
+  await expectRejected('イベントIDとファイル名の不一致', withEvent((ev) => { ev.id = 'other_name'; }), /イベント/);
+  await expectRejected('画像がPNGでない', build((e) => e.push({ name: 'images/fake.png', data: Buffer.from('not really a png, sorry') })), /PNG/);
+
+  // 展開爆弾(申告された大きさが嘘)
+  const bomb = createZip([{ name: 'manifest.json', data: Buffer.alloc(300000, 0x20) }]);
+  bomb.writeUInt32LE(20, bomb.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02])) + 24);
+  await expectRejected('展開爆弾', bomb, /zip/);
+});
+
+test('シナリオのzip: 決まった名前以外(../や余計なファイル)は無視され、外へは書かれない', async () => {
+  const good = readZip((await rawApi('GET', '/api/scenarios/custom/my_story/export')).buffer);
+  const entries = [...good, { name: '../evil.txt', data: Buffer.from('x') }, { name: 'events/../escape.json', data: Buffer.from('{}') }, { name: 'notes.txt', data: Buffer.from('memo') }, { name: 'images/..\\x.png', data: PNG }];
+  const r = await rawApi('POST', '/api/scenarios/import?source=custom&overwrite=1', createZip(entries));
+  assert.strictEqual(r.status, 200, JSON.stringify(r.data));
+  assert.strictEqual(r.data.ignored, 4);
+  assert.ok(!fs.existsSync(path.join(config.customRoot, '..', 'evil.txt')));
+  assert.ok(!fs.existsSync(path.join(config.customRoot, 'my_story', 'notes.txt')));
+  assert.ok(!fs.existsSync(path.join(config.customRoot, 'my_story', 'escape.json')));
+  // ヘッダ無しの取り込みは拒否
+  const res = await fetch(`${base}/api/scenarios/import?source=custom`, { method: 'POST', body: createZip(entries) });
+  assert.strictEqual(res.status, 403);
 });
 
 test('ライブラリ画像の一覧と配信', async () => {

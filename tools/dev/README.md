@@ -27,6 +27,8 @@ APPDATA=<空の隔離ディレクトリ> "$GODOT_EXE" --headless --path godot --
 | `survey_events.gd` | イベント会話のあるフロアの、ゲート種別ごとの集計 |
 | `sim_scenario_events.gd` | シナリオ・イベントの仕組み全体(docs/scenario_editor.md): カスタムシナリオでの新規開始と暦の起点、条件イベント(日数・フラグ)、効果(資金・フラグ・フロア開放)、ゲート結果の会話、セーブ往復、別シナリオへの切替と、編集後も古いスロットが遊び始めた時点のままか、旧形式スキーマの読込、画像の読込、読み込み時間 |
 | `sim_map_edit.gd` | マップ編集(tools/scenario-editor/)の確認: エディタのロジック(`worldlogic.js`)で編集したシナリオ(エリア・セクション・フロアの追加、ID変更、並べ替え、移動、削除、4種のゲート、アイテム定義)を、ゲーム本体が読めて、並び・接続・ゲート・アイテム・イベントが期待どおりか、追加したフロアを実際に発見できるか、セーブ往復。**前処理が要る**: `APPDATA=<隔離dir> node tools/scenario-editor/test/make_edited_scenario.js <隔離dir>/Godot/app_userdata/WorldSeeker/scenarios`(編集済みシナリオと期待値を書き出す)→ 同じ`APPDATA`で`--script`実行 |
+| `sim_scenario_transfer.gd` | シナリオのzipの取り込み(スマホへの持ち込み。`godot/scripts/scenario_transfer.gd`)の確認: エディタが書き出したzipを検査して取り込み、そのシナリオで新規プレイでき(画像も読める)、同じIDの上書き・遊び始めたセーブが無事・削除・相対パスの無視ができるか、不正なzip12種(セーブのファイル・新しい版・不正なID/技能/ゲートのキー/セクション/重複/効果・PNGでない画像・展開爆弾・zipでない)を何も取り込まずに断るか。**前処理が要る**: `APPDATA=<隔離dir> node tools/scenario-editor/test/make_transfer_zips.js <隔離dir>/Godot/app_userdata/WorldSeeker/transfer_test` → 同じ`APPDATA`で`--script`実行 |
+| `sim_scenario_transfer_ui.gd` | 上と同じzip(同じ前処理)で、メイン画面の操作の通し: 不正なzipの理由の表示、確認画面の内容、取り込み、上書きの確認、戻るキーでやめる(一時ファイルも消える)、管理の一覧・削除・開き直し |
 | `sim_scenario_ui.gd` | メイン画面を実際に組み立てて、シナリオ選択→新規プレイ→別の世界(エリアバー・マップ)の描画→標準へ戻す |
 | `export_default_scenario.gd` | (一度きりの移行ツール。元の`world_data.gd`を廃止したので、もう実行できない)デフォルトシナリオのJSONを書き出し、元のWorldMapと照合した |
 

@@ -143,6 +143,60 @@
     });
   }
 
+  // zipで書き出す(ブラウザのダウンロード)。中身は、ディスクに保存済みの内容。スマホへ運んで、ゲームの「シナリオを取り込む」で読む
+  async function exportScenario() {
+    const { source, id } = S.cur;
+    if (hasUnsaved() && !await confirmDialog('保存していない変更(イベントまたはマップ)があります。zipには、保存済みの内容だけが入ります。このまま書き出しますか?', '書き出す')) return;
+    const link = h('a', { href: `/api/scenarios/${source}/${id}/export`, download: `worldseeker_scenario_${id}.zip` });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    toast(`zipを書き出しました(ダウンロードのフォルダなど)。スマホへ運んで、ゲームの「シナリオを取り込む」で選んでください`);
+  }
+
+  // zipを取り込む(スマホで作り直したもの・他のPCや人から受け取ったもの・書き出したバックアップ)
+  function openImportDialog() {
+    const form = { source: 'custom' };
+    const fileInput = h('input', { type: 'file', accept: '.zip,application/zip', id: 'import-file' });
+    const body = h('div', { class: 'form' },
+      h('label', {}, 'シナリオのzipファイル(エディタで書き出したもの)', fileInput),
+      h('label', {}, '取り込み先', select([
+        { value: 'custom', label: 'カスタム(個人用・公開しない)' },
+        { value: 'default', label: 'デフォルト(リポジトリに含めて公開する)' },
+      ], form.source, (v) => { form.source = v; })),
+      h('p', { class: 'muted' }, '中身を全て検査してから取り込みます。同じIDのシナリオが既にある時は、上書きするか確認します。'));
+    openModal('zipから取り込む', body, {
+      buttons: [
+        { label: 'キャンセル', onclick: (close) => close() },
+        { label: '取り込む', primary: true, onclick: async (close) => {
+          const file = fileInput.files && fileInput.files[0];
+          if (!file) { toast('zipファイルを選んでください', 'error'); return; }
+          if (hasUnsaved() && !await confirmDialog('保存していない変更(イベントまたはマップ)があります。破棄して、取り込んだシナリオを開きますか?', '破棄して取り込む', true)) return;
+          close();
+          await importScenarioFile(file, form.source);
+        } },
+      ],
+    });
+  }
+
+  async function importScenarioFile(file, source) {
+    const buffer = await file.arrayBuffer();
+    const post = (overwrite) => api('POST', `/api/scenarios/import?source=${source}${overwrite ? '&overwrite=1' : ''}`, buffer);
+    let result;
+    try {
+      try { result = await post(false); }
+      catch (e) {
+        if (e.status !== 409 || !e.data || !e.data.exists) throw e;
+        const where = source === 'default' ? 'デフォルト' : 'カスタム';
+        if (!await confirmDialog(`同じIDのシナリオ「${e.data.name}」(${where}/${e.data.id})が既にあります。上書きして取り込みますか?\n上書きすると、今の内容は元に戻せません。`, '上書きして取り込む', true)) return;
+        result = await post(true);
+      }
+    } catch (e) { toast(`取り込めません: ${e.message}`, 'error'); return; }
+    await refreshScenarioList();
+    await loadScenario(source, result.id, true);
+    toast(`シナリオ「${result.name}」を${result.overwritten ? '上書きして' : ''}取り込みました(フロア${result.floorCount}・イベント${result.eventCount}本・画像${result.imageCount}枚)`);
+  }
+
   async function deleteScenario() {
     const { source, id } = S.cur;
     if (source === 'default' && id === 'default') { toast('標準のシナリオ(default)は削除できません', 'error'); return; }
@@ -200,6 +254,8 @@
         h('button', { onclick: () => openCreateDialog('new') }, '新規'),
         h('button', { onclick: () => openCreateDialog('copy') }, '複製'),
         h('button', { class: 'danger', onclick: deleteScenario, disabled: S.cur.id === 'default' && isDefault }, '削除'),
+        h('button', { id: 'export-btn', onclick: exportScenario, title: 'このシナリオを、1つのzipファイルに書き出す(スマホへ運ぶ・バックアップ用)' }, 'zip書き出し'),
+        h('button', { id: 'import-btn', onclick: openImportDialog, title: '書き出したzipから、シナリオを取り込む' }, 'zip取り込み'),
         h('span', { class: 'spacer' }),
         h('button', { id: 'issue-count', onclick: openValidation, title: 'シナリオ全体を検証する' }, '検証')),
       h('nav', { id: 'tabs', class: 'tabs' }, TABS.map((t) => h('button', { 'data-key': t.key, class: t.key === S.tab ? 'active' : '', onclick: () => WS.showTab(t.key) }, t.label))),
