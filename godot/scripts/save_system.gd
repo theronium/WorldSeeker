@@ -769,7 +769,7 @@ func load_game() -> bool:
 
 	current_slot_name = String(meta.get("slot_name", ""))
 	Economy.funds = int(meta.get("funds", Economy.funds))
-	Economy.employ_cap = int(meta.get("employ_cap", Economy.employ_cap))
+	Economy.employ_cap = Economy.aligned_cap(int(meta.get("employ_cap", Economy.EMPLOY_CAP_INITIAL))) # 旧セーブ(+2刻み)は4の倍数へ切り上げ
 	Economy.facility_level = int(meta.get("facility_level", Economy.facility_level))
 	TimeSystem.current_day = int(meta.get("current_day", TimeSystem.current_day))
 	TimeSystem.current_month = int(meta.get("current_month", TimeSystem.current_month))

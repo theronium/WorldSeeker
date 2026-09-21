@@ -33,7 +33,14 @@ var party_panel: PanelContainer
 var party_roster_view: Control
 var party_detail_view: Control
 var party_grid: GridContainer
-var party_form_list: ItemList # 未所属探索者から最大4人を選ぶ簡易選択(多重選択)
+var party_form_picker: MemberPicker # 未所属探索者から最大4人を選ぶ(チェックボックス式。ItemListの複数選択は、タッチでは1人しか選べなかった)
+var party_form_button: Button
+# パーティ詳細(メンバー画面)の、メンバーの追加と外す(2026-09-21)
+var party_add_picker: MemberPicker
+var party_add_label: Label
+var party_add_button: Button
+var party_add_status_label: Label
+var party_remove_button: Button
 var party_form_status_label: Label
 var party_detail_label: Label
 # パーティ詳細は2つのタブ(メンバー・並び順/担当セクション)に分けてある(2026-09-19)。
@@ -1981,15 +1988,16 @@ func _build_party_roster_view(col: VBoxContainer) -> void:
 	form_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	party_roster_view.add_child(form_label)
 
-	party_form_list = ItemList.new()
-	party_form_list.custom_minimum_size = Vector2(0, 100)
-	party_form_list.select_mode = ItemList.SELECT_MULTI
-	party_roster_view.add_child(party_form_list)
+	party_form_picker = MemberPicker.new()
+	party_form_picker.limit = Parties.MAX_PARTY_SIZE
+	party_form_picker.row_height = MEMBER_PICKER_TOUCH_ROW_HEIGHT if _touch_ui else MemberPicker.DEFAULT_ROW_HEIGHT
+	party_form_picker.selection_changed.connect(_update_party_form_button)
+	party_roster_view.add_child(party_form_picker)
 
-	var form_button := Button.new()
-	form_button.text = "選択した探索者でパーティを編成する"
-	form_button.pressed.connect(_on_form_party_pressed)
-	party_roster_view.add_child(form_button)
+	party_form_button = Button.new()
+	party_form_button.text = "選択した探索者でパーティを編成する"
+	party_form_button.pressed.connect(_on_form_party_pressed)
+	party_roster_view.add_child(party_form_button)
 
 	party_form_status_label = Label.new()
 	party_form_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -2047,10 +2055,15 @@ func _build_party_detail_view(col: VBoxContainer) -> void:
 	_show_party_tab(0)
 
 func _build_party_members_page() -> void:
+	# 並び順のカードに、メンバーの追加が加わって縦に長くなったので、スクロールできるページにする(2026-09-21)
+	var page_scroll := ScrollContainer.new()
+	page_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	party_detail_view.add_child(page_scroll)
+	party_tab_pages.append(page_scroll)
 	var page := VBoxContainer.new()
-	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	party_detail_view.add_child(page)
-	party_tab_pages.append(page)
+	page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page_scroll.add_child(page)
 
 	var order_label := Label.new()
 	order_label.text = "並び順(戦闘での対戦順。左が先頭。先頭に立つ間だけ効果を発揮する固有スキルもある)。カードを選んで、前へ/後ろへで入れ替える"
@@ -2076,6 +2089,28 @@ func _build_party_members_page() -> void:
 	move_back_button.pressed.connect(_on_move_member_pressed.bind(1))
 	order_actions.add_child(move_back_button)
 	party_member_move_buttons.append(move_back_button)
+	party_remove_button = Button.new()
+	party_remove_button.text = "パーティから外す"
+	party_remove_button.pressed.connect(_on_remove_member_pressed)
+	order_actions.add_child(party_remove_button)
+
+	page.add_child(HSeparator.new())
+	party_add_label = Label.new()
+	party_add_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	page.add_child(party_add_label)
+	party_add_picker = MemberPicker.new()
+	party_add_picker.row_height = MEMBER_PICKER_TOUCH_ROW_HEIGHT if _touch_ui else MemberPicker.DEFAULT_ROW_HEIGHT
+	party_add_picker.fit_content = true # パーティ詳細のページ(スクロール)の中なので、この一覧の中ではスクロールしない
+	party_add_picker.selection_changed.connect(_update_party_add_button)
+	page.add_child(party_add_picker)
+	party_add_button = Button.new()
+	party_add_button.text = "選択した探索者をこのパーティに追加する"
+	party_add_button.pressed.connect(_on_party_add_pressed)
+	page.add_child(party_add_button)
+	party_add_status_label = Label.new()
+	party_add_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	party_add_status_label.modulate = Color(1, 1, 1, 0.8)
+	page.add_child(party_add_status_label)
 
 func _build_party_sections_page() -> void:
 	var page := VBoxContainer.new()
@@ -2315,11 +2350,8 @@ func _refresh_party_roster() -> void:
 		if party["assigned_section"] == "":
 			has_unassigned = true
 
-	party_form_list.clear()
-	for npc in Npcs.get_roster():
-		if npc["party_id"] == -1:
-			party_form_list.add_item("%s(%s)" % [npc["name"], Jobs.JOB_NAMES[npc["job"]]])
-			party_form_list.set_item_metadata(party_form_list.item_count - 1, npc["id"])
+	party_form_picker.set_choices(_unaffiliated_npcs(), "未所属の探索者がいません(雇用するか、パーティから外すと、ここに出ます)")
+	_update_party_form_button()
 	party_form_status_label.text = ""
 
 	# サイドバーの「パーティ」ボタン自体も、未割当のパーティが1つでもあれば赤字で警告する
@@ -2356,20 +2388,25 @@ func _create_party_card(party: Dictionary, group: ButtonGroup) -> Button:
 func _on_party_card_pressed(party_id: int) -> void:
 	_selected_party_id = party_id
 	_selected_member_index = -1
+	party_add_status_label.text = ""
 	_refresh_party_detail()
 	_show_party_detail_view()
 
+## パーティに入っていない(未所属の)探索者。
+func _unaffiliated_npcs() -> Array:
+	return Npcs.get_roster().filter(func(npc): return npc["party_id"] == -1)
+
+func _update_party_form_button() -> void:
+	party_form_button.disabled = party_form_picker.selected_ids().is_empty()
+
 func _on_form_party_pressed() -> void:
-	var selected := party_form_list.get_selected_items()
-	if selected.is_empty():
+	var member_ids: Array = party_form_picker.selected_ids()
+	if member_ids.is_empty():
 		party_form_status_label.text = "探索者を選択してください"
 		return
-	if selected.size() > Parties.MAX_PARTY_SIZE:
+	if member_ids.size() > Parties.MAX_PARTY_SIZE:
 		party_form_status_label.text = "パーティは最大%d人までです" % Parties.MAX_PARTY_SIZE
 		return
-	var member_ids := []
-	for index in selected:
-		member_ids.append(party_form_list.get_item_metadata(index))
 	var party_id := Parties.form_party(member_ids)
 	if party_id == -1:
 		party_form_status_label.text = "パーティを編成できませんでした"
@@ -2388,6 +2425,10 @@ func _refresh_party_detail() -> void:
 		section_forecast_label.text = ""
 		_clear_party_member_row()
 		_update_member_move_buttons()
+		party_add_picker.limit = 0
+		party_add_picker.set_choices([])
+		party_add_label.text = ""
+		_update_party_add_button()
 		for behavior in post_clear_behavior_buttons.keys():
 			post_clear_behavior_buttons[behavior].button_pressed = false
 		return
@@ -2412,6 +2453,7 @@ func _refresh_party_detail() -> void:
 	if _selected_member_index >= member_ids.size():
 		_selected_member_index = -1
 	_update_member_move_buttons()
+	_refresh_party_add_section()
 
 	var behavior: int = party["post_clear_behavior"]
 	if post_clear_behavior_buttons.has(behavior):
@@ -2420,6 +2462,7 @@ func _refresh_party_detail() -> void:
 	_update_section_party_labels()
 	_update_section_action_buttons()
 
+const MEMBER_PICKER_TOUCH_ROW_HEIGHT := 48.0 # タッチUIの、探索者のチェックボックスの1行の高さ(指で押せる高さ)
 const PARTY_MEMBER_CARD_WIDTH := 170.0
 const PARTY_MEMBER_PORTRAIT_SIZE := 110.0
 
@@ -2485,6 +2528,50 @@ func _create_party_member_card(npc: Dictionary, index: int, group: ButtonGroup) 
 	vbox.add_child(stats_label)
 	return card
 
+## メンバー画面の「追加」欄: 未所属の探索者を、空きの数まで選べる。満員なら、その旨を出して押せなくする。
+func _refresh_party_add_section() -> void:
+	var free := Parties.free_slots(_selected_party_id)
+	party_add_picker.limit = free
+	party_add_picker.set_choices(_unaffiliated_npcs(), "未所属の探索者がいません(雇用するか、他のパーティから外すと、ここに出ます)")
+	if free > 0:
+		party_add_label.text = "未所属の探索者をこのパーティに追加する(あと%d人まで。並び順の最後に入る)" % free
+	else:
+		party_add_label.text = "このパーティは満員です(最大%d人)。追加するには、メンバーを外してください" % Parties.MAX_PARTY_SIZE
+	_update_party_add_button()
+
+func _update_party_add_button() -> void:
+	party_add_button.disabled = party_add_picker.selected_ids().is_empty()
+
+func _on_party_add_pressed() -> void:
+	if _selected_party_id < 0:
+		return
+	var ids: Array = party_add_picker.selected_ids()
+	if ids.is_empty():
+		party_add_status_label.text = "追加する探索者を選択してください"
+		return
+	if not Parties.add_members(_selected_party_id, ids):
+		party_add_status_label.text = "追加できませんでした(パーティは最大%d人までです)" % Parties.MAX_PARTY_SIZE
+		return
+	var names: Array = ids.map(func(id): return String(Npcs.get_npc(id).get("name", "?")))
+	party_add_picker.clear_selection()
+	_refresh_party_roster()
+	_refresh_party_detail()
+	party_add_status_label.text = "%sをパーティに追加しました" % "・".join(names)
+
+func _on_remove_member_pressed() -> void:
+	var party := Parties.get_party(_selected_party_id)
+	if party.is_empty() or _selected_member_index < 0 or _selected_member_index >= party["member_ids"].size():
+		return
+	var npc_id: int = party["member_ids"][_selected_member_index]
+	var npc_name := String(Npcs.get_npc(npc_id).get("name", "?"))
+	if not Parties.remove_member(_selected_party_id, npc_id):
+		party_add_status_label.text = "外せませんでした(パーティには1人は残す必要があります。全員を外すなら、解散してください)"
+		return
+	_selected_member_index = -1
+	_refresh_party_roster()
+	_refresh_party_detail()
+	party_add_status_label.text = "%sをパーティから外しました(未所属に戻りました)" % npc_name
+
 func _on_party_member_card_pressed(index: int) -> void:
 	_selected_member_index = index
 	_update_member_move_buttons()
@@ -2496,6 +2583,7 @@ func _update_member_move_buttons() -> void:
 	var has_selection := _selected_member_index >= 0 and _selected_member_index < count
 	party_member_move_buttons[0].disabled = not has_selection or _selected_member_index == 0
 	party_member_move_buttons[1].disabled = not has_selection or _selected_member_index >= count - 1
+	party_remove_button.disabled = not has_selection or count <= 1 # パーティには1人は残す(全員を外すなら、解散)
 
 ## 割り当て/ログ/予測は、担当セクションを選んでいる時だけ押せる(選ぶ前から緑の割り当てボタンだけが
 ## 目立って、選ぶ場所が目立たなかったため)。セクション名のグループ行(エリア)は選択できない。
@@ -4171,7 +4259,7 @@ func _refresh_all() -> void:
 func _refresh_facility_button() -> void:
 	var cost := Economy.facility_upgrade_cost()
 	var affordable := Economy.can_afford(cost)
-	facility_info_label.text = "雇用上限 +2\nコスト: %d%s" % [cost, "" if affordable else "(資金が足りません)"]
+	facility_info_label.text = "雇用上限 +%d\nコスト: %d%s" % [Economy.EMPLOY_CAP_STEP, cost, "" if affordable else "(資金が足りません)"]
 	# 訓練ボタンと同じ理由(資金が足りない間は押せなくする)。押しても何も起きない状態を残さない。
 	facility_button.disabled = not affordable
 

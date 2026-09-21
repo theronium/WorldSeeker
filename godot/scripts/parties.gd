@@ -58,6 +58,43 @@ func disband(party_id: int) -> void:
 		Npcs.set_party(npc_id, -1)
 	parties.erase(party_id)
 
+## パーティの空き(あと何人加えられるか)。存在しないパーティは0。
+func free_slots(party_id: int) -> int:
+	if not parties.has(party_id):
+		return 0
+	return maxi(0, MAX_PARTY_SIZE - parties[party_id]["member_ids"].size())
+
+## 未所属の探索者を、既存のパーティの末尾(並び順の最後)に加える(2026-09-21)。全員を加えられる時だけ加える
+## (満員を超える・重複・存在しない・既にどこかのパーティにいる探索者が1人でも含まれれば、何も変えずfalse)。
+func add_members(party_id: int, npc_ids: Array) -> bool:
+	if not parties.has(party_id) or npc_ids.is_empty() or npc_ids.size() > free_slots(party_id):
+		return false
+	var seen: Dictionary = {}
+	for npc_id in npc_ids:
+		if seen.has(npc_id):
+			return false
+		seen[npc_id] = true
+		var npc := Npcs.get_npc(npc_id)
+		if npc.is_empty() or npc["party_id"] != -1:
+			return false
+	for npc_id in npc_ids:
+		parties[party_id]["member_ids"].append(npc_id)
+		Npcs.set_party(npc_id, party_id)
+	return true
+
+## パーティからメンバーを外す(2026-09-21)。外した探索者は未所属に戻る(スキル・装備などは個体が持つので失われない)。
+## パーティには1人は残す(最後の1人を外したい時は、解散する)。外せたらtrue。
+func remove_member(party_id: int, npc_id: int) -> bool:
+	if not parties.has(party_id):
+		return false
+	var members: Array = parties[party_id]["member_ids"]
+	var index := members.find(npc_id)
+	if index < 0 or members.size() <= 1:
+		return false
+	members.remove_at(index)
+	Npcs.set_party(npc_id, -1)
+	return true
+
 func get_party(party_id: int) -> Dictionary:
 	return parties.get(party_id, {})
 
