@@ -80,19 +80,32 @@ func skill_level(id: int, skill: int) -> int:
 	return roster[id]["skills"][skill]["level"]
 
 ## 戦力スコア(design.md 6.2節): スキル(戦闘力)由来のcombat_power + 装備の戦闘力補正。
+## 一覧・詳細に出す「総合戦力」。パーティの先頭でだけ効く補正(固有スキル「先陣」など)は、並び順で変わるので含めない。
 func power(id: int) -> int:
+	return int(power_breakdown(id)["total"])
+
+## 総合戦力の内訳。{"skill_level", "skill"(戦闘力スキル由来=Lv×10+10), "weapon", "armor", "unique"(固有スキルの固定加算), "total"}。
+## power()はこの合計なので、画面に出す内訳と合計は必ず一致する。
+func power_breakdown(id: int) -> Dictionary:
 	if not roster.has(id):
-		return 0
+		return {"skill_level": 0, "skill": 0, "weapon": 0, "armor": 0, "unique": 0, "total": 0}
 	var npc: Dictionary = roster[id]
-	var total: int = skill_level(id, SkillTypes.Skill.COMBAT) * 10 + 10
+	var level: int = skill_level(id, SkillTypes.Skill.COMBAT)
+	var skill_part: int = level * 10 + 10
+	var weapon_part: int = 0
 	if npc["equipped_weapon"].has("tier"):
-		total += Equipment.power_bonus(npc["equipped_weapon"]["tier"])
+		weapon_part = Equipment.power_bonus(npc["equipped_weapon"]["tier"])
+	var armor_part: int = 0
 	if npc["equipped_armor"].has("tier"):
-		total += Equipment.power_bonus(npc["equipped_armor"]["tier"])
+		armor_part = Equipment.power_bonus(npc["equipped_armor"]["tier"])
+	var unique_part: int = 0
 	var unique: Dictionary = npc.get("unique_skill", {})
 	if unique.get("effect_type", "") == "combat_power_flat":
-		total += int(unique["value"])
-	return total
+		unique_part = int(unique["value"])
+	return {
+		"skill_level": level, "skill": skill_part, "weapon": weapon_part, "armor": armor_part, "unique": unique_part,
+		"total": skill_part + weapon_part + armor_part + unique_part,
+	}
 
 ## 装備。slotは"weapon"か"armor"。種類(Jobs.WeaponType/ArmorCategory)はその探索者のジョブから
 ## 一意に決まるため引数に取らず、材質等級(tier)だけを指定する(design.md 6.2節)。

@@ -16,6 +16,17 @@ var reclass_button: Button
 var _selected_npc_id: int = -1
 var facility_button: Button
 
+# 探索者一覧の並べ替え・絞り込み(2026-09-21。RosterQuery)。パネルを閉じても、次に開くまで選択を覚えている。
+var roster_sort_option: OptionButton
+var roster_sort_dir_button: Button
+var roster_bloodline_option: OptionButton
+var roster_job_option: OptionButton
+var roster_count_label: Label
+var _roster_sort_key: String = RosterQuery.SORT_JOIN
+var _roster_sort_descending: bool = false
+var _roster_bloodline: String = RosterQuery.ALL_BLOODLINES
+var _roster_job: int = RosterQuery.ALL_JOBS
+
 # パーティ編成パネル(design.md 4.7節)。担当セクション割り当て・予測・完全踏破後の設定は
 # 探索者単位ではなくパーティ単位の操作になった(旧npc_panelの[担当]タブから移設)。
 var party_panel: PanelContainer
@@ -116,6 +127,11 @@ var _touch_ui: bool = false
 const TOUCH_BUTTON_MARGIN_V := 16 # タッチUI時のボタン上下の内側余白(通常は6)。ボタン高さが約50pxになる
 const TOUCH_LIST_ROW_MARGIN := 10 # タッチUI時のTree行の上下余白
 const TOUCH_DIALOGUE_HEIGHT := 270 # タッチUI時の会話ウィンドウの高さ(通常は200)
+# デスクトップの会話ウィンドウを、ウィンドウの下端から浮かせる高さ。下端に貼り付くと、最下段の「次へ」が窓の縁に
+# 近すぎて押しにくい(2026-09-21、Windowsで報告)。タッチUIは従来どおり(下端まで使う)。
+const DESKTOP_DIALOGUE_LIFT := 32
+# デスクトップで会話を進めるキー(_handle_dialogue_key)
+const DIALOGUE_ADVANCE_KEYS := [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]
 # 実機(Android等)で、UI全体を画面の四辺から最低これだけ内側に寄せる(表示上のpx)。切り欠きは
 # DisplayServer.get_display_safe_area()で避けられるが、角丸の画面の角はOSが半径を教えてくれない
 # 端末(moto g05は0と報告する)があるため、その分の余白を固定で確保する(_apply_safe_area参照)。
@@ -878,6 +894,13 @@ func _build_dialogue_ui() -> void:
 	if _touch_ui:
 		# 選択肢が増えて内容が高さを超えても、画面の外(下)ではなく上へ伸びるようにする。
 		dialogue_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	else:
+		# デスクトップ: 下端から浮かせ(DESKTOP_DIALOGUE_LIFT)、内容が高さを超えても上へ伸びるようにする。
+		# パネルのどこをクリックしても次へ進む(_on_dialogue_panel_gui_input)。
+		dialogue_panel.offset_top = -(dialogue_height + DESKTOP_DIALOGUE_LIFT)
+		dialogue_panel.offset_bottom = -DESKTOP_DIALOGUE_LIFT
+		dialogue_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		dialogue_panel.gui_input.connect(_on_dialogue_panel_gui_input)
 	dialogue_panel.visible = false
 	add_child(dialogue_panel) # rootの後に追加することで手前に重ねて表示する
 
@@ -902,6 +925,7 @@ func _build_dialogue_ui() -> void:
 	name_row.add_child(speaker_name_label)
 
 	dialogue_kind_badge = PanelContainer.new()
+	dialogue_kind_badge.mouse_filter = Control.MOUSE_FILTER_IGNORE # クリックを、会話パネル(どこをクリックしても進む)へ通す
 	dialogue_kind_badge.visible = false
 	dialogue_kind_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	name_row.add_child(dialogue_kind_badge)
@@ -933,6 +957,7 @@ func _make_portrait_slot(base_color: Color) -> VBoxContainer:
 	var rect := ColorRect.new()
 	rect.custom_minimum_size = Vector2(140, 160)
 	rect.color = base_color
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE # クリックを、会話パネル(どこをクリックしても進む)へ通す
 	slot.add_child(rect)
 	# 話者の画像(EventPortraits)。画像が無い間は隠しておき、色付きの四角(base_color)がそのまま見える。
 	var image_rect := TextureRect.new()
@@ -1613,12 +1638,14 @@ func _build_npc_ui() -> void:
 	_build_npc_roster_view(col)
 	_build_npc_detail_view(col)
 
-## 一覧ビュー: 正方形ポートレートカードのグリッドのみを中心に表示する(ジョブ/装備/戦力は
-## カードをクリックして詳細ビューに移るまで出さない)。
+## 一覧ビュー: 上に並べ替え・絞り込みの行、その下に正方形ポートレートカードのグリッド(名前・状態・総合戦力)。
+## ジョブ/装備の中身は、カードをクリックして詳細ビューに移るまで出さない。
 func _build_npc_roster_view(col: VBoxContainer) -> void:
 	npc_roster_view = VBoxContainer.new()
 	npc_roster_view.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(npc_roster_view)
+
+	_build_roster_filter_row(npc_roster_view)
 
 	var roster_scroll := ScrollContainer.new()
 	roster_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1642,6 +1669,105 @@ func _build_npc_roster_view(col: VBoxContainer) -> void:
 	facility_info_label.add_theme_font_size_override("font_size", 12)
 	facility_info_label.modulate = Color(1, 1, 1, 0.75)
 	npc_roster_view.add_child(facility_info_label)
+
+## 一覧の上の行: 並べ替え(項目+昇順/降順)と、絞り込み(血筋・ジョブ)。
+func _build_roster_filter_row(parent: Control) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	parent.add_child(row)
+
+	row.add_child(_make_filter_caption("並べ替え"))
+	roster_sort_option = OptionButton.new()
+	for option in RosterQuery.sort_options():
+		roster_sort_option.add_item(option["label"])
+		roster_sort_option.set_item_metadata(roster_sort_option.item_count - 1, option)
+	roster_sort_option.item_selected.connect(_on_roster_sort_selected)
+	row.add_child(roster_sort_option)
+
+	roster_sort_dir_button = Button.new()
+	roster_sort_dir_button.pressed.connect(_on_roster_sort_dir_pressed)
+	row.add_child(roster_sort_dir_button)
+
+	row.add_child(VSeparator.new())
+	row.add_child(_make_filter_caption("血筋"))
+	roster_bloodline_option = OptionButton.new()
+	roster_bloodline_option.item_selected.connect(_on_roster_bloodline_selected)
+	row.add_child(roster_bloodline_option)
+
+	row.add_child(_make_filter_caption("ジョブ"))
+	roster_job_option = OptionButton.new()
+	roster_job_option.add_item("すべて")
+	roster_job_option.set_item_metadata(0, RosterQuery.ALL_JOBS)
+	for job in Jobs.JOB_NAMES.keys():
+		roster_job_option.add_item(Jobs.JOB_NAMES[job])
+		roster_job_option.set_item_metadata(roster_job_option.item_count - 1, job)
+	roster_job_option.item_selected.connect(_on_roster_job_selected)
+	row.add_child(roster_job_option)
+
+	var reset_button := Button.new()
+	reset_button.text = "絞り込みを解除"
+	reset_button.pressed.connect(_on_roster_filter_reset_pressed)
+	row.add_child(reset_button)
+
+	roster_count_label = Label.new()
+	roster_count_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	roster_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	roster_count_label.add_theme_font_size_override("font_size", 12)
+	row.add_child(roster_count_label)
+
+func _make_filter_caption(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 12)
+	label.modulate = Color(1, 1, 1, 0.75)
+	return label
+
+func _on_roster_sort_selected(index: int) -> void:
+	var option: Dictionary = roster_sort_option.get_item_metadata(index)
+	_roster_sort_key = option["key"]
+	_roster_sort_descending = option["descending"] # 項目を選び直した直後の向きは、項目ごとの既定(戦力・スキルは大きい順)
+	_refresh_roster()
+
+func _on_roster_sort_dir_pressed() -> void:
+	_roster_sort_descending = not _roster_sort_descending
+	_refresh_roster()
+
+func _on_roster_bloodline_selected(index: int) -> void:
+	_roster_bloodline = String(roster_bloodline_option.get_item_metadata(index))
+	_refresh_roster()
+
+func _on_roster_job_selected(index: int) -> void:
+	_roster_job = int(roster_job_option.get_item_metadata(index))
+	_refresh_roster()
+
+func _on_roster_filter_reset_pressed() -> void:
+	_roster_bloodline = RosterQuery.ALL_BLOODLINES
+	_roster_job = RosterQuery.ALL_JOBS
+	_refresh_roster()
+
+## 並べ替え・絞り込みの部品を、覚えている選択に合わせる。血筋の選択肢は、いま名簿にいる血筋から作る
+## (顔ぶれが変わった時だけ作り直す。選んだ直後の呼び出しの最中に、選択肢を消さないため)。
+func _sync_roster_filter_controls() -> void:
+	var wanted: Array = [RosterQuery.ALL_BLOODLINES]
+	wanted.append_array(RosterQuery.bloodlines_in(Npcs.get_roster()))
+	var current: Array = []
+	for i in roster_bloodline_option.item_count:
+		current.append(roster_bloodline_option.get_item_metadata(i))
+	if current != wanted:
+		roster_bloodline_option.clear()
+		for bloodline in wanted:
+			roster_bloodline_option.add_item("すべて" if bloodline == RosterQuery.ALL_BLOODLINES else bloodline)
+			roster_bloodline_option.set_item_metadata(roster_bloodline_option.item_count - 1, bloodline)
+	if not (_roster_bloodline in wanted):
+		_roster_bloodline = RosterQuery.ALL_BLOODLINES # 選んでいた血筋が、名簿にいなくなった(新規開始など)
+	roster_bloodline_option.select(wanted.find(_roster_bloodline))
+	for i in roster_job_option.item_count:
+		if int(roster_job_option.get_item_metadata(i)) == _roster_job:
+			roster_job_option.select(i)
+	for i in roster_sort_option.item_count:
+		if roster_sort_option.get_item_metadata(i)["key"] == _roster_sort_key:
+			roster_sort_option.select(i)
+	roster_sort_dir_button.text = "降順 ▼" if _roster_sort_descending else "昇順 ▲"
 
 ## 詳細ビュー: 一覧で探索者を選ぶとここに切り替わる。上部に「一覧へ戻る」と身元表示
 ## (ジョブ・固有スキル・装備・戦力込み、npc_detail_label/npc_job_labelに集約)、
@@ -1816,9 +1942,9 @@ func _refresh_npc_detail() -> void:
 	var armor_text := "未装備"
 	if npc["equipped_armor"].has("tier"):
 		armor_text = Equipment.item_name(npc["equipped_armor"]["tier"], Equipment.ARMOR_CATEGORY_NAMES[Jobs.JOB_ARMOR_CATEGORY[npc["job"]]])
-	npc_job_label.text = "ジョブ: %s / 固有スキル: %s(%s)\n装備: %s / %s / 戦力: %d" % [
+	npc_job_label.text = "ジョブ: %s / 固有スキル: %s(%s)\n装備: %s / %s\n%s" % [
 		Jobs.JOB_NAMES[npc["job"]], unique.get("name", "-"), unique.get("description", ""),
-		weapon_text, armor_text, Npcs.power(_selected_npc_id)]
+		weapon_text, armor_text, RosterQuery.power_breakdown_text(_selected_npc_id)]
 
 	for skill in skill_level_labels.keys():
 		var level := Npcs.skill_level(_selected_npc_id, skill)
@@ -3569,6 +3695,8 @@ func _apply_map_scroll_deferred(scroll_pos: Vector2i, remaining_hops: int) -> vo
 ## ほど不快だった。再構築を実機で約0.5秒→約60msに軽くできた(絵文字フォントの登録と、文字を最後に
 ## 1回だけ設定する変更)ので、常に本物のレイアウトだけを見せる方式にした。
 func _input(event: InputEvent) -> void:
+	if _handle_dialogue_key(event):
+		return
 	if event is InputEventScreenTouch:
 		_on_touch_changed(event)
 	elif event is InputEventScreenDrag:
@@ -3577,6 +3705,28 @@ func _input(event: InputEvent) -> void:
 		# 1本目の指から作られる擬似マウス(パン・クリック)を止める。止めないと、ピンチしながらマップが
 		# 1本指でパンされたり、指の下のボタンが押されたりする
 		get_viewport().set_input_as_handled()
+
+## デスクトップ: 会話パネルのどこをクリックしても、次へ進む(「次へ」ボタンに狙いを定めなくてよい)。選択肢が出ている行では
+## 進まない(advance()が何もしない)。ボタン(次へ・選択肢)を押した時は、ボタン自身が処理するので、ここには来ない。
+func _on_dialogue_panel_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and EventDialogue.is_active:
+		EventDialogue.advance()
+		accept_event()
+
+## デスクトップ: Enter/Spaceで会話を進める(押しっぱなしの繰り返しでは進まない)。選択肢が出ている行では、何もしない
+## (フォーカス中の選択肢ボタンに任せる)。GUIより先に処理して握りつぶすので、フォーカスが残っている別のボタン
+## (左メニューなど)が、会話中のEnter/Spaceで押される事故も無い。処理したらtrue。
+func _handle_dialogue_key(event: InputEvent) -> bool:
+	if _touch_ui or not (event is InputEventKey):
+		return false
+	var key_event := event as InputEventKey
+	if not key_event.pressed or key_event.echo or not (key_event.keycode in DIALOGUE_ADVANCE_KEYS):
+		return false
+	if not EventDialogue.is_active or not dialogue_panel.visible or not advance_hint.visible:
+		return false
+	EventDialogue.advance()
+	get_viewport().set_input_as_handled()
+	return true
 
 func _on_touch_changed(event: InputEventScreenTouch) -> void:
 	if event.pressed:
@@ -4195,12 +4345,20 @@ func _refresh_roster() -> void:
 	for child in roster_grid.get_children():
 		roster_grid.remove_child(child)
 		child.queue_free()
+	_sync_roster_filter_controls()
 	var roster_group := ButtonGroup.new() # 作り直すたびに新しいグループにして排他選択させる
-	for npc in Npcs.get_roster():
+	var all_npcs: Array = Npcs.get_roster()
+	var shown: Array = RosterQuery.query(all_npcs, _roster_sort_key, _roster_sort_descending, _roster_bloodline, _roster_job)
+	for npc in shown:
 		var card := _create_roster_card(npc, roster_group)
 		roster_grid.add_child(card)
 		if npc["id"] == _selected_npc_id:
 			card.button_pressed = true
+	if shown.is_empty() and not all_npcs.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "条件に合う探索者がいません"
+		roster_grid.add_child(empty_label)
+	roster_count_label.text = "全%d人" % all_npcs.size() if shown.size() == all_npcs.size() else "%d人中 %d人を表示" % [all_npcs.size(), shown.size()]
 
 const BLOODLINE_COLORS := {
 	"平民": Color(0.45, 0.45, 0.48),
@@ -4277,7 +4435,7 @@ func _create_roster_card(npc: Dictionary, group: ButtonGroup) -> Button:
 	var card := Button.new()
 	card.toggle_mode = true
 	card.button_group = group
-	card.custom_minimum_size = Vector2(CARD_WIDTH, ROSTER_PORTRAIT_SIZE + 56)
+	card.custom_minimum_size = Vector2(CARD_WIDTH, ROSTER_PORTRAIT_SIZE + 74) # 名前・状態の行(56)+総合戦力の行(18)
 	card.tooltip_text = npc["name"] # 名前が省略表示された場合でもホバーでフルネームを確認できる
 	card.pressed.connect(_on_roster_card_pressed.bind(npc["id"]))
 
@@ -4339,6 +4497,17 @@ func _create_roster_card(npc: Dictionary, group: ButtonGroup) -> Button:
 	badge_label.add_theme_font_size_override("font_size", 11)
 	badge.add_child(badge_label)
 	info_row.add_child(badge)
+
+	# 総合戦力(装備・スキルなどを合わせたもの)。スキルのLvで並べている時は、そのLvも添える(RosterQuery.card_stat_text)。
+	var stat_label := Label.new()
+	stat_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stat_label.text = RosterQuery.card_stat_text(npc, _roster_sort_key)
+	stat_label.add_theme_font_size_override("font_size", 11)
+	stat_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stat_label.clip_text = true
+	stat_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	stat_label.modulate = Color(1, 1, 1, 0.85)
+	vbox.add_child(stat_label)
 
 	return card
 
