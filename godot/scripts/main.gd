@@ -3391,8 +3391,6 @@ func _apply_map_scroll_deferred(scroll_pos: Vector2i, remaining_hops: int) -> vo
 	map_scroll.scroll_horizontal = scroll_pos.x
 	map_scroll.scroll_vertical = scroll_pos.y
 
-const PINCH_DEBUG := true # TODO: 実機確認が済んだら、この定数とprintごと外す
-
 ## 生のタッチを最初に見て、マップ上の2本指ピンチを検出する(ボタンなどのControlより先に呼ばれる)。
 ##
 ## ピンチ中は、指の動きに合わせて、本物のレイアウトを一定間隔で作り直す(_rebuild_for_pinch)。
@@ -3414,16 +3412,12 @@ func _input(event: InputEvent) -> void:
 func _on_touch_changed(event: InputEventScreenTouch) -> void:
 	if event.pressed:
 		_touch_points[event.index] = event.position
-		if PINCH_DEBUG:
-			print("[pinch] touch down idx=%d pos=%s fingers=%d" % [event.index, str(event.position), _touch_points.size()])
 		if not _pinch_active and _touch_points.size() == 2 and _can_start_pinch():
 			_start_pinch()
 		if _pinch_active:
 			get_viewport().set_input_as_handled() # 追加の指の押下を、ScrollContainerなどに渡さない
 	else:
 		_touch_points.erase(event.index)
-		if PINCH_DEBUG:
-			print("[pinch] touch up idx=%d fingers=%d" % [event.index, _touch_points.size()])
 		if _pinch_active and _touch_points.size() < 2:
 			_end_pinch()
 
@@ -3469,15 +3463,11 @@ func _start_pinch() -> void:
 	_pinch_prev_center = (a + b) * 0.5
 	_pinch_target_zoom = _map_zoom
 	_pinch_last_rebuild_msec = Time.get_ticks_msec()
-	if PINCH_DEBUG:
-		print("[pinch] START zoom=%.2f distance=%.0f center=%s" % [_map_zoom, _pinch_prev_distance, str(_pinch_prev_center)])
 
 ## 指を離した時: 間引きに関係なく、最後の目標倍率に合わせる。
 func _end_pinch() -> void:
 	_rebuild_for_pinch(true)
 	_pinch_active = false
-	if PINCH_DEBUG:
-		print("[pinch] END zoom=%.2f" % _map_zoom)
 
 ## 目標倍率で、本物のレイアウトを作り直す。再構築は重いので、通常は前回から一定時間あけ(遅い端末では
 ## 直近の再構築にかかった時間に合わせて広げ)、倍率の変化が小さい間は省く。forceは、指を離した時用。
@@ -3495,8 +3485,6 @@ func _rebuild_for_pinch(force: bool) -> void:
 	_set_map_zoom(_pinch_target_zoom, cursor_in_canvas)
 	_pinch_last_rebuild_msec = Time.get_ticks_msec()
 	_pinch_rebuild_cost_msec = _pinch_last_rebuild_msec - now
-	if PINCH_DEBUG:
-		print("[pinch] rebuild -> zoom %.2f (%d ms)" % [_map_zoom, _pinch_rebuild_cost_msec])
 
 ## フロア(ノード)の枠内なら詳細ポップアップ、それ以外でセクション枠内ならそのセクションの
 ## 掲示板スレッドを開く。フロアの箱の方がセクション枠より内側にある(小さい)ので、先に
