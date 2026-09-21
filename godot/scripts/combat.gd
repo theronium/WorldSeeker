@@ -17,10 +17,17 @@ func _combat_power_for(npc_id: int, npc: Dictionary, party: Dictionary) -> int:
 		base = int(round(base * (1.0 + float(skill["value"]))))
 	return base
 
+## ゲートの敵の戦闘力(基礎値)に、そのパーティの難易度(difficulty.gd)をかけた値。戦闘の解決・予測・
+## 「勝ち目が無い」の判定は、すべてこの値で行う(だから難易度を切り替えると、退避や予測も一貫して変わる)。
+func effective_enemy_power(party_id: int, base_enemy_power: int) -> int:
+	return Difficulty.enemy_power(base_enemy_power, Parties.difficulty(party_id))
+
+## enemy_powerには、ゲートの基礎値(難易度をかける前)を渡す。
 func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) -> Dictionary:
 	var party := Parties.get_party(party_id)
 	if party.is_empty():
 		return {"result": "error"}
+	enemy_power = effective_enemy_power(party_id, enemy_power)
 
 	var any_defeated := false
 	# any_setback: any_defeated(hp<=0)に加え、個別にRETREAT方針で戦線離脱した(hpが1付近まで
@@ -90,10 +97,12 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 ## 一切書き込まない(dry run)。
 ## assume_full_hpをtrueにすると、今のHPではなく全員が満タンだった場合の結果を返す(「満タンでも勝てない=勝ち目が
 ## 無い」の判定用。exploration.gdの_is_hopeless_gate)。
+## enemy_powerには、ゲートの基礎値(難易度をかける前)を渡す。
 func predict_party_result(party_id: int, enemy_power: int, assume_full_hp: bool = false) -> String:
 	var party := Parties.get_party(party_id)
 	if party.is_empty():
 		return "error"
+	enemy_power = effective_enemy_power(party_id, enemy_power)
 
 	var any_defeated := false
 	for npc_id in party["member_ids"]:

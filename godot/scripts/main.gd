@@ -43,6 +43,8 @@ var party_add_status_label: Label
 var party_remove_button: Button
 var party_form_status_label: Label
 var party_detail_label: Label
+var difficulty_buttons: Array[Button] = [] # 難易度の切り替え(添字はDifficulty.Mode)。開いている側が、その難易度の色になる
+var difficulty_desc_label: Label # 選んでいる難易度の効果の1行説明
 # パーティ詳細は2つのタブ(メンバー・並び順/担当セクション)に分けてある(2026-09-19)。
 var party_member_row: HBoxContainer # 選択中パーティのメンバーを肖像付きのカードで左(先頭)から並べる
 var party_member_move_buttons: Array[Button] = [] # 前へ/後ろへ。メンバーのカードを選んでいる間だけ押せる
@@ -2032,6 +2034,34 @@ func _build_party_detail_view(col: VBoxContainer) -> void:
 	party_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	party_detail_view.add_child(party_detail_label)
 
+	# 難易度(Easy/Normal/Hard)。パーティごとに、いつでも切り替えられる(difficulty.gd)。タブの外に置いて、
+	# どちらのタブを開いていても見えて押せるようにする。開いている側は、マップのアイコンのバッジと同じ色になる。
+	var difficulty_row := HBoxContainer.new()
+	party_detail_view.add_child(difficulty_row)
+	var difficulty_title := Label.new()
+	difficulty_title.text = "難易度:"
+	difficulty_row.add_child(difficulty_title)
+	var difficulty_group := ButtonGroup.new()
+	difficulty_buttons.clear()
+	for mode in range(Difficulty.NAMES.size()):
+		var mode_button := Button.new()
+		mode_button.text = Difficulty.mode_name(mode)
+		mode_button.tooltip_text = Difficulty.describe(mode)
+		mode_button.toggle_mode = true
+		mode_button.button_group = difficulty_group
+		mode_button.custom_minimum_size.x = 96
+		_apply_difficulty_button_style(mode_button, mode)
+		mode_button.pressed.connect(_on_difficulty_pressed.bind(mode))
+		difficulty_row.add_child(mode_button)
+		difficulty_buttons.append(mode_button)
+	difficulty_desc_label = Label.new()
+	difficulty_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	difficulty_desc_label.modulate = Color(1, 1, 1, 0.85)
+	# ボタンと同じ行の残りに置く(幅が足りれば1行、足りなければ折り返す。縦を節約して、担当セクションの一覧を狭めない)
+	difficulty_desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	difficulty_desc_label.custom_minimum_size.x = 260
+	difficulty_row.add_child(difficulty_desc_label)
+
 	# 詳細は2つのタブに分ける(2026-09-19、実機で「メンバーが文字だけ・担当セクションの一覧が狭く潰れる・
 	# 割り当てボタンだけが目立つ」との指摘): 「メンバー・並び順」と「担当セクション」。タブは、
 	# 倍速ボタンと同じくButtonGroupのトグルにして、開いている側が青く押された状態になる。
@@ -2379,7 +2409,7 @@ func _create_party_card(party: Dictionary, group: ButtonGroup) -> Button:
 	var section_name := "未割当"
 	if not is_unassigned and WorldMap.sections.has(party["assigned_section"]):
 		section_name = WorldMap.sections[party["assigned_section"]]["name"]
-	card.text = "%s\n%s\n担当: %s%s" % [party["name"], "・".join(member_names), section_name, "  ⚠" if is_unassigned else ""]
+	card.text = "%s  [%s]\n%s\n担当: %s%s" % [party["name"], Difficulty.mode_name(Difficulty.of_party(party)), "・".join(member_names), section_name, "  ⚠" if is_unassigned else ""]
 	if is_unassigned:
 		_apply_unassigned_warning_style(card)
 	card.pressed.connect(_on_party_card_pressed.bind(party["id"]))
@@ -2431,6 +2461,7 @@ func _refresh_party_detail() -> void:
 		_update_party_add_button()
 		for behavior in post_clear_behavior_buttons.keys():
 			post_clear_behavior_buttons[behavior].button_pressed = false
+		_refresh_difficulty_controls(-1)
 		return
 	section_forecast_label.text = ""
 	var party := Parties.get_party(_selected_party_id)
@@ -2458,6 +2489,7 @@ func _refresh_party_detail() -> void:
 	var behavior: int = party["post_clear_behavior"]
 	if post_clear_behavior_buttons.has(behavior):
 		post_clear_behavior_buttons[behavior].button_pressed = true
+	_refresh_difficulty_controls(Difficulty.of_party(party))
 	_select_current_section_in_tree(section_id)
 	_update_section_party_labels()
 	_update_section_action_buttons()
@@ -2624,6 +2656,41 @@ func _on_move_member_pressed(direction: int) -> void:
 	Parties.reorder(_selected_party_id, order)
 	_selected_member_index = target # 動かしたメンバーを選択したままにして、続けて動かせるようにする
 	_refresh_party_detail()
+
+## 難易度のボタンを、選択中のパーティの難易度(-1なら、どれも選ばない)に合わせる。
+func _refresh_difficulty_controls(mode: int) -> void:
+	for i in range(difficulty_buttons.size()):
+		difficulty_buttons[i].set_pressed_no_signal(i == mode)
+		difficulty_buttons[i].disabled = mode < 0
+	difficulty_desc_label.text = Difficulty.describe(mode) if mode >= 0 else ""
+
+## 難易度を切り替える。次の戦闘・判定・収入から効く。マップのアイコンのバッジ、パーティ一覧のカードの表示も更新する。
+func _on_difficulty_pressed(mode: int) -> void:
+	if _selected_party_id < 0 or not Parties.set_difficulty(_selected_party_id, mode):
+		return
+	_refresh_party_roster()
+	_refresh_party_detail()
+	_refresh_map()
+
+## 難易度の切り替えボタンの見た目。選んでいる側は、その難易度の色(DIFFICULTY_COLORS)で塗る
+## (マップのアイコンのバッジと同じ色。共有Themeの青い押下スタイルだと、どの難易度か色で分からない)。
+func _apply_difficulty_button_style(button: Button, mode: int) -> void:
+	var color: Color = DIFFICULTY_COLORS[mode]
+	var pressed := StyleBoxFlat.new()
+	pressed.bg_color = color
+	pressed.border_color = color.lightened(0.5)
+	pressed.set_border_width_all(2)
+	pressed.set_corner_radius_all(4)
+	pressed.content_margin_left = 12
+	pressed.content_margin_right = 12
+	pressed.content_margin_top = 8
+	pressed.content_margin_bottom = 8
+	var hover_pressed := pressed.duplicate()
+	hover_pressed.bg_color = color.lightened(0.12)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("hover_pressed", hover_pressed)
+	button.add_theme_color_override("font_pressed_color", Color(1, 1, 1))
+	button.add_theme_color_override("font_hover_pressed_color", Color(1, 1, 1))
 
 func _on_post_clear_behavior_pressed(behavior: int) -> void:
 	if _selected_party_id < 0:
@@ -3360,6 +3427,9 @@ const MAP_ZOOM_MIN := 0.4
 const MAP_ZOOM_MAX := 2.2
 const MAP_ZOOM_STEP := 0.15
 const MAP_ICON_SIZE := 40.0 # パーティ代表アイコンの一辺(2026-09-14、20pxから2倍に拡大)
+# 難易度モード(Difficulty.Mode)の色: Easy=緑 / Normal=青灰 / Hard=赤。マップのパーティアイコンの左上のバッジ(頭文字E/N/Hの
+# 背景)と、パーティ詳細の切り替えボタン(選んでいる側)で使う。肖像がアイコンの背景を覆うので、色はバッジで見せる。
+const DIFFICULTY_COLORS := [Color(0.16, 0.55, 0.26), Color(0.3, 0.42, 0.6), Color(0.78, 0.16, 0.14)]
 # タッチUIでは、マップの文字を(ズーム1.0でも)左メニューのボタンの文字(16px)以上にする(2026-09-20、
 # 実機で「マップの文字が小さすぎる」との指摘)。大きくするのは文字だけで、フロアの箱の大きさ(BASE_MAP_*)は
 # 変えない(箱は文字数に対して十分広い)。セクションの見出しだけは、2行ぶんの文字が収まるよう高さも同じ倍率で
@@ -3624,8 +3694,10 @@ func _create_node_box(id: String, cell_pos: Vector2) -> void:
 	vbox.add_child(name_label)
 
 	var status_label := Label.new()
-	status_label.add_theme_font_size_override("font_size", _map_font_size(11, 8))
+	status_label.add_theme_font_size_override("font_size", _map_font_size(12, 8)) # 条件のアイコンが小さくならないよう、11から12に
 	status_label.modulate = Color(1, 1, 1, 0.7)
+	# 突破に必要な条件(長いアイテム名など)で箱が横に広がらないよう、収まらなければ末尾を「…」にする(全文はフロア詳細)
+	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	vbox.add_child(status_label)
 
 	map_canvas.add_child(box)
@@ -3865,20 +3937,66 @@ func _show_node_detail(id: String) -> void:
 
 	_open_modal(node_detail_panel)
 
+## ゲート(障害物)の種類を表すアイコン。マップの突破待ちのフロアの箱と、フロア詳細のゲート説明に出す(2026-09-22)。
+## どれも「何が行く手を阻んでいるか」を表す: 鍵=施錠された扉、虫眼鏡=隠された通路、パズル=謎解き、爆発=壊して進む障害、
+## 剣=敵、王冠=血筋、リュック=持ち物。Androidでも表示できるよう、古い世代の絵文字を選んである。
+const SKILL_GATE_ICONS := {
+	SkillTypes.Skill.LOCKPICKING: "🔒",
+	SkillTypes.Skill.PERCEPTION: "🔍",
+	SkillTypes.Skill.WISDOM: "🧩",
+	SkillTypes.Skill.DESTRUCTION: "💥",
+}
+const COMBAT_GATE_ICON := "⚔️"
+const BLOODLINE_GATE_ICON := "👑"
+const ITEM_GATE_ICON := "🎒"
+const UNKNOWN_GATE_ICON := "❓"
+const GATE_CONDITION_COLOR := Color(1.0, 0.9, 0.62) # 突破待ちのフロアの、条件の行の色(暖色)
+
+## ゲートの種類のアイコン。ゲートが無ければ空文字。
+func _gate_icon(gate: Dictionary) -> String:
+	match gate.get("type", ""):
+		"skill":
+			return SKILL_GATE_ICONS.get(gate["skill"], UNKNOWN_GATE_ICON)
+		"combat":
+			return COMBAT_GATE_ICON
+		"innate_trait":
+			return BLOODLINE_GATE_ICON
+		"item":
+			return ITEM_GATE_ICON
+	return "" if gate.is_empty() else UNKNOWN_GATE_ICON
+
+## 突破に必要な条件の短い表示「アイコン 条件」。マップの突破待ちのフロアの箱に出す(例: 「🔒 鍵開け Lv3」「⚔️ 敵の戦闘力 320」)。
+## 基礎値のまま(パーティの難易度による増減は反映しない。推奨戦力と同じ扱い)。ゲートが無ければ空文字。
+func _gate_short_text(gate: Dictionary) -> String:
+	if gate.is_empty():
+		return ""
+	var icon := _gate_icon(gate)
+	match gate.get("type", ""):
+		"skill":
+			return "%s %s Lv%d" % [icon, SkillTypes.SKILL_NAMES[gate["skill"]], gate["min_level"]]
+		"combat":
+			return "%s 敵の戦闘力 %d" % [icon, gate["enemy_power"]]
+		"innate_trait":
+			return "%s 血筋: %s" % [icon, gate["value"]]
+		"item":
+			return "%s %s" % [icon, Items.name_of(gate["item"])]
+	return "%s 不明" % icon
+
 func _gate_description(gate: Dictionary) -> String:
 	if gate.is_empty():
 		return "なし(自由に通行可能)"
+	var icon := _gate_icon(gate)
 	match gate.get("type", ""):
 		"skill":
-			return "%s Lv%d以上が必要" % [SkillTypes.SKILL_NAMES[gate["skill"]], gate["min_level"]]
+			return "%s %s Lv%d以上が必要" % [icon, SkillTypes.SKILL_NAMES[gate["skill"]], gate["min_level"]]
 		"combat":
-			return "戦闘(敵の戦闘力%d)" % gate["enemy_power"]
+			return "%s 戦闘(敵の戦闘力%d)" % [icon, gate["enemy_power"]]
 		"innate_trait":
-			return "特定の血筋(%s)が必要" % gate["value"]
+			return "%s 特定の血筋(%s)が必要" % [icon, gate["value"]]
 		"item":
-			return "アイテム「%s」の所持が必要" % Items.name_of(gate["item"])
+			return "%s アイテム「%s」の所持が必要" % [icon, Items.name_of(gate["item"])]
 		_:
-			return "不明"
+			return "%s 不明" % icon
 
 ## 未到達セクション(マップ上の鍵アイコン)をダブルクリックした時の詳細ウィンドウ。
 ## 通常のフロア詳細(_show_node_detail)と同じnode_detail_panelを使い回す。
@@ -3943,12 +4061,19 @@ func _refresh_map() -> void:
 		var name_label: Label = node_name_labels[id]
 		var box: PanelContainer = node_boxes[id]
 
+		var status_color := Color(1, 1, 1, 0.7)
 		if WorldMap.is_passed(id):
 			status_label.text = "突破済み"
 		elif WorldMap.is_found(id):
-			status_label.text = "発見済み(進行不可)"
+			# 突破待ちは、何が必要かを出す(アイコン+条件。2026-09-22)。ゲートが無い(通常は起きない)時だけ従来の文言。
+			# 箱ごと半透明(下のalpha)なので、条件の行は暖色で不透明にして、薄い灰色の文字より読み取りやすくする
+			var condition := _gate_short_text(WorldMap.nodes[id].get("gate", {}))
+			status_label.text = condition if condition != "" else "発見済み(進行不可)"
+			if condition != "":
+				status_color = GATE_CONDITION_COLOR
 		else:
 			status_label.text = "未発見"
+		status_label.modulate = status_color
 
 		if not WorldMap.is_found(id):
 			name_label.text = "????"
@@ -4052,7 +4177,8 @@ func _create_party_icon(party: Dictionary) -> Button:
 	var is_recovering: bool = int(party["status"]) == Parties.Status.RECOVERING
 	var is_looping := _is_party_looping(party)
 	var is_retreating := Parties.is_retreating(party)
-	icon.tooltip_text = "%s(%s / %s)" % [party["name"], _party_status_text(party), "退避中" if is_retreating else ("ループ中" if is_looping else "進行中")]
+	var difficulty_mode := Difficulty.of_party(party)
+	icon.tooltip_text = "%s(%s / %s / %s)" % [party["name"], _party_status_text(party), "退避中" if is_retreating else ("ループ中" if is_looping else "進行中"), Difficulty.mode_name(difficulty_mode)]
 	icon.pressed.connect(_on_party_icon_pressed.bind(party["id"]))
 
 	var member_ids: Array = party["member_ids"]
@@ -4090,12 +4216,17 @@ func _create_party_icon(party: Dictionary) -> Button:
 		frame.add_theme_stylebox_override("panel", frame_style)
 		icon.add_child(frame)
 		var days_left: int = maxi(0, int(party["recovering_until_day"]) - TimeSystem.current_day)
-		icon.add_child(_make_party_icon_badge("💤%d日" % days_left, false, Color(0.55, 0.3, 0.05, 0.92)))
+		icon.add_child(_make_party_icon_badge("💤%d日" % days_left, BadgeCorner.BOTTOM_RIGHT, Color(0.55, 0.3, 0.05, 0.92)))
 
 	# 進行中(⏩)かループ中(🔁)かを、右上に出す(担当セクションを完全踏破して周回している間がループ)。
 	# 戦力不足で1つ前のセクションへ退避して力を付けている間は、戻っていることが分かる「⏪」を出す。
 	var progress_badge := "⏪" if is_retreating else ("🔁" if is_looping else "⏩")
-	icon.add_child(_make_party_icon_badge(progress_badge, true, Color(0, 0, 0, 0.6)))
+	icon.add_child(_make_party_icon_badge(progress_badge, BadgeCorner.TOP_RIGHT, Color(0, 0, 0, 0.6)))
+	# 難易度の頭文字(E/N/H)を、難易度の色の背景で左上に出す。右下(休養の日数)は40pxのアイコンに収まる幅が
+	# 足りず重なるので、右上の進行バッジの反対側の左上にした。
+	var difficulty_color: Color = DIFFICULTY_COLORS[difficulty_mode]
+	difficulty_color.a = 0.95
+	icon.add_child(_make_party_icon_badge(Difficulty.initial(difficulty_mode), BadgeCorner.TOP_LEFT, difficulty_color))
 	return icon
 
 ## 担当セクションを完全踏破していて、踏破後の設定が「ループ」(留まって周回する)ならtrue。
@@ -4105,14 +4236,22 @@ func _is_party_looping(party: Dictionary) -> bool:
 	return party["post_clear_behavior"] == Parties.PostClearBehavior.STAY \
 		and WorldMap.sections.has(section_id) and WorldMap.is_section_cleared(section_id)
 
-## パーティアイコンの隅に重ねる、絵文字や短い文字の小さなバッジ。top_rightなら右上、そうでなければ右下。
-func _make_party_icon_badge(text: String, top_right: bool, bg_color: Color) -> PanelContainer:
+enum BadgeCorner { TOP_LEFT, TOP_RIGHT, BOTTOM_RIGHT }
+
+## パーティアイコンの隅に重ねる、絵文字や短い文字の小さなバッジ。
+func _make_party_icon_badge(text: String, corner: BadgeCorner, bg_color: Color) -> PanelContainer:
 	var badge := PanelContainer.new()
 	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	badge.set_anchors_preset(Control.PRESET_TOP_RIGHT if top_right else Control.PRESET_BOTTOM_RIGHT)
-	badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	if not top_right:
-		badge.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	match corner:
+		BadgeCorner.TOP_LEFT:
+			badge.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		BadgeCorner.TOP_RIGHT:
+			badge.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+			badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		BadgeCorner.BOTTOM_RIGHT:
+			badge.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+			badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+			badge.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	var style := StyleBoxFlat.new()
 	style.bg_color = bg_color
 	style.set_corner_radius_all(6)

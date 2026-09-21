@@ -617,6 +617,8 @@ func _ensure_schema(db: SQLite) -> void:
 	# 2026-09-20追加。戦力不足で退避中のパーティの、戻り先のセクションと、勝てなかったフロア(exploration.gd参照)。
 	_ensure_column(db, "parties", "return_section", "TEXT DEFAULT ''")
 	_ensure_column(db, "parties", "return_node", "TEXT DEFAULT ''")
+	# 2026-09-22追加。パーティごとの難易度モード(difficulty.gd。0=Easy/1=Normal/2=Hard)。旧セーブはNormal。
+	_ensure_column(db, "parties", "difficulty", "INTEGER DEFAULT 1")
 	db.query("CREATE TABLE IF NOT EXISTS party_members (party_id INTEGER, npc_id INTEGER, order_index INTEGER, PRIMARY KEY (party_id, npc_id))")
 	db.query("CREATE TABLE IF NOT EXISTS section_rewards (section_id TEXT PRIMARY KEY)")
 	db.query("CREATE TABLE IF NOT EXISTS board_entries (seq INTEGER PRIMARY KEY AUTOINCREMENT, day INTEGER, text TEXT, importance INTEGER, source TEXT)")
@@ -709,8 +711,8 @@ func save_game() -> void:
 	for party_id in party_data["parties"].keys():
 		var party: Dictionary = party_data["parties"][party_id]
 		db.query_with_bindings(
-			"INSERT INTO parties (id, name, assigned_section, status, recovering_until_day, post_clear_behavior, lap_start_day, return_section, return_node) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			[party_id, party["name"], party["assigned_section"], party["status"], party["recovering_until_day"], party["post_clear_behavior"], party.get("lap_start_day", -1), party.get("return_section", ""), party.get("return_node", "")])
+			"INSERT INTO parties (id, name, assigned_section, status, recovering_until_day, post_clear_behavior, lap_start_day, return_section, return_node, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			[party_id, party["name"], party["assigned_section"], party["status"], party["recovering_until_day"], party["post_clear_behavior"], party.get("lap_start_day", -1), party.get("return_section", ""), party.get("return_node", ""), Difficulty.of_party(party)])
 		for i in range(party["member_ids"].size()):
 			db.query_with_bindings("INSERT INTO party_members (party_id, npc_id, order_index) VALUES (?, ?, ?)",
 				[party_id, party["member_ids"][i], i])
@@ -861,6 +863,7 @@ func load_game() -> bool:
 			"lap_start_day": int(row.get("lap_start_day", -1)),
 			"return_section": String(row.get("return_section", "")),
 			"return_node": String(row.get("return_node", "")),
+			"difficulty": int(row.get("difficulty", Difficulty.DEFAULT)),
 			"member_ids": [],
 		}
 	var had_saved_parties := not parties_data.is_empty()

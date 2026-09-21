@@ -44,6 +44,7 @@ func form_party(member_ids: Array, display_name: String = "") -> int:
 		# 退避(待機)中で、return_nodeの敵に勝てる見込みが立ったらreturn_sectionへ戻る。
 		"return_section": "",
 		"return_node": "",
+		"difficulty": Difficulty.DEFAULT, # 難易度モード(difficulty.gd)。パーティごとに、いつでも切り替えられる
 	}
 	for npc_id in member_ids:
 		Npcs.set_party(npc_id, id)
@@ -153,6 +154,17 @@ func set_post_clear_behavior(party_id: int, behavior: int) -> void:
 	if parties.has(party_id):
 		parties[party_id]["post_clear_behavior"] = behavior
 
+## パーティの難易度モード(Difficulty.Mode)。存在しないパーティはNormal。
+func difficulty(party_id: int) -> int:
+	return Difficulty.of_party(parties.get(party_id, {}))
+
+## 難易度を切り替える(いつでも可)。範囲外の値は無視してfalse。切り替えた時点から、次の戦闘・判定・収入に効く。
+func set_difficulty(party_id: int, mode: int) -> bool:
+	if not parties.has(party_id) or mode < 0 or mode >= Difficulty.NAMES.size():
+		return false
+	parties[party_id]["difficulty"] = mode
+	return true
+
 ## 完全踏破済みセクションでの周回(ループ)管理(design.md「ループ」設定参照)。
 ## start_lap()は1周の起点となる日を記録し、reset_lap()は周回対象外(未踏破区間がまだ残っている
 ## 等)になった時に、次に対象になった時点から改めて1周目を始められるようにクリアする。
@@ -212,6 +224,7 @@ func load_state(data: Dictionary) -> void:
 		party["lap_start_day"] = int(party.get("lap_start_day", -1))
 		party["return_section"] = String(party.get("return_section", ""))
 		party["return_node"] = String(party.get("return_node", ""))
+		party["difficulty"] = Difficulty.of_party(party) # 旧セーブ(難易度の導入前)はNormal
 		parties[id] = party
 		max_id = max(max_id, id)
 	_next_id = max(int(data.get("next_id", 1)), max_id + 1)

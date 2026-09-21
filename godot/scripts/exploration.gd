@@ -105,7 +105,7 @@ func _on_month_ended(current_month: int) -> void:
 		if WorldMap.is_section_cleared(section_id):
 			continue
 		var income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
-		total_income += income
+		total_income += Difficulty.reward(income, Difficulty.of_party(party)) # パーティの難易度で増減する(difficulty.gd)
 	if total_income > 0:
 		Economy.earn(total_income)
 		var text := "月次収入として%d資金を得た(第%d月)" % [total_income, current_month]
@@ -159,7 +159,7 @@ func _process_lap(party: Dictionary, current_day: int) -> void:
 	var lap_days: int = max(1, WorldMap.nodes_in_section(section_id).size())
 	if current_day - party["lap_start_day"] < lap_days:
 		return
-	var income: int = LAP_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
+	var income: int = Difficulty.reward(LAP_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id), Difficulty.of_party(party))
 	Economy.earn(income)
 	var section_name: String = WorldMap.sections[section_id]["name"]
 	var text := "%sが「%s」を1周し、%d資金を得た" % [party["name"], section_name, income]
@@ -220,7 +220,7 @@ func _retry_gates(party: Dictionary, current_day: int) -> void:
 				_grant_item_reward(result["npc_id"], node)
 				var actor_name: String = Npcs.get_npc(result["npc_id"]).get("name", party["name"])
 				_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"])
-				_check_section_cleared(party["assigned_section"], current_day)
+				_check_section_cleared(party["assigned_section"], current_day, party["id"])
 
 ## パーティ内で該当スキルが最も高い(固有スキルの実効Lv込み)メンバーを返す。
 func _effective_skill_level(npc_id: int, skill: int) -> int:
@@ -355,7 +355,8 @@ func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool,
 		if npc_id != -1:
 			_grant_item_reward(npc_id, node)
 		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見した" % [discoverer_name, node["name"]], "discover_pass", npc_id)
-		_check_section_cleared(node["section"], current_day)
+		# 攻略報酬の難易度は、突破したメンバーのパーティのもの(野良の旅人など、npc_idが無ければNormal)
+		_check_section_cleared(node["section"], current_day, int(Npcs.get_npc(npc_id).get("party_id", -1)))
 	else:
 		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見したが、まだ先へ進めない" % [discoverer_name, node["name"]], "discover_blocked", npc_id)
 
@@ -381,7 +382,9 @@ func _grant_item_reward(npc_id: int, node: Dictionary) -> void:
 ## post_clear_behaviorの設定に従い「そのまま留まる」か「次の未踏破セクションへ自動再配置」かを
 ## 適用する(design.mdの「複数パーティが並列でセクションを分担」方針に合わせ、既に他のパーティが
 ## 担当中のセクションへは再配置しない)。
-func _check_section_cleared(section_id: String, current_day: int) -> void:
+## clearing_party_idは、最後のフロアを突破したパーティ(攻略報酬に、そのパーティの難易度の倍率をかける)。
+## 分からない(野良の旅人が突破した等)なら-1で、Normal扱い。
+func _check_section_cleared(section_id: String, current_day: int, clearing_party_id: int = -1) -> void:
 	if section_id == "" or WorldMap.is_section_reward_claimed(section_id):
 		return
 	if not WorldMap.is_section_cleared(section_id):
@@ -393,7 +396,8 @@ func _check_section_cleared(section_id: String, current_day: int) -> void:
 	var is_first_clear := WorldMap.section_reward_claimed.is_empty()
 	WorldMap.mark_section_reward_claimed(section_id)
 
-	var reward := SECTION_CLEAR_REWARD_PER_FLOOR * multiplier * node_count
+	# 難易度の倍率は、フロア数に応じた分だけにかける(初めての完全攻略ボーナスは、序盤の後押しなので難易度によらず固定)
+	var reward := Difficulty.reward(SECTION_CLEAR_REWARD_PER_FLOOR * multiplier * node_count, Parties.difficulty(clearing_party_id))
 	if is_first_clear:
 		reward += FIRST_SECTION_CLEAR_BONUS
 	Economy.earn(reward)
@@ -538,7 +542,7 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 			var result: Dictionary = Combat.resolve_party_encounter(party["id"], gate["enemy_power"], current_day)
 			if result["result"] == "victory":
 				return {"passed": true, "npc_id": result["npc_id"]}
-			_post_retreat_help(party, node_id, current_day, result["result"], gate["enemy_power"])
+			_post_retreat_help(party, node_id, current_day, result["result"], Combat.effective_enemy_power(party["id"], gate["enemy_power"]))
 			return {"passed": false, "npc_id": -1}
 		"skill":
 			# 挑戦するたびに、たとえ突破できなくても該当スキルの経験値が(判定を担ったメンバーに)入る
@@ -547,11 +551,15 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 			if member_id == -1:
 				return {"passed": false, "npc_id": -1}
 			Npcs.grant_skill_exp(member_id, gate["skill"], 1)
-			var passed: bool = _effective_skill_level(member_id, gate["skill"]) >= gate["min_level"]
+			var passed: bool = _effective_skill_level(member_id, gate["skill"]) >= _gate_min_level(party, gate)
 			return {"passed": passed, "npc_id": member_id if passed else -1}
 		_:
 			var member_id := WorldMap.first_passing_member(node_id, party["member_ids"])
 			return {"passed": member_id != -1, "npc_id": member_id}
+
+## スキルゲートの必要Lv。ゲートの基礎値に、パーティの難易度(difficulty.gd)の加減をしたもの。
+func _gate_min_level(party: Dictionary, gate: Dictionary) -> int:
+	return Difficulty.skill_min_level(int(gate["min_level"]), Difficulty.of_party(party))
 
 ## 戦闘での撤退/敗北時、プレイヤーが次に何をすればよいか分かるよう掲示板(セクションスレッド)に
 ## ヒントを投稿する(design.md 6.2節の「即死の壁」構造を踏まえた対応策の案内)。敗北・撤退した
@@ -585,7 +593,7 @@ func forecast_section(party_id: int, section_id: String) -> Dictionary:
 	var party := Parties.get_party(party_id)
 	if party.is_empty():
 		return {"base_income": 0, "predicted_income": 0, "retreat_probability": 0.0, "risk_node_name": ""}
-	var base_income: int = MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id)
+	var base_income: int = Difficulty.reward(MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id), Difficulty.of_party(party))
 	var horizon := float(TimeSystem.DAYS_PER_MONTH)
 	var scout_id := _best_member_for_skill(party, SkillTypes.Skill.PERCEPTION)
 	var chance := discovery_chance_for_member(scout_id) if scout_id != -1 else DISCOVERY_BASE_CHANCE
@@ -637,7 +645,7 @@ func forecast_section(party_id: int, section_id: String) -> Dictionary:
 						risk_eta = eta
 						break # BFSはeta昇順に訪れるため、最初に見つかった撤退/敗北が最短の危険地点
 			"skill":
-				passable = _effective_skill_level(_best_member_for_skill(party, gate["skill"]), gate["skill"]) >= gate["min_level"]
+				passable = _effective_skill_level(_best_member_for_skill(party, gate["skill"]), gate["skill"]) >= _gate_min_level(party, gate)
 			"innate_trait", "item":
 				passable = WorldMap.first_passing_member(node_id, party["member_ids"]) != -1
 			_:
