@@ -153,6 +153,48 @@ function validateEventShape(event, eventId) {
   }
 }
 
+const WORLD_ID = /^[a-z0-9][a-z0-9_]{0,60}$/;
+
+// world.jsonの形の検査。意味の検証(参照の整合など)は、エディタ側(worldlogic.js)とゲームの読み込みが受け持つ。
+// ここでは、ゲームが読めなくなるほどの形の崩れ(型・ID)だけを止める
+function validateWorldShape(world) {
+  if (!world || typeof world !== 'object' || Array.isArray(world)) throw new HttpError(400, 'マップの形式が正しくありません');
+  for (const key of ['items', 'areas', 'sections', 'nodes']) {
+    if (!Array.isArray(world[key])) throw new HttpError(400, `マップの${key}は配列にしてください`);
+    const seen = new Set();
+    for (const entry of world[key]) {
+      if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !WORLD_ID.test(entry.id)) throw new HttpError(400, `マップの${key}に、IDが正しくない項目があります`);
+      if (typeof entry.name !== 'string') throw new HttpError(400, `マップの${key}(${entry.id})に名前がありません`);
+      if (seen.has(entry.id)) throw new HttpError(400, `マップの${key}にIDの重複があります: ${entry.id}`);
+      seen.add(entry.id);
+    }
+  }
+  for (const section of world.sections) if (typeof section.area !== 'string') throw new HttpError(400, `セクション(${section.id})にエリアがありません`);
+  for (const node of world.nodes) {
+    if (typeof node.section !== 'string') throw new HttpError(400, `フロア(${node.id})にセクションがありません`);
+    if (!Array.isArray(node.connections) || node.connections.some((c) => typeof c !== 'string')) throw new HttpError(400, `フロア(${node.id})の接続が正しくありません`);
+    if (!node.gate || typeof node.gate !== 'object' || Array.isArray(node.gate)) throw new HttpError(400, `フロア(${node.id})のゲートが正しくありません`);
+  }
+  return { items: world.items, areas: world.areas, sections: world.sections, nodes: world.nodes };
+}
+
+// マップの保存。IDの変更に伴うイベントの書き換え(events)も、同じ要求で受け取る。イベントを先に、マップを最後に書く
+// (途中で失敗しても、同じ内容でやり直せる)。イベントは既存のものだけ(このAPIでは新しく作らない)
+async function saveWorld(dir, body) {
+  if (!body || typeof body !== 'object') throw new HttpError(400, '形式が正しくありません');
+  const world = validateWorldShape(body.world);
+  const events = body.events === undefined ? [] : body.events;
+  if (!Array.isArray(events)) throw new HttpError(400, 'eventsは配列にしてください');
+  for (const event of events) {
+    if (!event || typeof event.id !== 'string' || !EVENT_ID.test(event.id)) throw new HttpError(400, 'イベントのIDが正しくありません');
+    validateEventShape(event, event.id);
+    if (!(await exists(path.join(dir, 'events', `${event.id}.json`)))) throw new HttpError(404, `イベントが見つかりません: ${event.id}`);
+  }
+  for (const event of events) await writeJson(path.join(dir, 'events', `${event.id}.json`), event);
+  await writeJson(path.join(dir, 'world.json'), world);
+  return { ok: true, eventsUpdated: events.length };
+}
+
 async function copyDir(from, to) {
   await fsp.mkdir(to, { recursive: true });
   for (const entry of await fsp.readdir(from, { withFileTypes: true })) {
@@ -271,6 +313,9 @@ async function handleApi(req, res, url) {
     if (section === 'cast' && !Array.isArray(body)) throw new HttpError(400, '配列にしてください');
     await writeJson(path.join(dir, section === 'meta' ? 'scenario.json' : 'cast.json'), section === 'meta' ? { ...body, id } : body);
     return sendJson(res, 200, { ok: true });
+  }
+  if (parts.length === 4 && method === 'PUT' && section === 'world') {
+    return sendJson(res, 200, await saveWorld(dir, await readJsonBody(req)));
   }
   if (parts.length === 5 && section === 'events') {
     if (!EVENT_ID.test(name)) throw new HttpError(400, `イベントIDが正しくありません: ${name}`);

@@ -26,6 +26,7 @@ APPDATA=<空の隔離ディレクトリ> "$GODOT_EXE" --headless --path godot --
 | `sim_retreat_save_roundtrip.gd` | 退避状態のSQLiteのセーブ往復 |
 | `survey_events.gd` | イベント会話のあるフロアの、ゲート種別ごとの集計 |
 | `sim_scenario_events.gd` | シナリオ・イベントの仕組み全体(docs/scenario_editor.md): カスタムシナリオでの新規開始と暦の起点、条件イベント(日数・フラグ)、効果(資金・フラグ・フロア開放)、ゲート結果の会話、セーブ往復、別シナリオへの切替と、編集後も古いスロットが遊び始めた時点のままか、旧形式スキーマの読込、画像の読込、読み込み時間 |
+| `sim_map_edit.gd` | マップ編集(tools/scenario-editor/)の確認: エディタのロジック(`worldlogic.js`)で編集したシナリオ(エリア・セクション・フロアの追加、ID変更、並べ替え、移動、削除、4種のゲート、アイテム定義)を、ゲーム本体が読めて、並び・接続・ゲート・アイテム・イベントが期待どおりか、追加したフロアを実際に発見できるか、セーブ往復。**前処理が要る**: `APPDATA=<隔離dir> node tools/scenario-editor/test/make_edited_scenario.js <隔離dir>/Godot/app_userdata/WorldSeeker/scenarios`(編集済みシナリオと期待値を書き出す)→ 同じ`APPDATA`で`--script`実行 |
 | `sim_scenario_ui.gd` | メイン画面を実際に組み立てて、シナリオ選択→新規プレイ→別の世界(エリアバー・マップ)の描画→標準へ戻す |
 | `export_default_scenario.gd` | (一度きりの移行ツール。元の`world_data.gd`を廃止したので、もう実行できない)デフォルトシナリオのJSONを書き出し、元のWorldMapと照合した |
 
@@ -33,8 +34,7 @@ APPDATA=<空の隔離ディレクトリ> "$GODOT_EXE" --headless --path godot --
 
 **引数なしで動く**(2026-09-20に、実機のAPKを使い捨てキーから本物のリリース鍵へ切り替えた)。
 
-- **起動のしかた(2026-09-21)**: **Git Bash**で実行する。PowerShell/cmdで`bash tools/dev/android/run_on_phone.sh`と打つと、Windowsに入っている**WSL(Linux)のbash**が起動し、パスが`/mnt/d/...`になって「ビルド道具が見つかりません」と出て動かない(スクリプトは`/d/...`のパスと`cygpath`を前提にしている。WSLで実行された場合は、その旨と正しい起動方法を表示して止まる)。PowerShell/cmdからは`tools\devndroid
-un_on_phone.cmd`(Git Bashを直接指定して起動する入り口。引数はそのまま渡す)を使う。
+- **起動のしかた(2026-09-21)**: **Git Bash**で実行する。PowerShell/cmdで`bash tools/dev/android/run_on_phone.sh`と打つと、Windowsに入っている**WSL(Linux)のbash**が起動し、パスが`/mnt/d/...`になって「ビルド道具が見つかりません」と出て動かない(スクリプトは`/d/...`のパスと`cygpath`を前提にしている。WSLで実行された場合は、その旨と正しい起動方法を表示して止まる)。PowerShell/cmdからは`tools\dev\android\run_on_phone.cmd`(Git Bashを直接指定して起動する入り口。引数はそのまま渡す)を使う。
 - `run_on_phone.sh ["logcatで待つ正規表現"]`: コンパイル確認 → **リポジトリから直接**リリースAPKをエクスポート(作業ツリーの内容がそのまま載る) → 署名者が本物のキーの指紋と一致するか確認 → `adb install -r`(スマホのセーブは残る) → 起動 → エラーの有無を表示。
   - 署名キーは`C:\Users\thero\worldseeker-signing\`の`worldseeker-release.keystore`と`PASSWORD.txt`を**実行時に読む**(パスワードはスクリプトにもリポジトリにも書かない)。場所は`WS_SIGNING_DIR`などの環境変数で変えられる。
   - **インストールのたびにゲームは再起動し、新規開始になる**。

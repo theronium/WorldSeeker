@@ -100,6 +100,45 @@ test('画像: PNGだけ受け付け、一覧と配信ができる', async () => 
   assert.deepStrictEqual(r.data, []);
 });
 
+test('マップの保存: 世界とイベントの書き換えを一緒に保存でき、不正な形は拒否する', async () => {
+  let r = await api('GET', '/api/scenarios/custom/my_story');
+  const world = r.data.world;
+  const before = fs.readFileSync(path.join(config.customRoot, 'my_story', 'world.json'), 'utf8');
+  // 何も変えずに保存し直しても、ファイルが変わらない
+  r = await api('PUT', '/api/scenarios/custom/my_story/world', { world, events: [] });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(fs.readFileSync(path.join(config.customRoot, 'my_story', 'world.json'), 'utf8'), before);
+
+  // フロア名の変更 + 既存イベントの書き換え
+  const changed = JSON.parse(JSON.stringify(world));
+  changed.nodes[0].name = '改名した場所';
+  const event = (await api('GET', '/api/scenarios/custom/my_story')).data.events.find((e) => e.trigger.type === 'gate');
+  event.title = '書き換えたタイトル';
+  r = await api('PUT', '/api/scenarios/custom/my_story/world', { world: changed, events: [event] });
+  assert.deepStrictEqual(r.data, { ok: true, eventsUpdated: 1 });
+  r = await api('GET', '/api/scenarios/custom/my_story');
+  assert.strictEqual(r.data.world.nodes[0].name, '改名した場所');
+  assert.strictEqual(r.data.events.find((e) => e.id === event.id).title, '書き換えたタイトル');
+  // デフォルトのシナリオには影響しない
+  assert.notStrictEqual((await api('GET', '/api/scenarios/default/default')).data.world.nodes[0].name, '改名した場所');
+
+  const bad = async (mutate, expected) => {
+    const w = JSON.parse(JSON.stringify(world));
+    mutate(w);
+    const res = await api('PUT', '/api/scenarios/custom/my_story/world', { world: w, events: [] });
+    assert.strictEqual(res.status, expected, JSON.stringify(res.data));
+  };
+  await bad((w) => { w.nodes.push({ ...w.nodes[0] }); }, 400); // ID重複
+  await bad((w) => { w.nodes[0].id = 'Bad Id'; }, 400);
+  await bad((w) => { delete w.sections; }, 400);
+  await bad((w) => { w.nodes[0].connections = 'x'; }, 400);
+  await bad((w) => { w.nodes[0].gate = []; }, 400);
+  r = await api('PUT', '/api/scenarios/custom/my_story/world', { world, events: [{ ...event, id: 'no_such_event' }] });
+  assert.strictEqual(r.status, 404); // 新しいイベントは、このAPIでは作れない
+  r = await api('PUT', '/api/scenarios/custom/my_story/world', { world, events: [{ id: 'x', trigger: { type: 'conditions' } }] });
+  assert.strictEqual(r.status, 400);
+});
+
 test('ライブラリ画像の一覧と配信', async () => {
   const r = await api('GET', '/api/library');
   assert.ok(r.data.length >= 128, String(r.data.length));

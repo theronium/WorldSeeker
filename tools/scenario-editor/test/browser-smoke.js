@@ -151,8 +151,104 @@ async function main() {
     check('登場人物タブ: 40人が並ぶ', await waitFor(`document.querySelectorAll('.cast-row').length === 40`));
     await shot('05_cast');
     await click('#tabs button', 'マップ');
-    check('マップタブ: フロア194行', await waitFor(`document.querySelectorAll('.map-table tr').length === 194`));
+    check('マップタブ: エリア9・セクション39がツリーに並ぶ', await waitFor(`document.querySelectorAll('.tree-row.depth0:not(.items-row)').length === 9 && document.querySelectorAll('.tree-row.depth1').length === 39`));
+    check('マップタブ: 何も変えていないので保存済み・問題なし', (await evaluate(`document.querySelector('.map-bar').textContent`)).includes('保存済み') && (await evaluate(`document.querySelector('.map-bar').textContent`)).includes('問題なし'));
     await shot('06_map');
+
+    // セクションを開く: フロアの並び(マップ画面の配置)が出る
+    await click('.tree-row.depth1', '古い洞窟');
+    check('マップ: セクションのフォームにフロアの並びが出る', await waitFor(`document.querySelectorAll('.floor-cell').length >= 3`));
+    await shot('06b_map_section');
+
+    // フロアを検索して選び、名前とIDを変える
+    await setValue('.tree-filter', '古い祠');
+    check('マップ: 検索でフロアが絞り込まれる', await waitFor(`document.querySelectorAll('.tree-row.depth2').length >= 1`));
+    await click('.tree-row.depth2', '古い祠');
+    check('マップ: フロアのフォームが開く(ID=old_shrine)', await waitFor(`document.querySelector('.map-form input.id-input') && document.querySelector('.map-form input.id-input').value === 'old_shrine'`));
+    await shot('06c_map_floor');
+    await setValue('.map-form .card input[type="text"]', '古い祠(改)');
+    check('マップ: 名前を変えると未保存になり、ツリーにも反映', (await evaluate(`document.querySelector('.map-bar').textContent`)).includes('未保存') && await evaluate(`[...document.querySelectorAll('.tree-row.depth2')].some(r => r.textContent.includes('古い祠(改)'))`));
+    await setValue('.map-form input.id-input', 'old_shrine_x', 'change');
+    await click('.map-bar button', 'マップを保存');
+    await sleep(600);
+    const worldFile = path.join(config.defaultRoot, 'default', 'world.json');
+    const savedWorld = JSON.parse(fs.readFileSync(worldFile, 'utf8'));
+    check('マップの保存: 名前とIDがworld.jsonに反映', savedWorld.nodes.some((n) => n.id === 'old_shrine_x' && n.name === '古い祠(改)') && !savedWorld.nodes.some((n) => n.id === 'old_shrine'));
+    check('マップの保存: 他のフロアの接続も付け替わる', savedWorld.nodes.some((n) => n.connections.includes('old_shrine_x')) && savedWorld.nodes.every((n) => !n.connections.includes('old_shrine')));
+    check('マップの保存: 参照するイベントも書き換わる', JSON.parse(fs.readFileSync(shrineFile, 'utf8')).trigger.floor === 'old_shrine_x');
+    check('マップの保存: 保存済みの表示に戻る', (await evaluate(`document.querySelector('.map-bar').textContent`)).includes('保存済み'));
+    check('マップの保存: 検証は問題なしのまま', (await evaluate(`document.getElementById('issue-count').textContent`)).startsWith('✓'));
+
+    // 既にあるIDへは変えられない
+    await setValue('.map-form input.id-input', 'village', 'change');
+    check('マップ: 既にあるIDへの変更は拒否される', await waitFor(`[...document.querySelectorAll('.toast.error')].some(t => t.textContent.includes('同じIDが既にあります'))`));
+    check('マップ: 拒否されたら入力が元のIDに戻る', (await evaluate(`document.querySelector('.map-form input.id-input').value`)) === 'old_shrine_x');
+
+    // フロアを追加(選んでいるフロアとつなぐ)→保存 → 削除→保存
+    await setValue('.tree-filter', '');
+    await click('.tree-row.depth1', '古い洞窟');
+    await click('.map-form button', 'フロアを追加');
+    await evaluate(`(() => { const inputs = document.querySelectorAll('.modal input[type="text"]'); inputs[0].value = 'テスト部屋'; inputs[0].dispatchEvent(new Event('input', {bubbles: true})); inputs[1].value = 'smoke_room'; inputs[1].dispatchEvent(new Event('input', {bubbles: true})); })()`);
+    await click('.modal-buttons button', '追加');
+    check('マップ: 追加したフロアが選ばれ、未保存になる', await waitFor(`document.querySelector('.map-form input.id-input') && document.querySelector('.map-form input.id-input').value === 'smoke_room' && document.querySelector('.map-bar').textContent.includes('未保存')`));
+    // ゲートを技能に変えて、レベルを入れる
+    await evaluate(`(() => { const sel = [...document.querySelectorAll('.map-form select')].find(s => [...s.options].some(o => o.value === 'skill')); sel.value = 'skill'; sel.dispatchEvent(new Event('change', {bubbles: true})); })()`);
+    check('マップ: ゲートの種類を変えると、技能とレベルの入力が出る', await waitFor(`document.querySelectorAll('.map-form input.num').length >= 1`));
+    await shot('06d_map_new_floor');
+    await click('.map-bar button', 'マップを保存');
+    await sleep(600);
+    const world2 = JSON.parse(fs.readFileSync(worldFile, 'utf8'));
+    const room = world2.nodes.find((n) => n.id === 'smoke_room');
+    check('マップの保存: 追加したフロア(技能ゲート)が書き込まれる', room && room.gate.type === 'skill' && room.connections.length === 1 && world2.nodes.find((n) => n.id === room.connections[0]).connections.includes('smoke_room'), JSON.stringify(room));
+    await click('.map-form button', 'このフロアを削除');
+    await click('.modal-buttons button', '削除');
+    await click('.map-bar button', 'マップを保存');
+    await sleep(600);
+    const world3 = JSON.parse(fs.readFileSync(worldFile, 'utf8'));
+    check('マップの保存: 削除したフロアが消え、接続からも外れる', !world3.nodes.some((n) => n.id === 'smoke_room') && world3.nodes.every((n) => !n.connections.includes('smoke_room')));
+
+    // アイテム定義
+    await click('.tree-row.items-row', '');
+    check('マップ: アイテム定義の一覧が出る(21件)', await waitFor(`document.querySelectorAll('.map-form tbody tr').length === 21`));
+    await shot('06e_map_items');
+
+    // 参照されているフロアの削除: 確認に、参照しているイベントが出る。「元に戻す」で取り消せる
+    await setValue('.tree-filter', '古い祠');
+    await waitFor(`document.querySelectorAll('.tree-row.depth2').length >= 1`);
+    await click('.tree-row.depth2', '古い祠');
+    await waitFor(`document.querySelector('.map-form input.id-input') && document.querySelector('.map-form input.id-input').value === 'old_shrine_x'`);
+    await click('.map-form button', 'このフロアを削除');
+    check('マップ: 参照されているフロアの削除では、確認にイベントの一覧が出る', await waitFor(`[...document.querySelectorAll('.modal')].some(m => m.textContent.includes('次のイベントが') && m.textContent.includes('古い祠'))`));
+    await shot('06f_map_delete_confirm');
+    await click('.modal-buttons button', '削除');
+    check('マップ: 削除すると未保存になる', await waitFor(`document.querySelector('.map-bar').textContent.includes('未保存')`));
+    await click('.map-bar button', '元に戻す');
+    await click('.modal-buttons button', '元に戻す');
+    check('マップ: 元に戻すと、削除したフロアが戻り、保存済みになる', await waitFor(`document.querySelector('.map-bar').textContent.includes('保存済み') && [...document.querySelectorAll('.tree-row.depth2')].some(r => r.textContent.includes('古い祠(改)'))`));
+    await setValue('.tree-filter', '');
+
+    // エリアのフォーム: セクションの並べ替え(未保存になり、ツリーの順が変わる)→元に戻す
+    await click('.tree-row.depth0:not(.items-row)', '小さな王国');
+    check('マップ: エリアのフォームに、セクションの一覧が出る(6件)', await waitFor(`document.querySelectorAll('.map-form .list-row').length === 6`));
+    const firstSectionBefore = await evaluate(`document.querySelectorAll('.tree-row.depth1')[0].textContent`);
+    await evaluate(`(() => { const row = document.querySelector('.map-form .list-row'); [...row.querySelectorAll('button')].find(b => b.title === '後ろへ').click(); })()`);
+    check('マップ: セクションを後ろへ動かすと、ツリーの順が変わり、未保存になる', await waitFor(`document.querySelectorAll('.tree-row.depth1')[0].textContent !== ${JSON.stringify(firstSectionBefore)} && document.querySelector('.map-bar').textContent.includes('未保存')`));
+    await click('.map-bar button', '元に戻す');
+    await click('.modal-buttons button', '元に戻す');
+    check('マップ: 元に戻すと、セクションの順も戻る', await waitFor(`document.querySelectorAll('.tree-row.depth1')[0].textContent === ${JSON.stringify(firstSectionBefore)}`));
+
+    // 概要・問題: 壊れた接続(片方向)を作ると、警告が出て、「そろえる」で直せる
+    await click('.tree-row.depth0:not(.items-row)', '小さな王国');
+    await setValue('.tree-filter', '始まりの村');
+    await waitFor(`document.querySelectorAll('.tree-row.depth2').length >= 1`);
+    await click('.tree-row.depth2', '始まりの村');
+    await waitFor(`document.querySelector('.map-form input.id-input') && document.querySelector('.map-form input.id-input').value === 'village'`);
+    await evaluate(`(() => { const row = [...document.querySelectorAll('.map-form .list-row')][0]; [...row.querySelectorAll('button')].find(b => b.title.includes('接続を外す')).click(); })()`);
+    check('マップ: 接続を外すと(双方向)、未保存になる', await waitFor(`document.querySelector('.map-bar').textContent.includes('未保存')`));
+    await click('.map-bar button', '元に戻す');
+    await click('.modal-buttons button', '元に戻す');
+    await setValue('.tree-filter', '');
+    check('マップ: 最後は保存済み・問題なしの状態', await waitFor(`document.querySelector('.map-bar').textContent.includes('保存済み') && document.querySelector('.map-bar').textContent.includes('問題なし')`));
 
     // 画像ピッカー(ライブラリ)
     await click('#tabs button', 'イベント');
@@ -172,7 +268,7 @@ async function main() {
     await evaluate(`(() => { const inputs = document.querySelectorAll('.modal input[type="text"]'); inputs[0].value = '試験用'; inputs[0].dispatchEvent(new Event('input', {bubbles: true})); inputs[1].value = 'smoke_test'; inputs[1].dispatchEvent(new Event('input', {bubbles: true})); })()`);
     await click('.modal-buttons button', '作成');
     // 未保存の変更(上で行の左右を変えた)があるので、破棄してよいかの確認が出る
-    check('未保存の変更があると、別のシナリオを開く前に確認が出る', await waitFor(`[...document.querySelectorAll('.modal')].some(m => m.textContent.includes('保存していない変更があります'))`));
+    check('未保存の変更があると、別のシナリオを開く前に確認が出る', await waitFor(`[...document.querySelectorAll('.modal')].some(m => m.textContent.includes('保存していない変更'))`));
     await click('.modal-buttons button', '破棄して進む');
     check('新規シナリオ: カスタムとして作られ、開く', await waitFor(`document.querySelector('.source-badge.custom') !== null`));
     check('新規シナリオ: フォルダができる', fs.existsSync(path.join(config.customRoot, 'smoke_test', 'scenario.json')));

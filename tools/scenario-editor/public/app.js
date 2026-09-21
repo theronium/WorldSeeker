@@ -12,13 +12,14 @@
   const TABS = [
     { key: 'events', label: 'イベント', module: () => WS.events },
     { key: 'cast', label: '登場人物・画像', module: () => WS.cast },
-    { key: 'map', label: 'マップ(参照)', module: () => WS.map },
+    { key: 'map', label: 'マップ', module: () => WS.map },
   ];
 
   // ---- 検証 ----
 
   WS.recomputeIssues = function () {
-    S.issues = L.validateScenario(S.bundle, { idx: S.idx, events: S.bundle.events, library: S.libraryIds, scenarioImages: new Set((S.bundle.images || []).map((i) => i.name)) });
+    S.issues = L.validateScenario(S.bundle, { idx: S.idx, events: S.bundle.events, library: S.libraryIds, scenarioImages: new Set((S.bundle.images || []).map((i) => i.name)) })
+      .concat(window.WorldLogic.validateWorld(S.bundle.world, { events: S.bundle.events }).map((i) => ({ eventId: null, ...i })));
     S.issueMap = new Map();
     for (const issue of S.issues) {
       if (!issue.eventId) continue;
@@ -42,7 +43,7 @@
     if (!S.issues.length) body.append(h('p', { class: 'ok' }, '✓ シナリオ全体で、問題は見つかりませんでした。'));
     const byEvent = new Map();
     for (const issue of S.issues) {
-      const key = issue.eventId || '(シナリオ全体・登場人物表)';
+      const key = issue.eventId || (issue.scope === 'map' ? '(マップ)' : '(シナリオ全体・登場人物表)');
       if (!byEvent.has(key)) byEvent.set(key, []);
       byEvent.get(key).push(issue);
     }
@@ -52,6 +53,7 @@
       body.append(h('div', { class: 'validation-group' }, ev ? `${ev.title} (${ev.id})` : key));
       for (const issue of issues) {
         body.append(h('div', { class: `issue ${issue.level}`, onclick: async () => {
+          if (issue.target) { modal.close(); WS.showTab('map'); WS.map.select(issue.target.kind, issue.target.id); return; }
           if (!ev) return;
           modal.close();
           WS.showTab('events');
@@ -77,7 +79,7 @@
   // ---- シナリオの操作 ----
 
   async function loadScenario(source, id, force) {
-    if (!force && WS.events.hasUnsaved() && !await confirmDialog('保存していない変更があります。破棄して別のシナリオを開きますか?', '破棄して開く', true)) {
+    if (!force && hasUnsaved() && !await confirmDialog('保存していない変更(イベントまたはマップ)があります。破棄して別のシナリオを開きますか?', '破棄して開く', true)) {
       renderShell(); // セレクトの表示を元に戻す
       return false;
     }
@@ -86,6 +88,7 @@
       S.cur = { source, id };
       S.bundle = bundle;
       S.idx = L.worldIndex(bundle.world);
+      WS.map.reset();
       S.working = null; S.dirty = false; S.isNew = false;
       S.imageVersion = Date.now();
       try { localStorage.setItem('ws-editor-last', `${source}/${id}`); } catch { /* 保存できなくても続行 */ }
@@ -97,6 +100,8 @@
       return false;
     }
   }
+
+  function hasUnsaved() { return WS.events.hasUnsaved() || WS.map.hasUnsaved(); }
 
   async function refreshScenarioList() {
     S.scenarios = await api('GET', '/api/scenarios');
@@ -124,7 +129,7 @@
         { label: '作成', primary: true, onclick: async (close) => {
           if (!form.name.trim()) { toast('名前を入力してください', 'error'); return; }
           if (!/^[a-z][a-z0-9_]{1,40}$/.test(form.id)) { toast('IDは、小文字英字で始まる英数字と_(2〜41文字)にしてください', 'error'); return; }
-          if (WS.events.hasUnsaved() && !await confirmDialog('保存していない変更があります。破棄して新しいシナリオを開きますか?', '破棄して進む', true)) return;
+          if (hasUnsaved() && !await confirmDialog('保存していない変更(イベントまたはマップ)があります。破棄して新しいシナリオを開きますか?', '破棄して進む', true)) return;
           try {
             const [fromSource, fromId] = form.from ? form.from.split('/') : [null, null];
             await api('POST', '/api/scenarios', { source: form.source, id: form.id, name: form.name.trim(), copyFrom: fromSource ? { source: fromSource, id: fromId } : undefined });
@@ -223,9 +228,10 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       if (S.tab === 'events' && S.working) WS.events.save();
+      else if (S.tab === 'map') WS.map.save();
     }
   });
-  window.addEventListener('beforeunload', (e) => { if (S.working && S.dirty) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('beforeunload', (e) => { if ((S.working && S.dirty) || WS.map.hasUnsaved()) { e.preventDefault(); e.returnValue = ''; } });
 
   WS.boot = boot;
   document.addEventListener('DOMContentLoaded', boot);
