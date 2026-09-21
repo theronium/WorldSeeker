@@ -3882,6 +3882,8 @@ func _refresh_map() -> void:
 ##    _process_lap/Parties.lap_start_day)に応じて最初のフロアから動かす。1周し終えるたびに
 ##    最初のフロアへ戻る(2026-09-15、「ループでループしない、終わったらアイコンが
 ##    最初に戻るべきだが戻っていない」というバグ報告への対応)。
+## 4) 攻略しきっていないのに、どれにも当たらない(配置転換された直後で、入口がまだ見つかっていない等)なら、
+##    探している最前線のフロア(無ければ先頭)。完全攻略済みなら最後のフロア。
 func _current_node_for_party(party: Dictionary) -> String:
 	var section_id: String = party["assigned_section"]
 	if section_id == "" or not WorldMap.sections.has(section_id):
@@ -3906,6 +3908,13 @@ func _current_node_for_party(party: Dictionary) -> String:
 		var elapsed: int = TimeSystem.current_day - lap_start_day
 		var index: int = clampi(elapsed, 0, member_ids.size() - 1)
 		return member_ids[index]
+
+	# 4) まだ攻略しきっていないのに、発見済みのフロアも最前線の突破済みフロアも無いセクション(次のセクションへ配置転換された
+	#    直後など)は、入口を探している最中。探している最前線のフロア(無ければ先頭)に出す。以前は、ここで「セクションの最後の
+	#    フロア」を返していたため、配置転換された直後に、入口が発見されるまで、最後のフロアへ飛んだように見えた(2026-09-21報告)。
+	if not WorldMap.is_section_cleared(section_id):
+		var frontier: Array = WorldMap.frontier_for_section(section_id)
+		return frontier[0] if not frontier.is_empty() else member_ids[0]
 
 	return member_ids[member_ids.size() - 1]
 
