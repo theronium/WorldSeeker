@@ -81,8 +81,6 @@ var funds_label: Label
 var date_label: Label
 var time_label: Label
 var speed_buttons: Dictionary = {} # multiplier:float -> Button
-var board_log: RichTextLabel
-var board_title_label: Label
 var board_preview_log: RichTextLabel # デスクトップは左メニュー内の常時プレビュー、タッチUIは右端のboard_overlay内
 var board_overlay: PanelContainer # タッチUI時だけ: 掲示板ボタンで出し入れする、右端の半透明の直近ログ
 var board_toggle_button: Button # タッチUI時の掲示板ボタン(overlayが出ている間は押された状態にする)
@@ -90,11 +88,9 @@ var area_nav_panel: PanelContainer # マップ上部にフロートするエリ�
 var left_scroll: ScrollContainer
 var left_menu: VBoxContainer
 var _fit_left_menu_pending: bool = false
-var board_panel: PanelContainer
 var node_detail_panel: PanelContainer
 var node_detail_title: Label
 var node_detail_body: RichTextLabel
-var viewing_thread_id: String = "" # 空なら全体フィード
 var next_month_button: Button
 var map_scroll: ScrollContainer
 var map_canvas: Control
@@ -164,9 +160,7 @@ var advance_hint: Button
 var license_panel: PanelContainer # 左メニュー一番下の「ライセンス」ボタンで開く(内容はLicenseInfoが読み込む)
 var license_text: RichTextLabel
 
-var action_log_panel: PanelContainer
-var action_log_npc_option: OptionButton
-var action_log_text: RichTextLabel
+var log_window: LogWindow # ログウィンドウ: 掲示板・イベント・毎日の動きから2つを選んで並べる(旧「掲示板」「行動ログ」を統合)
 
 var slot_panel: PanelContainer
 var slot_list: ItemList
@@ -215,13 +209,12 @@ func _ready() -> void:
 	_build_node_styles()
 	_build_ui()
 	_build_dialogue_ui()
-	_build_action_log_ui()
+	_build_log_window()
 	_build_slot_ui()
 	_build_hire_ui()
 	_build_npc_ui()
 	_build_party_ui()
 	_build_shop_ui()
-	_build_board_ui()
 	_build_node_detail_ui()
 	_build_section_assign_ui()
 	_build_license_ui()
@@ -710,27 +703,26 @@ func _build_ui() -> void:
 	shop_button.pressed.connect(_on_open_shop_pressed)
 	left.add_child(shop_button)
 
-	var action_log_button := Button.new()
-	action_log_button.text = "行動ログ"
-	action_log_button.pressed.connect(_on_open_action_log_pressed)
-	left.add_child(action_log_button)
+	var log_button := Button.new()
+	log_button.text = "ログ" # 掲示板・イベント・毎日の動きから2つを選んで並べる(LogWindow)
+	log_button.pressed.connect(_on_open_log_pressed)
+	left.add_child(log_button)
 
 	var slot_button := Button.new()
 	slot_button.text = "セーブ/ロード"
 	slot_button.pressed.connect(_on_open_slots_pressed)
 	left.add_child(slot_button)
 
-	var board_button := Button.new()
-	board_button.text = "掲示板"
 	if _touch_ui:
 		# タッチUIでは、メニューに直近ログを常時置く余裕が無いので、ボタンで右端の半透明ウィンドウを
 		# 出し入れする(_build_board_overlay)。開いている間はボタンが押された状態になる。
+		# (デスクトップは、左メニュー内の常時プレビューがあり、全文は「ログ」ウィンドウで見る)
+		var board_button := Button.new()
+		board_button.text = "掲示板"
 		board_button.toggle_mode = true
 		board_button.toggled.connect(_set_board_overlay_visible)
 		board_toggle_button = board_button
-	else:
-		board_button.pressed.connect(_on_open_board_pressed)
-	left.add_child(board_button)
+		left.add_child(board_button)
 
 	# ライセンス表示(画像・Godot・godot-sqlite、将来は音楽なども)。日常的には使わないので、メニューの
 	# ボタンとしては一番下に置く。
@@ -748,7 +740,7 @@ func _build_ui() -> void:
 
 	if not _touch_ui:
 		# ボタン直下に直近10件(全体フィード固定)だけ流す小さなプレビュー。全文・スレッド切替は
-		# board_buttonから開くウィンドウ(board_panel)側で行う。背景を透かさず不透明気味にして、
+		# 「ログ」ウィンドウ(log_window)の掲示板の枠で行う。背景を透かさず不透明気味にして、
 		# 他の要素の上に浮いて見えないようにする。
 		var board_preview_panel := PanelContainer.new()
 		var board_preview_style := StyleBoxFlat.new()
@@ -876,7 +868,7 @@ func _on_area_step_pressed(direction: int) -> void:
 ## 雇用/探索者管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel, license_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel]:
 		p.visible = (p == panel)
 	modal_blocker.visible = true
 	move_child(modal_blocker, get_child_count() - 1)
@@ -1138,66 +1130,26 @@ func _try_show_assignment_followup_tutorial() -> void:
 ## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
 ## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
 func _close_any_modal() -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, action_log_panel, slot_panel, board_panel, node_detail_panel, section_assign_panel, license_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel]:
 		p.visible = false
 	modal_blocker.visible = false
 
-## 行動ログビューアー(design.md 8.2「記録再生」)。掲示板と違い、DBの`action_log`テーブルを
-## その場でクエリして表示する(常時メモリに保持しない)。探索者で絞り込める。
-func _build_action_log_ui() -> void:
-	action_log_panel = PanelContainer.new()
-	action_log_panel.set_anchors_preset(Control.PRESET_CENTER)
-	action_log_panel.offset_left = -280
-	action_log_panel.offset_top = -220
-	action_log_panel.offset_right = 280
-	action_log_panel.offset_bottom = 220
-	action_log_panel.visible = false
-	add_child(action_log_panel)
+## ログウィンドウ(LogWindow): 掲示板・イベント(旧・行動ログ)・毎日の動きから2つを選んで、左右に並べる。
+## 以前の「掲示板」「行動ログ」の2つのウィンドウを統合した(発生源がほぼ同じで、似ていたため)。
+func _build_log_window() -> void:
+	log_window = LogWindow.new()
+	log_window.close_requested.connect(func(): _close_modal(log_window))
+	add_child(log_window)
 
-	var col := VBoxContainer.new()
-	action_log_panel.add_child(col)
+func _on_open_log_pressed() -> void:
+	_open_modal(log_window)
+	log_window.refresh()
 
-	var header := HBoxContainer.new()
-	col.add_child(header)
-	var title := Label.new()
-	title.text = "行動ログ"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
-	var close_button := Button.new()
-	close_button.text = "閉じる"
-	close_button.pressed.connect(func(): _close_modal(action_log_panel))
-	header.add_child(close_button)
+## 掲示板のスレッド(""なら全体フィード)を、ログウィンドウで開く(掲示板の枠が無ければ、右の枠を掲示板にする)。
+func _open_board_log(thread_id: String) -> void:
+	log_window.show_board_thread(thread_id)
+	_open_modal(log_window)
 
-	action_log_npc_option = OptionButton.new()
-	action_log_npc_option.item_selected.connect(func(_i): _refresh_action_log())
-	col.add_child(action_log_npc_option)
-
-	action_log_text = RichTextLabel.new()
-	action_log_text.custom_minimum_size = Vector2(0, 320)
-	action_log_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(action_log_text)
-
-func _on_open_action_log_pressed() -> void:
-	action_log_npc_option.clear()
-	action_log_npc_option.add_item("全員", -1)
-	action_log_npc_option.set_item_metadata(0, -1)
-	for npc in Npcs.get_roster():
-		var idx := action_log_npc_option.item_count
-		action_log_npc_option.add_item(npc["name"], idx)
-		action_log_npc_option.set_item_metadata(idx, npc["id"])
-	_open_modal(action_log_panel)
-	_refresh_action_log()
-
-func _refresh_action_log() -> void:
-	var npc_id := -1
-	if action_log_npc_option.selected >= 0:
-		npc_id = action_log_npc_option.get_item_metadata(action_log_npc_option.selected)
-	action_log_text.clear()
-	for entry in SaveSystem.query_action_log(npc_id):
-		action_log_text.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
-
-## 掲示板パネル(全体フィード/セクション別スレッド)。以前は右カラムに常設表示していたが、
-## 他の機能と同じくサイドバーの「掲示板」ボタンから開くウィンドウに統合した。
 ## ライセンス画面。文書の一覧と読み込みはLicenseInfo(license_info.gd)にあり、ここは表示だけを担当する。
 ## 音楽などの素材を追加する時も、この関数は変更不要(LicenseInfo.ENTRIESに足す)。
 func _build_license_ui() -> void:
@@ -1236,50 +1188,9 @@ func _on_open_license_pressed() -> void:
 	license_text.scroll_to_line(0)
 	_open_modal(license_panel)
 
-## ボタン直下の直近10件プレビュー(board_preview_log)は_build_ui()側で作っている。
-func _build_board_ui() -> void:
-	board_panel = PanelContainer.new()
-	board_panel.set_anchors_preset(Control.PRESET_CENTER)
-	board_panel.offset_left = -300
-	board_panel.offset_top = -240
-	board_panel.offset_right = 300
-	board_panel.offset_bottom = 240
-	board_panel.visible = false
-	add_child(board_panel)
-
-	var col := VBoxContainer.new()
-	board_panel.add_child(col)
-
-	var header := HBoxContainer.new()
-	col.add_child(header)
-
-	board_title_label = Label.new()
-	board_title_label.text = "掲示板(全体)"
-	board_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(board_title_label)
-
-	var back_to_global_button := Button.new()
-	back_to_global_button.text = "全体に戻す"
-	back_to_global_button.pressed.connect(_on_back_to_global_pressed)
-	header.add_child(back_to_global_button)
-
-	var close_button := Button.new()
-	close_button.text = "閉じる"
-	close_button.pressed.connect(func(): _close_modal(board_panel))
-	header.add_child(close_button)
-
-	board_log = RichTextLabel.new()
-	board_log.custom_minimum_size = Vector2(0, 360)
-	board_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(board_log)
-
-func _on_open_board_pressed() -> void:
-	_open_modal(board_panel)
-	_refresh_board()
-
 ## タッチUIの掲示板ウィンドウ(右端に重ねる半透明の直近10件、全体フィード固定)。デスクトップの左メニュー内の
 ## 常時プレビューの代わりで、掲示板ボタンで出し入れする(_set_board_overlay_visible)。全文・スレッド切替は、
-## 「全文」で従来のウィンドウ(board_panel)を開く。マップの上に重ねるので、背景を半透明にしてマップが透ける。
+## 「全文」で「ログ」ウィンドウ(掲示板の枠)を開く。マップの上に重ねるので、背景を半透明にしてマップが透ける。
 func _build_board_overlay(map_area: Control) -> void:
 	board_overlay = PanelContainer.new()
 	board_overlay.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
@@ -1310,7 +1221,7 @@ func _build_board_overlay(map_area: Control) -> void:
 	full_button.text = "全文"
 	full_button.pressed.connect(func():
 		_set_board_overlay_visible(false)
-		_on_open_board_pressed())
+		_open_board_log(""))
 	header.add_child(full_button)
 
 	var close_button := Button.new()
@@ -4186,15 +4097,7 @@ func _on_view_thread_pressed() -> void:
 ## セクションの掲示板スレッドを開く。探索者管理パネルの「このセクションのログを見る」ボタンと、
 ## マップ上でセクション枠をダブルクリックした場合の両方から使う共通処理。
 func _open_section_thread(section_id: String) -> void:
-	viewing_thread_id = section_id
-	board_title_label.text = "掲示板(%s)" % WorldMap.sections[section_id]["name"]
-	_open_modal(board_panel)
-	_refresh_board()
-
-func _on_back_to_global_pressed() -> void:
-	viewing_thread_id = ""
-	board_title_label.text = "掲示板(全体)"
-	_refresh_board()
+	_open_board_log(section_id)
 
 func _on_upgrade_facility_pressed() -> void:
 	Economy.upgrade_facility()
@@ -4521,14 +4424,9 @@ func _npc_status_short(npc: Dictionary) -> String:
 		_:
 			return "待機中"
 
+## 左メニュー下(タッチUIは右端のウィンドウ)のプレビュー。全文・スレッド切替は、ログウィンドウ(LogWindow)の掲示板の枠で見る。
 func _refresh_board() -> void:
-	board_log.clear()
-	var source: Array = Board.thread_recent(viewing_thread_id, 30) if viewing_thread_id != "" else Board.recent(20)
-	for entry in source:
-		board_log.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
-
-	# ボタン直下(タッチUIは右端のウィンドウ)のプレビューは常に全体フィードの直近10件固定
-	# (閲覧中のスレッドに関係なく)。タッチUIで閉じている間は作らない(開く時に作り直す)。
+	# プレビューは常に全体フィードの直近10件固定。タッチUIで閉じている間は作らない(開く時に作り直す)。
 	if board_preview_log.is_visible_in_tree():
 		board_preview_log.clear()
 		for entry in Board.recent(10):

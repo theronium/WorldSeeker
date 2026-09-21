@@ -227,6 +227,7 @@ func start_fresh_session() -> void:
 	Recruitment.reset()
 	Board.reset()
 	ActionLog.reset()
+	DailyLog.reset() # 毎日の動きはメモリだけ(セーブしない)。別のセーブの動きが混ざらないようにする
 	var starter_ids := Npcs.create_starter_roster()
 	Parties.form_party(starter_ids, "初期パーティ")
 
@@ -918,6 +919,7 @@ func load_game() -> bool:
 		if threads.has(thread_id):
 			threads[thread_id]["entries"].append({"day": row["day"], "text": String(row["text"]), "importance": row["importance"], "source": String(row["source"])})
 	Board.load_state({"entries": entries, "threads": threads})
+	DailyLog.reset() # 毎日の動きはセーブしない: ロード直後は空から
 
 	var scenario_flags := []
 	db.query("SELECT flag FROM scenario_flags")

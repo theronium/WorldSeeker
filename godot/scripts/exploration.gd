@@ -141,6 +141,7 @@ func _on_day_advanced(current_day: int) -> void:
 				_check_blocked(party, current_day) # 勝てない敵しか残っていなければ、退避する
 		_process_lap(party, current_day)
 	ScenarioEvents.check_daily(current_day) # 条件が成り立ったシナリオのイベント(日数・フラグ・到達など)
+	DailyLog.record_day(current_day) # 「毎日の動き」(ログウィンドウ)。メモリだけで、セーブしない
 
 ## 完全踏破済みセクションでの周回(ループ)処理。対象外(まだ未踏破区間が残っている)なら
 ## 周回状態をリセットしておき、対象になった時点から1周目を始められるようにする。
@@ -307,7 +308,8 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 			CONNECT_ONE_SHOT)
 		ScenarioEvents.play(event, func():
 			if Parties.is_available(party["id"], current_day):
-				_check_blocked(party, current_day))
+				_check_blocked(party, current_day)
+			DailyLog.record_day(current_day)) # 会話の後に結果(回復・退避)が反映されたので、その日の動きを記録し直す
 		return
 
 	var milestone := _capture_milestone_state(node_id)
