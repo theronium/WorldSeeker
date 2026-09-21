@@ -34,6 +34,13 @@ func _combat_lv(party) -> String:
 	return " ".join(parts)
 
 func _setup(prior_cleared: bool):
+	# 前の場面で開いたままの会話は閉じる。開いたままだと、会話が開いている間は撤退の判定を見送る仕様
+	# (exploration.gdの_on_day_advanced)に掛かる。ゲームでは、会話が開いている間は時間が止まるので起きない
+	var dialogue = root.get_node("EventDialogue")
+	var guard := 0
+	while dialogue.is_active and guard < 50:
+		guard += 1
+		dialogue.advance()
 	root.get_node("SaveSystem").start_fresh_session()
 	var party = Parties.get_parties()[0]
 	var sec = "old_cave_dungeon"
@@ -77,6 +84,9 @@ func _run() -> void:
 			Npcs.get_npc(id)["skills"][SkillTypes.Skill.COMBAT]["level"] = 40
 		Exploration._on_day_advanced(31)
 		print("[戻り] 強化後1日目: 担当=%s 退避=%s status=%d" % [_sname(party["assigned_section"]), Parties.is_retreating(party), party["status"]])
+		# 戻った日は戻っただけで終える(同じ日に突破・完全攻略・次のセクションへの配置転換まで進むと、画面上は
+		# 退避先から2つ先へ飛んで見える。2026-09-21、実機で報告)。突破は翌日。
+		print("[戻り] 戻った日はまだ突破していない=%s (期待: true)" % (not WorldMap.nodes["boss_lair"]["passed"]))
 		Exploration._on_day_advanced(32)
 		print("[戻り] 2日目: boss_lair突破=%s 担当=%s status=%d" % [WorldMap.nodes["boss_lair"]["passed"], _sname(party["assigned_section"]), party["status"]])
 

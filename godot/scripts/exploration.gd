@@ -129,14 +129,16 @@ func _on_day_advanced(current_day: int) -> void:
 			continue
 		if party["status"] != Parties.Status.EXPLORING:
 			continue
-		_update_retreat_state(party, current_day) # 戦力不足で退避中なら、経験値を得る/勝てる見込みが立てば戻る
+		if _update_retreat_state(party, current_day): # 戦力不足で退避中なら、経験値を得る/勝てる見込みが立てば戻る
+			continue # 戻った日は、戻っただけで終える(理由は_update_retreat_stateの説明)
 		apply_post_clear_behavior(party, current_day) # 完全攻略済みの担当のままなら、「先へ進む」の設定に従って次へ移る
 		_apply_daily_healing(party)
 		_claim_wild_progress(party)
 		_retry_gates(party, current_day)
 		if Parties.is_available(party["id"], current_day):
 			_attempt_discovery(party, current_day)
-			_check_blocked(party, current_day) # 勝てない敵しか残っていなければ、退避する
+			if not EventDialogue.is_active: # 会話が開いた日は、会話が閉じた後に判定する(_on_node_found)
+				_check_blocked(party, current_day) # 勝てない敵しか残っていなければ、退避する
 		_process_lap(party, current_day)
 	ScenarioEvents.check_daily(current_day) # 条件が成り立ったシナリオのイベント(日数・フラグ・到達など)
 
@@ -265,6 +267,8 @@ func _attempt_discovery(party: Dictionary, current_day: int) -> void:
 	for node_id in frontier:
 		if not Parties.is_available(party["id"], current_day):
 			return
+		if EventDialogue.is_active:
+			return # 会話が開いた(開いている)間は、続きの発見は翌日(会話→判定の適用→撤退の順を崩さないため)
 		Npcs.grant_skill_exp(scout_id, SkillTypes.Skill.PERCEPTION, 1)
 		if randf() < chance:
 			_on_node_found(scout_name, scout_id, party, node_id, current_day)
@@ -277,19 +281,33 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 			return # 今日は既に別の会話中なので見送り、翌日また発見を試みる
 		var milestone := _capture_milestone_state(node_id)
 		WorldMap.mark_found(node_id, true)
-		var gate_result := _attempt_gate(party, node_id, current_day)
+		# フロアに着いてからの進み方は、会話 → 判定の適用 → イベントの効果 → 撤退(2026-09-21)。会話が開いている間は、
+		# HP・休養・突破・報酬・退避・配置転換を動かさない(以前は、会話の前に全て適用されていて、失敗の会話を読んでいる
+		# 時点で、パーティは既に退避先へ戻っていた)。会話は結果ごとに別なので、結果は先に決める必要がある。戦闘は、
+		# 乱数が無く同じ結果になる非破壊の先読み(_preview_gate)で決め、実際の戦闘は会話が閉じた後に行う。戦闘以外
+		# (技能・アイテム・生まれ)は、経験値が入るだけで見た目に出ないので、従来どおり先に判定する。
+		var is_combat: bool = String(node["gate"].get("type", "")) == "combat"
+		var gate_result := _preview_gate(party, node_id) if is_combat else _attempt_gate(party, node_id, current_day)
 		var event := ScenarioEvents.gate_event(node_id, gate_result["passed"])
-		var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 		if event.is_empty() or event["script"].is_empty():
 			# 突破/失敗の片方にだけ会話がある(もう片方は無い)場合は、会話なしで結果だけ反映する
+			if is_combat:
+				gate_result = _attempt_gate(party, node_id, current_day)
+			var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 			_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
 			return
 		# 突破の確定は、会話の結果コード(outcome)で行う。ScenarioEvents.play()は、同じ会話の終了時に後から
 		# 発生済みの記録と効果(フロアの開放など)を適用するので、効果は突破が反映された後に働く。
+		# 最後に、on_doneで撤退(退避)の判定をする: 効果まで済んだ後に、先へ進めるかを見る。
 		EventDialogue.finished.connect(
-			func(outcome: String): _finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
+			func(outcome: String):
+				var applied: Dictionary = _attempt_gate(party, node_id, current_day) if is_combat else gate_result
+				var reward_npc_id: int = applied["npc_id"] if applied["passed"] else scout_id
+				_finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
 			CONNECT_ONE_SHOT)
-		ScenarioEvents.play(event)
+		ScenarioEvents.play(event, func():
+			if Parties.is_available(party["id"], current_day):
+				_check_blocked(party, current_day))
 		return
 
 	var milestone := _capture_milestone_state(node_id)
@@ -297,6 +315,15 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 	var gate_result := _attempt_gate(party, node_id, current_day)
 	var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 	_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
+
+## 戦闘ゲートの結果を、HP・経験値・休養状態に触れずに先読みして、{"passed": bool, "npc_id": -1}を返す
+## (_attempt_gateと同じ結果。戦闘に乱数は無く、Combat.predict_party_resultは実際の戦闘と同じ計算式)。
+## 会話を先に見せるため(_on_node_found)。突破報酬の受け取り手は、実際に戦うまで決まらないので-1。
+func _preview_gate(party: Dictionary, node_id: String) -> Dictionary:
+	var node: Dictionary = WorldMap.nodes[node_id]
+	if _is_hopeless_gate(party, node):
+		return {"passed": false, "npc_id": -1}
+	return {"passed": Combat.predict_party_result(party["id"], node["gate"]["enemy_power"]) == "victory", "npc_id": -1}
 
 ## 野良探索者(wild_npcs.gd)からも使う、ステータス不問の簡易発見処理。
 ## ゲートがあるノードは「発見済みだが進めない」までしか進められない(実際の突破は雇用パーティの役目)。
@@ -460,9 +487,14 @@ func _check_blocked(party: Dictionary, current_day: int) -> void:
 ## 戦力不足で退避(待機)中のパーティの日次処理。戻り先のフロアにまだ勝てないなら、パーティ全員が戦闘力の
 ## 経験値を毎日少し(RETREAT_TRAINING_EXP_PER_DAY)得る。勝てる見込みが立った(または、そのフロアが突破済みに
 ## なった)ら、戻り先のセクションへ戻す(その場で待機していただけなら、退避の記録を消して通常の探索に戻る)。
-func _update_retreat_state(party: Dictionary, current_day: int) -> void:
+##
+## 戻り先のセクションへ実際に移動した時だけtrueを返す。呼び出し側(_on_day_advanced)は、その日の残りの探索を
+## 打ち切る。戻った日にそのままゲートへ挑ませると、勝って完全攻略し、「先へ進む」で次のセクションへ移るまでが
+## 1日のうちに済み、画面上は、退避先から2つ先のセクションへ飛んだように見える(戻り先にいる姿が一度も描画されない。
+## 2026-09-21、実機で報告)。戻った直後にまた勝てないと分かって退避し直す場合も、動かないまま退避中に見えていた。
+func _update_retreat_state(party: Dictionary, current_day: int) -> bool:
 	if not Parties.is_retreating(party):
-		return
+		return false
 	var back_section: String = party["return_section"]
 	var blocker_id: String = party["return_node"]
 	var still_blocked := false
@@ -472,17 +504,18 @@ func _update_retreat_state(party: Dictionary, current_day: int) -> void:
 	if still_blocked:
 		for npc_id in party["member_ids"]:
 			Npcs.grant_skill_exp(npc_id, SkillTypes.Skill.COMBAT, RETREAT_TRAINING_EXP_PER_DAY)
-		return
+		return false
 
 	if party["assigned_section"] == back_section or not WorldMap.sections.has(back_section):
 		Parties.clear_return(party["id"]) # その場で待機していた(または戻り先が無い)ので、通常の探索に戻る
-		return
+		return false
 	var from_name: String = WorldMap.sections[party["assigned_section"]]["name"] if WorldMap.sections.has(party["assigned_section"]) else ""
 	var to_name: String = WorldMap.sections[back_section]["name"]
 	Parties.assign_section(party["id"], back_section) # 退避の記録も消える
 	var text := "%sは力を付け、「%s」へ戻った" % [party["name"], to_name]
 	Board.post(current_day, text, Board.Importance.MINOR, "reassignment")
 	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], "", back_section)
+	return true
 
 func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
