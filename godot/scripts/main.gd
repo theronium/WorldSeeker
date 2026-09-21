@@ -80,6 +80,11 @@ var facility_info_label: Label
 var funds_label: Label
 var date_label: Label
 var time_label: Label
+# タイムバー(2026-09-21): 日付・月末までの文字の下に、今日(太め)と今月(細め)の進みを出す。
+var day_bar: TimeBar
+var month_bar: TimeBar
+var day_caption: Label
+var month_caption: Label
 var speed_buttons: Dictionary = {} # multiplier:float -> Button
 var board_preview_log: RichTextLabel # デスクトップは左メニュー内の常時プレビュー、タッチUIは右端のboard_overlay内
 var board_overlay: PanelContainer # タッチUI時だけ: 掲示板ボタンで出し入れする、右端の半透明の直近ログ
@@ -657,6 +662,11 @@ func _build_ui() -> void:
 	time_label.add_theme_font_size_override("font_size", 12)
 	time_label.modulate = Color(1, 1, 1, 0.7)
 	left.add_child(time_label)
+
+	day_bar = TimeBar.new()
+	day_caption = _add_time_bar_row(left, day_bar, 10.0)
+	month_bar = TimeBar.new()
+	month_caption = _add_time_bar_row(left, month_bar, 6.0)
 
 	# 順送りクリックで切り替えるのではなく、全段階を横に並べて1クリックで直接選べるようにする。
 	# ButtonGroupで排他選択(ラジオボタン相当)にし、現在の倍速が一目で分かるようにする。
@@ -4172,7 +4182,44 @@ func _refresh_funds() -> void:
 		_refresh_facility_button()
 	_refresh_train_buttons()
 
+## タイムバーの1行: 左に見出しの文字、右にバー。見出しの文字を返す(_refresh_time_barsが書き換える)。
+func _add_time_bar_row(parent: Control, bar: TimeBar, bar_height: float) -> Label:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	parent.add_child(row)
+	var caption := Label.new()
+	caption.add_theme_font_size_override("font_size", 11)
+	caption.modulate = Color(1, 1, 1, 0.75)
+	caption.custom_minimum_size = Vector2(62, 0)
+	row.add_child(caption)
+	bar.custom_minimum_size = Vector2(0, bar_height)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(bar)
+	return caption
+
+const TIME_BAR_STRIPE_SPEED := 100.0 # この倍速以上では、1日が0.5秒以下で読めないので、今日のバーを流れる縞にする
+const TIME_BAR_DAY_COLOR := Color(0.35, 0.6, 0.95)
+const TIME_BAR_MONTH_COLOR := Color(0.9, 0.7, 0.3)
+const TIME_BAR_PAUSED_COLOR := Color(0.95, 0.55, 0.2) # 月末の集計待ち
+const TIME_BAR_HELD_COLOR := Color(0.6, 0.6, 0.66) # イベント会話の表示中(時間が止まっている)
+
+## 今日・今月のバー。通常は進みの割合、月末の集計待ちは橙の満タン、会話中は灰色で止め、高速(100x以上)の間、今日は縞が流れる。
+func _refresh_time_bars() -> void:
+	var paused: bool = TimeSystem.is_paused
+	var held: bool = TimeSystem.dialogue_hold and not paused
+	var fast: bool = TimeSystem.speed_multiplier >= TIME_BAR_STRIPE_SPEED
+	day_bar.striped = fast and not paused and not held
+	day_bar.fraction = 1.0 if paused else TimeSystem.day_progress()
+	month_bar.fraction = TimeSystem.month_progress()
+	day_bar.fill_color = TIME_BAR_PAUSED_COLOR if paused else (TIME_BAR_HELD_COLOR if held else TIME_BAR_DAY_COLOR)
+	month_bar.fill_color = TIME_BAR_PAUSED_COLOR if paused else (TIME_BAR_HELD_COLOR if held else TIME_BAR_MONTH_COLOR)
+	day_caption.text = "会話中" if held else "今日"
+	var day_of_month: int = TimeSystem.DAYS_PER_MONTH if paused else TimeSystem.current_day_of_month()
+	month_caption.text = "今月 %d/%d" % [day_of_month, TimeSystem.DAYS_PER_MONTH]
+
 func _refresh_time_label() -> void:
+	_refresh_time_bars()
 	date_label.text = TimeSystem.format_date()
 	if TimeSystem.is_paused:
 		time_label.text = "月末集計待ち"

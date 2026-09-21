@@ -85,6 +85,17 @@ func set_speed(multiplier: float) -> void:
 	speed_multiplier = multiplier
 	speed_changed.emit(speed_multiplier)
 
+## 今日の進み(0〜1): 1日(SECONDS_PER_DAY)のうち、どこまで進んだか。倍速に依らない、ゲーム内の時間の割合
+## (倍速が上がると、同じ割合を、実時間では速く進む)。タイムバー(time_bar.gd)用。
+func day_progress() -> float:
+	return clampf(_accumulated / SECONDS_PER_DAY, 0.0, 1.0)
+
+## 今月の進み(0〜1): 30日のうち、何日目まで進んだか+今日の進み。月末の待ち(is_paused)の間は1。
+func month_progress() -> float:
+	if is_paused:
+		return 1.0
+	return (float(current_day % DAYS_PER_MONTH) + day_progress()) / DAYS_PER_MONTH
+
 func seconds_until_month_end() -> float:
 	var day_in_month := current_day % DAYS_PER_MONTH
 	var days_remaining := DAYS_PER_MONTH - day_in_month
