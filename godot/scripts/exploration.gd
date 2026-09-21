@@ -18,6 +18,10 @@ extends Node
 # 掲示板には、フロア単位の発見は所属セクションのスレッドにのみ記録し、
 # セクション/エリアへの初到達やイベントだけを全体フィードに載せる(wild_npcs.gdも本モジュールを利用する)。
 
+## 雇用パーティが、まだ誰も足を踏み入れていないエリアで、初めてフロアを発見した時に出る(掲示板の「初めて足を踏み入れた」と
+## 同じ場面)。画面(main.gd)が、そのエリアへマップの表示を移すために聞く。野良の旅人の発見では出さない。
+signal area_first_entered(area_id: String, node_id: String)
+
 const DISCOVERY_BASE_CHANCE := 0.2
 const DISCOVERY_PER_PERCEPTION := 0.1
 const DISCOVERY_MAX_CHANCE := 0.9
@@ -370,6 +374,8 @@ func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool,
 		var text := "「%s」に初めて足を踏み入れた" % area_name
 		Board.post(current_day, text, Board.Importance.MAJOR, "exploration")
 		ActionLog.record(current_day, "milestone_area", text, npc_id, node_id, milestone["section_id"])
+		if npc_id != -1: # 雇用パーティの発見(野良の旅人はnpc_idが無い)
+			area_first_entered.emit(milestone["area_id"], node_id)
 
 func _grant_item_reward(npc_id: int, node: Dictionary) -> void:
 	var item_id: String = node.get("item_reward", "")

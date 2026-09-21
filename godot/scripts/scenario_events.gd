@@ -10,6 +10,9 @@ extends Node
 #   "system"     ゲームの決まった場面(案内会話)。呼び出し側がsystem_event()で引いてplay()する
 # 会話が終わると、発生済みに記録し、その結果コード(outcome)に合う効果(effects)を適用する。
 
+## 会話を開いた直後に出る。画面(main.gd)が、イベントの起きた場所へマップの表示を移すために聞く(event_locationで場所を引く)。
+signal event_started(event: Dictionary)
+
 var info: Dictionary = {} # シナリオの基本情報(id, source, name, ...)
 var events: Array = [] # 優先度の高い順
 var cast: Dictionary = {} # 話者名 -> {"image", "side"}
@@ -93,7 +96,42 @@ func play(event: Dictionary, on_done: Callable = Callable()) -> bool:
 		if on_done.is_valid():
 			on_done.call(), CONNECT_ONE_SHOT)
 	EventDialogue.play(event["script"], kind, result)
+	event_started.emit(event) # 会話が開いた後に出す(画面は、会話ウィンドウに隠れない位置へマップを動かす)
 	return true
+
+## そのイベントが起きる場所(マップで見せたい場所)。{"area", "section", "floor"}を返す(分からないものは空文字)。
+## フロアのゲート結果のイベントはそのフロア、条件のイベントは、条件に書かれた最初の場所(フロアの発見/突破・セクション/エリアへの
+## 到達)。日数・フラグだけの条件や、案内会話には場所が無いので、空の辞書を返す。
+func event_location(event: Dictionary) -> Dictionary:
+	var trigger: Dictionary = event.get("trigger", {})
+	var floor_id := ""
+	var section_id := ""
+	var area_id := ""
+	match trigger.get("type", ""):
+		"gate":
+			floor_id = String(trigger.get("floor", ""))
+		"conditions":
+			for condition in event.get("conditions", []):
+				match condition.get("type", ""):
+					"floor_found", "floor_passed":
+						floor_id = String(condition["floor"])
+					"section_entered":
+						section_id = String(condition["section"])
+					"area_entered":
+						area_id = String(condition["area"])
+				if floor_id != "" or section_id != "" or area_id != "":
+					break
+	if floor_id != "":
+		if not WorldMap.nodes.has(floor_id):
+			return {}
+		section_id = String(WorldMap.nodes[floor_id]["section"])
+	if section_id != "":
+		if not WorldMap.sections.has(section_id):
+			return {}
+		area_id = String(WorldMap.sections[section_id]["area"])
+	if area_id == "" or not WorldMap.areas.has(area_id):
+		return {}
+	return {"area": area_id, "section": section_id, "floor": floor_id}
 
 ## 案内会話など、場面名で引いて再生する。そのシナリオに無ければ何もしない(falseを返す)。
 func play_system(scene_name: String, on_done: Callable = Callable()) -> bool:

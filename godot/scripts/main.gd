@@ -124,6 +124,8 @@ var _pinch_rebuild_cost_msec: int = 0 # 直近の再構築にかかった時間(
 const PINCH_REBUILD_INTERVAL_MSEC := 90 # ピンチ中にマップを作り直す最短の間隔
 const PINCH_MIN_ZOOM_CHANGE := 0.02 # 倍率の変化(割合)がこれ未満なら、作り直しを省く
 var _active_area_id: String = "" # マップのエリアタブ(design.md 5.1節)で今表示中のエリア
+var _party_area_seen: Dictionary = {} # party_id -> 前回マップを描いた時の、担当セクションのエリア(_follow_parties_to_new_area)
+var _employed_areas_seen: Dictionary = {} # 前回マップを描いた時に、雇用パーティが発見したフロアがあったエリア(area_id -> true)
 var area_tab_buttons: Dictionary = {} # area_id -> Button(選択状態・🔒表示の更新に使う)
 var area_option: OptionButton # タッチUI時のエリア選択プルダウン(area_tab_buttonsの代わりに使う)
 var area_prev_button: Button
@@ -245,6 +247,8 @@ func _ready() -> void:
 	_seed_demo_world()
 	SaveSystem.start_fresh_session()
 	TimeSystem.day_advanced.connect(_on_day_advanced)
+	ScenarioEvents.event_started.connect(_on_scenario_event_started) # イベントの起きた場所へマップを移す(_focus_map)
+	Exploration.area_first_entered.connect(_on_area_first_entered)
 	TimeSystem.month_ended.connect(_on_month_ended)
 	TimeSystem.speed_changed.connect(_on_speed_changed)
 	EventDialogue.line_shown.connect(_on_dialogue_line_shown)
@@ -3539,7 +3543,9 @@ func _seed_demo_world() -> void:
 			var link_bottom: float = _create_area_link(id, neighbor_area, positions[id], link_index)
 			content_size.y = max(content_size.y, link_bottom)
 
-	map_canvas.custom_minimum_size = content_size + Vector2(40, 40) * _map_zoom
+	# 下端には、会話ウィンドウ1枚分の余白を足す(ズームによらない固定の高さ)。マップの一番下に近いフロアでイベントが起きても、
+	# スクロールの限界に阻まれず、フロアを会話ウィンドウの上へ持ち上げて見せられる(_focus_map)。
+	map_canvas.custom_minimum_size = content_size + Vector2(40, 40) * _map_zoom + Vector2(0, _dialogue_panel_height())
 	map_canvas.queue_redraw()
 	_refresh_map()
 	_refresh_area_tabs()
@@ -4095,6 +4101,7 @@ func _refresh_map() -> void:
 
 	_refresh_party_map_icons()
 	_refresh_area_tabs() # 探索の進行でエリアの到達状況(🔒表示)が変わりうるため、日次でも更新する
+	_record_party_areas()
 
 ## マップ上でパーティアイコンを表示するノード(現在フロア)を1つ選ぶ。担当パーティはセクション内の
 ## 未発見フロア全部に同時並行でアタックする実装(exploration.gd)なので厳密な「今いる場所」は
@@ -4279,6 +4286,117 @@ func _on_area_tab_pressed(area_id: String) -> void:
 	_seed_demo_world()
 	_refresh_area_tabs()
 
+## パーティの担当セクションがあるエリアのid。未割当なら空文字。
+func _area_of_party(party: Dictionary) -> String:
+	var section_id: String = party["assigned_section"]
+	return String(WorldMap.sections[section_id]["area"]) if WorldMap.sections.has(section_id) else ""
+
+## マップの表示を、見せたい場所へ移す(2026-09-22)。エリアの表示はタブを押した時にしか変わらなかったため、イベントや、
+## 次のエリアへ移ったパーティの様子が、表示中の別のエリアの裏で起きて見えなかった(「マップクリアで次のエリアに移動しても、
+## マップが切り替わらない」との報告と、「イベントの状況を見たい」との要望)。切り替わる場面は3つ:
+##   (1) イベントの会話が始まった(_on_scenario_event_started。起きた場所のエリア・フロアへ)
+##   (2) 雇用パーティが、誰も来ていないエリアで初めてフロアを発見した(_on_area_first_entered)
+##   (3) パーティが自動で、まだ誰も来ていないエリアへ配置転換された(_follow_parties_to_new_area)
+## エリアが違えばそのエリアに切り替え、見せたいフロア(またはセクションの先頭)が画面に見えていなければ、見える位置へ
+## スクロールする(会話ウィンドウに隠れない位置。既に見えているなら動かさない)。
+func _focus_map(area_id: String, floor_id: String = "", section_id: String = "") -> void:
+	if map_canvas == null or area_id == "" or not WorldMap.areas.has(area_id):
+		return
+	var switched := area_id != _active_area_id
+	if switched:
+		_on_area_tab_pressed(area_id) # マップを作り直し、スクロールは先頭へ戻る
+	var scroll_pos := _map_scroll_target(floor_id, section_id)
+	if not switched:
+		map_scroll.scroll_horizontal = scroll_pos.x # 同じエリアの中なので、スクロールの範囲は最新
+		map_scroll.scroll_vertical = scroll_pos.y
+		return
+	# エリアを切り替えた直後は、ScrollContainerのスクロール範囲がまだ前のエリアの大きさのまま(次のフレームで更新される)。
+	# ここで位置を代入すると、古い範囲に丸められる。ピンチのズームと同じ「範囲(max_value)を手動で書き換えてから代入する」
+	# 手順は、ここでは逆効果だった(範囲が古い値のまま固定され、位置も丸められたままになった。実測)ので、1フレーム待つ。
+	_scroll_map_after_layout(scroll_pos)
+
+## スクロールの範囲が新しいマップの大きさに更新されるのを(最大30フレーム)待ってから、位置を代入する。
+## 更新が済んだかは、スクロールバーの範囲(max_value)がマップの大きさに届いたかで見る(1フレームでは済まないことがあった)。
+func _scroll_map_after_layout(scroll_pos: Vector2i) -> void:
+	for i in range(30):
+		await get_tree().process_frame
+		var updated: bool = map_scroll.get_v_scroll_bar().max_value >= map_canvas.custom_minimum_size.y - 1.0 \
+			and map_scroll.get_h_scroll_bar().max_value >= map_canvas.custom_minimum_size.x - 1.0
+		if updated:
+			break
+	map_scroll.scroll_horizontal = scroll_pos.x
+	map_scroll.scroll_vertical = scroll_pos.y
+
+## 見せたいフロア(無ければセクションの先頭)が、会話ウィンドウに隠れずに見える、マップのスクロール位置。既に見えていれば
+## 今の位置のまま。見せたい場所が無ければ今の位置(エリアを切り替えた直後は先頭)。
+func _map_scroll_target(floor_id: String, section_id: String) -> Vector2i:
+	var current := Vector2i(map_scroll.scroll_horizontal, map_scroll.scroll_vertical)
+	var rect := Rect2()
+	if node_boxes.has(floor_id):
+		rect = Rect2(node_boxes[floor_id].position, _map_node_size())
+	elif section_bounds_cache.has(section_id):
+		var bounds: Rect2 = section_bounds_cache[section_id]
+		rect = Rect2(bounds.position, Vector2(bounds.size.x, minf(bounds.size.y, _map_section_header() + _map_cell_size().y))) # セクションの見出しと最初の1行
+	else:
+		return current
+	var view := Vector2(map_scroll.size.x, maxf(120.0, map_scroll.size.y - _dialogue_reserved_height()))
+	if Rect2(Vector2(current), view).encloses(rect):
+		return current
+	var target := rect.get_center() - view / 2.0
+	return Vector2i(maxi(0, int(target.x)), maxi(0, int(target.y)))
+
+## 会話ウィンドウが、マップの下側を覆う高さ。
+func _dialogue_panel_height() -> float:
+	return float(TOUCH_DIALOGUE_HEIGHT) if _touch_ui else float(200 + DESKTOP_DIALOGUE_LIFT)
+
+## 会話が開いている間、マップの下側を覆う会話ウィンドウの高さ(開いていなければ0)。
+func _dialogue_reserved_height() -> float:
+	return _dialogue_panel_height() if EventDialogue.is_active else 0.0
+
+## イベントの会話が始まった: 起きた場所(フロア・セクション・エリア)がマップにあれば、そこへ表示を移す。日数・フラグだけの
+## 条件のイベントや案内会話には場所が無いので、何もしない。
+func _on_scenario_event_started(event: Dictionary) -> void:
+	var location: Dictionary = ScenarioEvents.event_location(event)
+	if location.is_empty():
+		return
+	_focus_map(location["area"], location["floor"], location["section"])
+
+## 雇用パーティが、誰も来ていなかったエリアで初めてフロアを発見した(掲示板の「初めて足を踏み入れた」)。
+func _on_area_first_entered(area_id: String, node_id: String) -> void:
+	if not WorldMap.nodes.has(node_id):
+		return
+	_focus_map(area_id, node_id, String(WorldMap.nodes[node_id]["section"]))
+
+## 毎日の更新で、パーティが自動で(完全踏破後の「先へ進む」の配置転換など)、まだ雇用パーティの誰も来ていない(発見したフロアが
+## 無い)エリアへ移っていたら、そのエリアの担当セクションへ表示を移す。既に来たことのあるエリアへの移動(退避・復帰・
+## ループ)では切り替えない(退避のたびに表示が行き来しないように)。手動の割り当て(パーティ画面・マップのセクション名)は
+## 対象外: _refresh_mapが移動先を記録するので、翌日の更新で「自動で移った」とは数えない。
+func _follow_parties_to_new_area() -> void:
+	var target_area := ""
+	var target_section := ""
+	for party in Parties.get_parties():
+		var area := _area_of_party(party)
+		var previous: String = _party_area_seen.get(party["id"], area)
+		if target_area == "" and area != "" and previous != area and not _employed_areas_seen.has(area):
+			target_area = area
+			target_section = String(party["assigned_section"])
+		_party_area_seen[party["id"]] = area
+	if target_area != "":
+		_focus_map(target_area, "", target_section)
+
+## 各パーティの担当エリアと、雇用パーティが既に来たエリア(発見したフロアがあるエリア)を記録する(_follow_parties_to_new_area用)。
+## マップを描き直すたびに更新するので、手動の割り当て・ロード・新規開始による移動は、「自動で移った」とは数えられない。
+func _record_party_areas() -> void:
+	_party_area_seen.clear()
+	for party in Parties.get_parties():
+		_party_area_seen[party["id"]] = _area_of_party(party)
+	_employed_areas_seen.clear()
+	for id in WorldMap.nodes.keys():
+		if WorldMap.is_found_by_employed(id):
+			var section_id: String = WorldMap.nodes[id]["section"]
+			if WorldMap.sections.has(section_id):
+				_employed_areas_seen[WorldMap.sections[section_id]["area"]] = true
+
 ## エリアタブの表示名(🔒未到達なら鍵アイコン付き)と選択状態を、到達状況の変化(発見・攻略)に
 ## 合わせて更新する。_seed_demo_world()やゲーム進行の節目(_refresh_all)から呼ぶ。
 func _refresh_area_tabs() -> void:
@@ -4363,6 +4481,7 @@ func _on_speed_changed(multiplier: float) -> void:
 
 func _on_day_advanced(_day: int) -> void:
 	_refresh_board()
+	_follow_parties_to_new_area() # 再描画の前に、表示するエリアを決める
 	_refresh_map()
 	_refresh_roster()
 	_refresh_npc_detail()
