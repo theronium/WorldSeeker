@@ -23,7 +23,7 @@ const ENTRIES := [
 	{"title": "このゲーム(MIT License)", "file": "LICENSE.txt"},
 	{"title": "キャラクター画像・背景画像", "file": "LICENSE-IMAGES.md"},
 	{"title": "Godot Engine と godot-sqlite", "file": "THIRD_PARTY_NOTICES.md"},
-	# 例: {"title": "音楽・効果音", "file": "LICENSE-AUDIO.md"},
+	{"title": "音楽", "file": "LICENSE-AUDIO.md"},
 ]
 
 const HEADING_COLOR := "#ffd54a"

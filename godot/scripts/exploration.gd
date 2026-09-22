@@ -87,7 +87,11 @@ func _on_any_dialogue_finished(_outcome: String) -> void:
 		call_deferred("_maybe_show_retreat_tutorial")
 
 func _maybe_show_retreat_tutorial() -> void:
-	if not _retreat_tutorial_pending or EventDialogue.is_active:
+	# 戦闘画面(battle_screen.gd)が開いている間も、会話と同様に見送る(2026-09-22)。戦闘の会話が閉じた直後に
+	# 撤退・敗北が起きると、この予約(call_deferred)は戦闘画面が開くより先に積まれるため、そのままだと
+	# 戦闘画面の上に撤退説明の会話を強制的に被せてしまう(EventDialogue.play()はis_active判定なしに差し替える)。
+	# 戦闘画面側(_maybe_show_battle_screen)が、閉じた時にこの関数を呼び直す。
+	if not _retreat_tutorial_pending or EventDialogue.is_active or BattleScreen.is_active:
 		return
 	_retreat_tutorial_pending = false
 	# 「見た」フラグは再生開始時ではなく、実際に最後まで進めてfinishedが発火した時点で
@@ -308,7 +312,8 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 			func(outcome: String):
 				var applied: Dictionary = _attempt_gate(party, node_id, current_day) if is_combat else gate_result
 				var reward_npc_id: int = applied["npc_id"] if applied["passed"] else scout_id
-				_finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
+				_finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id)
+				_maybe_show_battle_screen(is_combat, applied, event, party["member_ids"]),
 			CONNECT_ONE_SHOT)
 		ScenarioEvents.play(event, func():
 			if Parties.is_available(party["id"], current_day):
@@ -546,10 +551,12 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 			if _is_hopeless_gate(party, WorldMap.nodes[node_id]):
 				return {"passed": false, "npc_id": -1}
 			var result: Dictionary = Combat.resolve_party_encounter(party["id"], gate["enemy_power"], current_day)
+			# trace/enemy_start_powerは、戦闘画面(_maybe_show_battle_screen)がラウンドを再現するのに使う
+			# (2026-09-22)。勝敗の判定自体には関わらない、素通しの追加情報。
 			if result["result"] == "victory":
-				return {"passed": true, "npc_id": result["npc_id"]}
+				return {"passed": true, "npc_id": result["npc_id"], "trace": result["trace"], "enemy_start_power": result["enemy_start_power"]}
 			_post_retreat_help(party, node_id, current_day, result["result"], Combat.effective_enemy_power(party["id"], gate["enemy_power"]))
-			return {"passed": false, "npc_id": -1}
+			return {"passed": false, "npc_id": -1, "trace": result["trace"], "enemy_start_power": result["enemy_start_power"]}
 		"skill":
 			# 挑戦するたびに、たとえ突破できなくても該当スキルの経験値が(判定を担ったメンバーに)入る
 			# (5.2節: 試行を重ねることでいつか開ける、という思想を全スキルに適用)
@@ -562,6 +569,38 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 		_:
 			var member_id := WorldMap.first_passing_member(node_id, party["member_ids"])
 			return {"passed": member_id != -1, "npc_id": member_id}
+
+## 実際に攻防のあった戦闘ゲートなら、戦闘画面(battle_screen.gd)にラウンドを再現させる(2026-09-22、設定
+## Settings.show_battle_screenがオフなら何もしない)。appliedは_attempt_gate(combat分岐)の返り値。
+## 勝ち目が無く戦わなかった(_is_hopeless_gate)場合はtraceが空になるので、見せる戦闘が無く何もしない。
+## design.md 5.4節: 会話が閉じた直後に開く。「実際の攻防を見せる」ことが目的の再現表示なので、資金・
+## フラグ・掲示板などは(会話の時と同じく)先に確定させたまま進めてよい、という判断(効果まで戦闘画面待ちに
+## すると、他の会話系イベントとの絡みが複雑になるため)。
+func _maybe_show_battle_screen(is_combat: bool, applied: Dictionary, event: Dictionary, member_ids: Array) -> void:
+	if not is_combat or not Settings.show_battle_screen:
+		return
+	var trace: Array = applied.get("trace", [])
+	if trace.is_empty():
+		return
+	# EventDialogue._finish()が会話を閉じる際にTimeSystem.dialogue_holdを解いた直後なので、戦闘画面が
+	# 閉じるまでの間、再び立てておく(退避のヒント会話と同じ理由。同一フレーム内での立て直しなので、
+	# その間に日付が進むことは無い)。
+	TimeSystem.dialogue_hold = true
+	var kind: String = ScenarioEvents.resolved_kind(event)
+	var enemy_name: String = ScenarioEvents.combat_opponent_name(event)
+	BattleScreen.show({
+		"trace": trace,
+		"passed": applied["passed"],
+		"enemy_start_power": applied.get("enemy_start_power", 0),
+		"enemy_name": enemy_name,
+		"kind": kind,
+		"member_ids": member_ids.duplicate(),
+	})
+	BattleScreen.closed.connect(func():
+		TimeSystem.dialogue_hold = false
+		if _retreat_tutorial_pending: # 戦闘画面が開いている間に予約されていれば、ここで改めて出す
+			call_deferred("_maybe_show_retreat_tutorial"),
+		CONNECT_ONE_SHOT)
 
 ## スキルゲートの必要Lv。ゲートの基礎値に、パーティの難易度(difficulty.gd)の加減をしたもの。
 func _gate_min_level(party: Dictionary, gate: Dictionary) -> int:

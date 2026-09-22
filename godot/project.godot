@@ -36,8 +36,10 @@ ActionLog="*res://scripts/action_log.gd"
 DailyLog="*res://scripts/daily_log.gd"
 Combat="*res://scripts/combat.gd"
 EventDialogue="*res://scripts/event_dialogue.gd"
+BattleScreen="*res://scripts/battle_screen.gd"
 Exploration="*res://scripts/exploration.gd"
 SaveSystem="*res://scripts/save_system.gd"
+Settings="*res://scripts/settings.gd"
 
 [display]
 

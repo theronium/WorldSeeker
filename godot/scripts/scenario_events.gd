@@ -77,6 +77,24 @@ func system_event(scene_name: String) -> Dictionary:
 func cast_image(speaker_name: String) -> String:
 	return cast.get(speaker_name, {}).get("image", "")
 
+## イベントの種別("boss"/"combat"/"skill"/"item"/"bloodline"/"guide"/"")。event["kind"]が"auto"なら、
+## ゲート結果のイベントはゲートの種類(WorldMap.event_kind_for_node)から決める(play()と、戦闘画面(main.gd)が
+## 敵の画像を選ぶのに使う。両方が同じ決め方をするよう、ここへ1つにまとめてある)。
+func resolved_kind(event: Dictionary) -> String:
+	var kind: String = event.get("kind", "")
+	if kind != "auto":
+		return kind
+	var trigger: Dictionary = event.get("trigger", {})
+	return WorldMap.event_kind_for_node(String(trigger.get("floor", ""))) if trigger.get("type", "") == "gate" else ""
+
+## 戦闘画面(main.gd)用: そのイベントの会話に登場する敵の名前。台本の最初の"right"側(敵側)の行の話者名。
+## 見つからなければ空文字(戦闘の会話は必ず敵の登場行から始まる作りだが、念のため)。
+func combat_opponent_name(event: Dictionary) -> String:
+	for line in event.get("script", []):
+		if line.get("side", "") == "right":
+			return String(line.get("name", ""))
+	return ""
+
 # --- 再生 ---
 
 ## イベントの会話を再生する(会話が終わったら、発生済みの記録と効果の適用を行い、最後にon_doneを呼ぶ)。
@@ -87,9 +105,7 @@ func play(event: Dictionary, on_done: Callable = Callable()) -> bool:
 		return false
 	var trigger: Dictionary = event["trigger"]
 	var is_gate: bool = trigger.get("type", "") == "gate"
-	var kind: String = event["kind"]
-	if kind == "auto":
-		kind = WorldMap.event_kind_for_node(String(trigger.get("floor", ""))) if is_gate else ""
+	var kind: String = resolved_kind(event)
 	var result: String = String(trigger.get("result", "")) if is_gate else ""
 	EventDialogue.finished.connect(func(outcome: String):
 		_on_event_finished(event, outcome)

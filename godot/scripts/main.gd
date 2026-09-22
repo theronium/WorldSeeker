@@ -105,6 +105,27 @@ var _fit_left_menu_pending: bool = false
 var node_detail_panel: PanelContainer
 var node_detail_title: Label
 var node_detail_body: RichTextLabel
+
+# 戦闘画面(design.md 5.4節、2026-09-22): イベント戦闘(会話の付いた戦闘ゲート)の実際の攻防を、
+# ラウンドごとに再現して見せる。BattleScreen(battle_screen.gd)のopened/closedシグナルで開閉する。
+var battle_panel: PanelContainer
+var battle_title_label: Label
+var battle_kind_badge: Label
+var battle_party_slots: Array = [] # [{"portrait":Control, "name":Label, "hp_bar":ProgressBar, "hp_label":Label, "frame":Panel}]
+var battle_enemy_portrait: Control
+var battle_enemy_name_label: Label
+var battle_enemy_hp_bar: ProgressBar
+var battle_enemy_hp_label: Label
+var battle_log: RichTextLabel
+var battle_skip_button: Button
+var battle_close_button: Button
+var battle_click_catcher: Control # パネル全体のクリックで1ラウンド早送り
+var _battle_trace: Array = []
+var _battle_round_index: int = 0
+var _battle_enemy_hp: int = 0
+var _battle_slot_index_by_npc: Dictionary = {} # npc_id -> battle_party_slotsの添字
+var _battle_timer: Timer
+const BATTLE_ROUND_DELAY_SEC := 0.45
 var next_month_button: Button
 var map_scroll: ScrollContainer
 var map_canvas: Control
@@ -176,6 +197,12 @@ var advance_hint: Button
 var license_panel: PanelContainer # 左メニュー一番下の「ライセンス」ボタンで開く(内容はLicenseInfoが読み込む)
 var license_text: RichTextLabel
 
+# 設定画面(2026-09-22): 端末ごとの設定(Settings)。BGM音量・ミュート、イベント戦闘の戦闘画面ON-OFF。
+var settings_panel: PanelContainer
+var settings_bgm_slider: HSlider
+var settings_bgm_mute_check: CheckBox
+var settings_battle_screen_check: CheckBox
+
 var log_window: LogWindow # ログウィンドウ: 掲示板・イベント・毎日の動きから2つを選んで並べる(旧「掲示板」「行動ログ」を統合)
 
 var slot_panel: PanelContainer
@@ -232,8 +259,10 @@ func _ready() -> void:
 	_build_party_ui()
 	_build_shop_ui()
 	_build_node_detail_ui()
+	_build_battle_screen_ui()
 	_build_section_assign_ui()
 	_build_license_ui()
+	_build_settings_ui()
 	_build_back_hint_ui()
 	_apply_safe_area()
 	get_window().size_changed.connect(_apply_safe_area) # 画面の向きが変わった時など
@@ -310,6 +339,9 @@ func _on_go_back_requested() -> void:
 	if party_panel.visible and party_detail_view.visible:
 		_on_party_detail_back_pressed()
 		return
+	if battle_panel.visible:
+		return # 戦闘画面中は何もしない(タップ早送り・「閉じる」で進める)。他のモーダルと同じくmodal_blockerも
+		# 立っているため、次のif(modal_blocker.visible)より前で弾く必要がある(そちらは_close_any_modal()で閉じてしまう)。
 	if modal_blocker.visible:
 		_close_any_modal()
 		return
@@ -619,8 +651,36 @@ func _layout_background(frame: Control, picture: TextureRect) -> void:
 	picture.size = fitted
 	picture.position = Vector2((frame.size.x - fitted.x) * 0.5, frame.size.y - fitted.y)
 
+## BGMを1曲、ループ再生する(2026-09-22)。ライセンス条件はgodot/licenses/LICENSE-AUDIO.md参照
+## (音楽・効果音・フォントを追加する時の手順は、license_info.gd冒頭のコメントに同じ)。
+## 音量調整UIは今回は作らない(設定メニューを別途用意する時にまとめて追加する予定、要望どおり)。
+## そのため控えめな音量(BGM_VOLUME_DB)に固定してある。
+const BGM_PATH := "res://assets/music/bgm_forest_journey.mp3"
+const BGM_SILENT_DB := -80.0 # ミュート・音量0の代わり(stream_pausedは使わず、再生位置を保ったまま無音にする)
+
+var bgm_player: AudioStreamPlayer
+
+func _build_bgm() -> void:
+	bgm_player = AudioStreamPlayer.new()
+	var stream: AudioStream = load(BGM_PATH)
+	if stream is AudioStreamMP3:
+		stream.loop = true # ファイル自体にループ再生を持たせる(AudioStreamPlayerのfinishedを拾って再生し直す必要が無い)
+	bgm_player.stream = stream
+	bgm_player.volume_db = _bgm_volume_db()
+	add_child(bgm_player)
+	bgm_player.play()
+	Settings.changed.connect(func(): bgm_player.volume_db = _bgm_volume_db()) # 設定画面のスライダー/ミュートに即反映する
+
+## Settings.bgm_volume(0.0〜1.0の線形値)を、AudioStreamPlayer.volume_dbへ変換する(2026-09-22)。
+## ミュート中、または音量0の時は、再生を止めず(seek位置を保つ)、聞こえないほど下げるだけにする。
+func _bgm_volume_db() -> float:
+	if Settings.bgm_muted or Settings.bgm_volume <= 0.0:
+		return BGM_SILENT_DB
+	return linear_to_db(Settings.bgm_volume)
+
 func _build_ui() -> void:
 	_build_background()
+	_build_bgm()
 	var root := HBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(root)
@@ -747,7 +807,14 @@ func _build_ui() -> void:
 		board_toggle_button = board_button
 		left.add_child(board_button)
 
-	# ライセンス表示(画像・Godot・godot-sqlite、将来は音楽なども)。日常的には使わないので、メニューの
+	# 設定(BGM音量/ミュート、イベント戦闘の戦闘画面ON-OFF。2026-09-22)。ライセンスと同じく日常的には
+	# 使わないので、その直上に置く。
+	var settings_button := Button.new()
+	settings_button.text = "設定"
+	settings_button.pressed.connect(_on_open_settings_pressed)
+	left.add_child(settings_button)
+
+	# ライセンス表示(画像・Godot・godot-sqlite・音楽)。日常的には使わないので、メニューの
 	# ボタンとしては一番下に置く。
 	var license_button := Button.new()
 	license_button.text = "ライセンス"
@@ -891,7 +958,7 @@ func _on_area_step_pressed(direction: int) -> void:
 ## 雇用/探索者管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
 		p.visible = (p == panel)
 	modal_blocker.visible = true
 	move_child(modal_blocker, get_child_count() - 1)
@@ -1153,7 +1220,12 @@ func _try_show_assignment_followup_tutorial() -> void:
 ## 開いているモーダルパネルを問わず全て閉じる(_open_modal/_close_modalは特定の1枚を
 ## 対象にする作りのため、「今何が開いているか分からないが、とにかく閉じたい」場面用に用意)。
 func _close_any_modal() -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel]:
+	# 戦闘画面が開いたままここへ来ることは通常無い(入力を塞ぐモーダルなので、閉じる操作自体ができない)が、
+	# 万一に備え、開いていればBattleScreen側にも閉じたことを伝える(でないとexploration.gdがclosedを待ち続け、
+	# 時間が止まったままになる)。
+	if battle_panel.visible:
+		BattleScreen.close()
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
 		p.visible = false
 	modal_blocker.visible = false
 
@@ -1210,6 +1282,63 @@ func _on_open_license_pressed() -> void:
 	license_text.text = LicenseInfo.to_bbcode() # 開く時に読み込む(起動を遅くしない)
 	license_text.scroll_to_line(0)
 	_open_modal(license_panel)
+
+## 設定画面(2026-09-22)。端末ごとの設定(Settings、セーブスロットとは無関係)を直接操作する。
+## BGM音量・ミュートと、イベント戦闘の戦闘画面ON-OFFの2項目(配色など他の項目は優先度低のため今回は含めない)。
+func _build_settings_ui() -> void:
+	settings_panel = PanelContainer.new()
+	settings_panel.set_anchors_preset(Control.PRESET_CENTER)
+	settings_panel.offset_left = -220
+	settings_panel.offset_top = -100
+	settings_panel.offset_right = 220
+	settings_panel.offset_bottom = 100
+	settings_panel.visible = false
+	add_child(settings_panel)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 10)
+	settings_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	var title := Label.new()
+	title.text = "設定"
+	title.add_theme_font_size_override("font_size", 18)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): _close_modal(settings_panel))
+	header.add_child(close_button)
+
+	var bgm_label := Label.new()
+	bgm_label.text = "BGM音量"
+	col.add_child(bgm_label)
+	var bgm_row := HBoxContainer.new()
+	col.add_child(bgm_row)
+	settings_bgm_slider = HSlider.new()
+	settings_bgm_slider.min_value = 0.0
+	settings_bgm_slider.max_value = 1.0
+	settings_bgm_slider.step = 0.05
+	settings_bgm_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	settings_bgm_slider.custom_minimum_size = Vector2(0, TOUCH_BUTTON_MARGIN_V if _touch_ui else 0) # タッチUIで掴みやすい高さに
+	settings_bgm_slider.value_changed.connect(func(v: float): Settings.set_bgm_volume(v))
+	bgm_row.add_child(settings_bgm_slider)
+	settings_bgm_mute_check = CheckBox.new()
+	settings_bgm_mute_check.text = "ミュート"
+	settings_bgm_mute_check.toggled.connect(func(pressed: bool): Settings.set_bgm_muted(pressed))
+	bgm_row.add_child(settings_bgm_mute_check)
+
+	settings_battle_screen_check = CheckBox.new()
+	settings_battle_screen_check.text = "イベント戦闘で戦闘画面を表示する"
+	settings_battle_screen_check.toggled.connect(func(pressed: bool): Settings.set_show_battle_screen(pressed))
+	col.add_child(settings_battle_screen_check)
+
+func _on_open_settings_pressed() -> void:
+	settings_bgm_slider.set_value_no_signal(Settings.bgm_volume)
+	settings_bgm_mute_check.set_pressed_no_signal(Settings.bgm_muted)
+	settings_battle_screen_check.set_pressed_no_signal(Settings.show_battle_screen)
+	_open_modal(settings_panel)
 
 ## タッチUIの掲示板ウィンドウ(右端に重ねる半透明の直近10件、全体フィード固定)。デスクトップの左メニュー内の
 ## 常時プレビューの代わりで、掲示板ボタンで出し入れする(_set_board_overlay_visible)。全文・スレッド切替は、
@@ -1349,6 +1478,317 @@ func _build_node_detail_ui() -> void:
 	node_detail_body.custom_minimum_size = Vector2(0, 320)
 	node_detail_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(node_detail_body)
+
+## 戦闘画面(design.md 5.4節、2026-09-22)。イベント戦闘(会話の付いた戦闘ゲート)の実際の攻防を、
+## パーティ4人を上段、敵を中央、ラウンドの様子を下段の文字に出して再現する。BattleScreenのopened/closedを
+## 聞いて開閉する(exploration.gdは、このシグナルの往復だけでやり取りし、main.gdへの参照を持たない)。
+func _build_battle_screen_ui() -> void:
+	battle_panel = PanelContainer.new()
+	battle_panel.set_anchors_preset(Control.PRESET_CENTER)
+	battle_panel.offset_left = -300
+	battle_panel.offset_top = -260
+	battle_panel.offset_right = 300
+	battle_panel.offset_bottom = 260
+	battle_panel.visible = false
+	add_child(battle_panel)
+
+	battle_click_catcher = Control.new()
+	battle_click_catcher.set_anchors_preset(Control.PRESET_FULL_RECT)
+	battle_click_catcher.mouse_filter = Control.MOUSE_FILTER_PASS # 下の中身(ボタン等)へクリックを通しつつ、自分でも拾う
+	battle_click_catcher.gui_input.connect(_on_battle_panel_gui_input)
+	battle_panel.add_child(battle_click_catcher)
+
+	var col := VBoxContainer.new()
+	battle_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	battle_title_label = Label.new()
+	battle_title_label.add_theme_font_size_override("font_size", 18)
+	battle_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(battle_title_label)
+	battle_kind_badge = Label.new()
+	battle_kind_badge.add_theme_font_size_override("font_size", 13)
+	header.add_child(battle_kind_badge)
+
+	var party_row := HBoxContainer.new()
+	party_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	party_row.add_theme_constant_override("separation", 10)
+	col.add_child(party_row)
+	battle_party_slots.clear()
+	for i in range(Parties.MAX_PARTY_SIZE):
+		battle_party_slots.append(_create_battle_party_slot(party_row, "先頭" if i == 0 else "%d番手" % (i + 1)))
+
+	var vs_label := Label.new()
+	vs_label.text = "VS"
+	vs_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vs_label.add_theme_font_size_override("font_size", 16)
+	vs_label.modulate = Color(1, 1, 1, 0.7)
+	col.add_child(vs_label)
+
+	var enemy_row := HBoxContainer.new()
+	enemy_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(enemy_row)
+	var enemy_slot := _create_battle_party_slot(enemy_row, "")
+	battle_enemy_portrait = enemy_slot["portrait"]
+	battle_enemy_name_label = enemy_slot["name"]
+	battle_enemy_hp_bar = enemy_slot["hp_bar"]
+	battle_enemy_hp_label = enemy_slot["hp_label"]
+	enemy_slot["order_label"].visible = false
+
+	battle_log = RichTextLabel.new()
+	battle_log.custom_minimum_size = Vector2(0, 110)
+	battle_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	battle_log.scroll_following = true # 行が増えるたびに末尾へ自動でスクロール
+	battle_log.bbcode_enabled = true
+	battle_log.mouse_filter = Control.MOUSE_FILTER_IGNORE # クリックはbattle_click_catcherに任せる(早送り)
+	col.add_child(battle_log)
+
+	var footer := HBoxContainer.new()
+	col.add_child(footer)
+	var footer_hint := Label.new()
+	footer_hint.text = "画面をタップで早送り"
+	footer_hint.modulate = Color(1, 1, 1, 0.6)
+	footer_hint.add_theme_font_size_override("font_size", 12)
+	footer_hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	footer.add_child(footer_hint)
+	battle_skip_button = Button.new()
+	battle_skip_button.text = "▶▶ 早送り"
+	battle_skip_button.pressed.connect(_on_battle_skip_pressed)
+	footer.add_child(battle_skip_button)
+	battle_close_button = Button.new()
+	battle_close_button.text = "閉じる"
+	battle_close_button.visible = false
+	battle_close_button.pressed.connect(_on_battle_close_pressed)
+	_apply_primary_button_style(battle_close_button)
+	footer.add_child(battle_close_button)
+
+	_battle_timer = Timer.new()
+	_battle_timer.one_shot = true
+	_battle_timer.wait_time = BATTLE_ROUND_DELAY_SEC
+	_battle_timer.timeout.connect(_advance_battle_round)
+	add_child(_battle_timer)
+
+	BattleScreen.opened.connect(_on_battle_screen_opened)
+
+## 戦闘画面のパーティ/敵1枠(肖像・名前・HPバー・HP文字)。party_rowにもenemy_rowにも同じ形で使う。
+func _create_battle_party_slot(parent: Control, order_text: String) -> Dictionary:
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(110, 0)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	parent.add_child(box)
+
+	var order_label := Label.new()
+	order_label.text = order_text
+	order_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	order_label.add_theme_font_size_override("font_size", 11)
+	order_label.modulate = Color(1, 1, 1, 0.7)
+	box.add_child(order_label)
+
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = Vector2(64, 64)
+	frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	frame.clip_contents = true
+	box.add_child(frame)
+	var portrait := Control.new()
+	portrait.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.add_child(portrait)
+
+	var name_label := Label.new()
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 12)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(name_label)
+
+	var hp_bar := ProgressBar.new()
+	hp_bar.custom_minimum_size = Vector2(0, 12)
+	hp_bar.show_percentage = false
+	box.add_child(hp_bar)
+
+	var hp_label := Label.new()
+	hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hp_label.add_theme_font_size_override("font_size", 11)
+	hp_label.modulate = Color(1, 1, 1, 0.8)
+	box.add_child(hp_label)
+
+	return {"frame": frame, "portrait": portrait, "name": name_label, "hp_bar": hp_bar, "hp_label": hp_label, "order_label": order_label}
+
+## 戦闘画面を開く(BattleScreen.opened)。dataは_maybe_show_battle_screen(exploration.gd)が渡す
+## {"trace", "passed", "enemy_start_power", "enemy_name", "kind"}。
+func _on_battle_screen_opened(data: Dictionary) -> void:
+	_battle_trace = data.get("trace", [])
+	_battle_round_index = 0
+	_battle_enemy_hp = int(data.get("enemy_start_power", 0))
+	var kind: String = data.get("kind", "")
+
+	battle_title_label.text = "戦闘"
+	if EVENT_STYLES.has(kind):
+		battle_kind_badge.text = EVENT_STYLES[kind]["label"]
+		battle_kind_badge.modulate = EVENT_STYLES[kind]["accent"]
+	else:
+		battle_kind_badge.text = ""
+
+	# パーティは、選択中のパーティではなく「戦ったパーティ」を出す必要がある。traceの先頭のnpc_idから
+	# 所属パーティを逆引きする(未割当や退避などでも、戦った時点のメンバー構成をそのまま表示できる)。
+	var member_ids: Array = data.get("member_ids", [])
+	_battle_slot_index_by_npc.clear()
+	for i in range(battle_party_slots.size()):
+		var slot: Dictionary = battle_party_slots[i]
+		if i < member_ids.size():
+			var npc_id: int = member_ids[i]
+			_battle_slot_index_by_npc[npc_id] = i
+			_fill_battle_slot(slot, npc_id)
+			slot["frame"].visible = true
+			slot["hp_bar"].visible = true
+		else:
+			slot["frame"].visible = false
+			slot["name"].text = ""
+			slot["hp_bar"].visible = false
+			slot["hp_label"].text = ""
+		_set_battle_slot_active(slot, false)
+
+	var enemy_name: String = data.get("enemy_name", "")
+	battle_enemy_name_label.text = enemy_name if enemy_name != "" else "敵"
+	_set_battle_portrait_texture(battle_enemy_portrait, EventPortraits.load_texture(EventPortraits.portrait_id(enemy_name, kind if kind != "" else "combat")))
+	battle_enemy_hp_bar.max_value = max(1, _battle_enemy_hp)
+	battle_enemy_hp_bar.value = _battle_enemy_hp
+	battle_enemy_hp_label.text = str(_battle_enemy_hp)
+
+	battle_log.clear()
+	battle_log.append_text("[color=#9ecbff]%s が現れた![/color]\n" % battle_enemy_name_label.text)
+	battle_skip_button.visible = true
+	battle_close_button.visible = false
+
+	_open_modal(battle_panel)
+	_battle_timer.start()
+
+func _fill_battle_slot(slot: Dictionary, npc_id: int) -> void:
+	var npc := Npcs.get_npc(npc_id)
+	slot["name"].text = npc.get("name", "?")
+	_set_battle_portrait_control(slot["portrait"], _create_portrait_content(npc))
+	var max_hp: float = float(npc.get("max_hp", 100.0))
+	# トレースにこのメンバーの最初のラウンドがあれば、そのhp_before(=このメンバーが戦い始めた時点のHP)から
+	# 再生する(現在のNpcs側のhpは、既に戦闘が確定した後の最終値になっているため)。トレースが無い(=一度も
+	# 出番が無かった)メンバーは、現在のhpをそのまま満タン表示として使う。
+	var start_hp: float = float(npc.get("hp", max_hp))
+	for entry in _battle_trace:
+		if int(entry["npc_id"]) == npc_id:
+			start_hp = float(entry["hp_before"])
+			break
+	slot["hp_bar"].max_value = max(1.0, max_hp)
+	slot["hp_bar"].value = maxf(0.0, start_hp)
+	slot["hp_label"].text = "%d/%d" % [maxi(0, roundi(start_hp)), roundi(max_hp)]
+
+## パーティ側: _create_portrait_content()(肖像があればTextureRect、無ければ頭文字のLabel)をそのまま差し込む。
+func _set_battle_portrait_control(portrait: Control, content: Control) -> void:
+	for child in portrait.get_children():
+		portrait.remove_child(child)
+		child.queue_free()
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	portrait.add_child(content)
+
+## 敵側: EventPortraits.load_texture()の結果(見つからなければnull)を差し込む。
+func _set_battle_portrait_texture(portrait: Control, texture: Texture2D) -> void:
+	for child in portrait.get_children():
+		portrait.remove_child(child)
+		child.queue_free()
+	if texture == null:
+		return
+	var texture_rect := TextureRect.new()
+	texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_rect.texture = texture
+	texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	texture_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	portrait.add_child(texture_rect)
+
+## 今まさに動いているメンバーの枠を、他より目立たせる(黄色い縁)。
+func _set_battle_slot_active(slot: Dictionary, active: bool) -> void:
+	if not active:
+		slot["frame"].remove_theme_stylebox_override("panel")
+		return
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.15, 0.15, 0.2, 1.0)
+	style.border_color = Color(1.0, 0.85, 0.3, 1.0)
+	style.set_border_width_all(3)
+	slot["frame"].add_theme_stylebox_override("panel", style)
+
+func _on_battle_panel_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_advance_battle_round()
+	elif event is InputEventScreenTouch and event.pressed:
+		_advance_battle_round()
+
+func _on_battle_skip_pressed() -> void:
+	# 残りラウンドを、一瞬で(間を置かずに)最後まで適用する。ログは最後の数行だけ載せれば十分。
+	while _battle_round_index < _battle_trace.size():
+		_apply_battle_round(_battle_trace[_battle_round_index], false)
+		_battle_round_index += 1
+	_finish_battle_rounds()
+
+## 1ラウンド分を進める(タイマー満了・タップ・「早送り」で共通)。既に最後まで進んでいれば何もしない
+## (自動タイマーが結果表示の後に発火しても無害にするため)。
+func _advance_battle_round() -> void:
+	if _battle_round_index >= _battle_trace.size():
+		return
+	_apply_battle_round(_battle_trace[_battle_round_index], true)
+	_battle_round_index += 1
+	if _battle_round_index >= _battle_trace.size():
+		_finish_battle_rounds()
+	else:
+		_battle_timer.start()
+
+## traceの1エントリをHPバー・ハイライト・ログへ反映する。log_lineがtrueならログにも1行足す(早送り中はfalseで省く)。
+func _apply_battle_round(entry: Dictionary, log_line: bool) -> void:
+	var npc_id: int = entry["npc_id"]
+	if not _battle_slot_index_by_npc.has(npc_id):
+		return
+	var slot: Dictionary = battle_party_slots[_battle_slot_index_by_npc[npc_id]]
+	for other in battle_party_slots:
+		_set_battle_slot_active(other, other == slot)
+
+	var hp_after: float = maxf(0.0, float(entry["hp_after"]))
+	slot["hp_bar"].value = hp_after
+	slot["hp_label"].text = "%d/%d" % [roundi(hp_after), roundi(float(entry["max_hp"]))]
+
+	_battle_enemy_hp = maxi(0, int(entry["enemy_after"]))
+	battle_enemy_hp_bar.value = _battle_enemy_hp
+	battle_enemy_hp_label.text = str(_battle_enemy_hp)
+
+	if not log_line:
+		return
+	var name: String = slot["name"].text
+	var event_tag: String = String(entry["event"])
+	var damage_dealt: int = maxi(0, int(entry["enemy_before"]) - int(entry["enemy_after"]))
+	var damage_taken: int = maxi(0, roundi(float(entry["hp_before"]) - float(entry["hp_after"])))
+	if event_tag.contains("item_used"):
+		battle_log.append_text("%sの攻撃！ %sに%dのダメージ。%sは体勢を立て直した(HP回復)\n" % [name, battle_enemy_name_label.text, damage_dealt, name])
+	elif damage_taken > 0:
+		battle_log.append_text("%sの攻撃！ %sに%dのダメージ。反撃で%dのダメージを受けた\n" % [name, battle_enemy_name_label.text, damage_dealt, damage_taken]) if damage_dealt > 0 \
+			else battle_log.append_text("%sは%dのダメージを受けた\n" % [name, damage_taken])
+	else:
+		battle_log.append_text("%sの攻撃！ %sに%dのダメージ\n" % [name, battle_enemy_name_label.text, damage_dealt])
+	if event_tag.contains("retreated"):
+		battle_log.append_text("[color=#e5a04c]%sは戦線を離脱した[/color]\n" % name)
+	if event_tag.contains("defeated"):
+		battle_log.append_text("[color=#e0574c]%sは力尽きた[/color]\n" % name)
+	if event_tag.contains("victory"):
+		battle_log.append_text("[color=#7ed08a]%sが%sを倒した！[/color]\n" % [name, battle_enemy_name_label.text])
+
+func _finish_battle_rounds() -> void:
+	for slot in battle_party_slots:
+		_set_battle_slot_active(slot, false)
+	battle_log.append_text("\n[color=#ffd54a]--- 結果 ---[/color]\n")
+	if _battle_enemy_hp <= 0:
+		battle_log.append_text("[color=#7ed08a]勝利！[/color]\n")
+	else:
+		battle_log.append_text("[color=#e0574c]撤退した[/color]\n")
+	battle_skip_button.visible = false
+	battle_close_button.visible = true
+
+func _on_battle_close_pressed() -> void:
+	_close_modal(battle_panel)
+	BattleScreen.close()
 
 ## セクションへパーティを割り当てる小さなモーダル(2026-09-14、「選んだセクションから
 ## パーティ割り当てを可能にする」という要望への対応)。マップのセクション名ボタン
