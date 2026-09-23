@@ -4,6 +4,7 @@
 - `godot/assets/portraits/` にあるキャラクター画像(`char_01.png`〜`char_64.png`)、
   イベント会話用の町人画像(`npc_01.png`〜`npc_32.png`)と敵画像(`enemy_01.png`〜`enemy_32.png`)
 - `godot/assets/background/` にある背景画像(`bg_main.png`)
+- `godot/assets/icon/` にあるアプリのアイコン画像(`icon.png`・`icon.ico`と、Android用の各サイズ)
 
 これらの画像は、OpenAIの画像生成サービスを
 使用して著者が生成したAI生成画像です。
