@@ -1,6 +1,7 @@
-name: Android APK
+name: Release builds
 
-# v* タグをpushするとAPKをビルドしてGitHub Releasesに添付する。
+# v* タグをpushすると、Windows版(zip)とAndroid版(APK)をビルドしてGitHub Releasesに添付する。
+# 版番号が0.x、または「-」付き(v0.2.0-rc1など)の時は、Pre-releaseとして出す。
 # 手動実行(workflow_dispatch)ではReleaseは作らず、Artifactとして保存するだけ。
 on:
   push:
@@ -17,8 +18,35 @@ env:
 jobs:
   build:
     runs-on: ubuntu-24.04 # ubuntu-latestは2026-10-19にUbuntu 26へ切り替わる予定のため、動作確認済みの版に固定
+    env:
+      HAS_ASSETS_KEY: ${{ secrets.ASSETS_DEPLOY_KEY != '' }}
     steps:
       - uses: actions/checkout@v7
+
+      # BGMの音源は、ライセンス上この公開リポジトリに置けない(単体で取り出せる形での公開が禁止)ため、
+      # 非公開の素材リポジトリ(theronium/WorldSeeker-assets)から、読み取り専用のDeploy keyで取得する。
+      # 置き場はgodot/の外(godot/の中だと、素材リポジトリ自体がインポート・同梱されてしまう)。
+      - name: 非公開の素材を取得
+        if: env.HAS_ASSETS_KEY == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: theronium/WorldSeeker-assets
+          ssh-key: ${{ secrets.ASSETS_DEPLOY_KEY }}
+          path: private-assets
+
+      - name: BGMを配置
+        run: |
+          src="private-assets/music/bgm_forest_journey.mp3"
+          if [ -f "$src" ]; then
+            mkdir -p godot/assets/music
+            cp "$src" godot/assets/music/
+            ls -l godot/assets/music
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "::error::BGMの音源を取得できませんでした(ASSETS_DEPLOY_KEYを確認)。BGM無しの版をリリースしないよう中止します。"
+            exit 1
+          else
+            echo "::warning::BGMの音源を取得できなかったため、BGM無しでビルドします(手動実行なので続行)。"
+          fi
 
       - name: Godot本体を取得
         run: |
@@ -28,13 +56,13 @@ jobs:
           mv "Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_linux.x86_64" "$RUNNER_TEMP/godot"
           chmod +x "$RUNNER_TEMP/godot"
 
-      # テンプレート全体は1.2GBあるが、Androidに必要なのは一部だけなのでそれだけ展開してキャッシュする
+      # テンプレート全体は1.2GBあるが、必要なのはAndroidとWindows(x86_64)の分だけなので、それだけ展開してキャッシュする
       - name: エクスポートテンプレートのキャッシュ
         id: templates-cache
         uses: actions/cache@v6
         with:
           path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.${{ env.GODOT_CHANNEL }}
-          key: godot-templates-android-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
+          key: godot-templates-android-windows-${{ env.GODOT_VERSION }}-${{ env.GODOT_CHANNEL }}
 
       - name: エクスポートテンプレートを取得
         if: steps.templates-cache.outputs.cache-hit != 'true'
@@ -42,7 +70,8 @@ jobs:
           dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_CHANNEL}"
           mkdir -p "$dest"
           curl -fsSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_CHANNEL}/Godot_v${GODOT_VERSION}-${GODOT_CHANNEL}_export_templates.tpz"
-          unzip -q -j templates.tpz "templates/version.txt" "templates/android_*" -d "$dest"
+          unzip -q -j templates.tpz "templates/version.txt" "templates/android_*" \
+            "templates/windows_release_x86_64.exe" "templates/windows_debug_x86_64.exe" -d "$dest"
           rm templates.tpz
           ls -l "$dest"
 
@@ -74,13 +103,18 @@ jobs:
           echo "path=$ks" >> "$GITHUB_OUTPUT"
 
       # versionCodeは更新インストールの新旧判定に使われるため、単調増加するrun_numberを使う。
+      # Windowsのファイルバージョンは数字4つ(a.b.c.d)しか書けないので、「-」以降を落として末尾に.0を足す。
       - name: バージョンを設定
         run: |
           name="${GITHUB_REF_NAME#v}"
           [ "$GITHUB_REF_TYPE" = "tag" ] || name="0.0.0-dev.${GITHUB_RUN_NUMBER}"
-          sed -i "s|^version/code=.*|version/code=${GITHUB_RUN_NUMBER}|; s|^version/name=.*|version/name=\"${name}\"|" godot/export_presets.cfg
-          grep -E '^version/' godot/export_presets.cfg
-          echo "APK_NAME=WorldSeeker-${name}.apk" >> "$GITHUB_ENV"
+          winver="${name%%-*}.0"
+          [ "$GITHUB_REF_TYPE" = "tag" ] || winver="0.0.0.${GITHUB_RUN_NUMBER}"
+          sed -i "s|^version/code=.*|version/code=${GITHUB_RUN_NUMBER}|; s|^version/name=.*|version/name=\"${name}\"|; s|^application/file_version=.*|application/file_version=\"${winver}\"|; s|^application/product_version=.*|application/product_version=\"${winver}\"|" godot/export_presets.cfg
+          grep -E '^(version/|application/(file|product)_version)' godot/export_presets.cfg
+          echo "VERSION_NAME=${name}" >> "$GITHUB_ENV"
+          echo "APK_NAME=WorldSeeker-${name}-android.apk" >> "$GITHUB_ENV"
+          echo "WIN_ZIP_NAME=WorldSeeker-${name}-windows.zip" >> "$GITHUB_ENV"
 
       # Godot 4.7はAPKの署名にJava SDKとAndroid SDK(adb / apksigner)を必須とする(公式ドキュメントの
       # 「不要」という記述は当てにならず、実機ビルドで確認済み)。ubuntu-24.04に入っているものを使い、
@@ -115,14 +149,34 @@ jobs:
           "$RUNNER_TEMP/godot" --headless --path godot --export-release "Android" "../build/${APK_NAME}"
           ls -l build
 
+      # exeにゲームのデータを埋め込み(embed_pck)、SQLiteのDLLと一緒に「WorldSeeker/」フォルダごとzipにする
+      - name: Windows版をエクスポート
+        run: |
+          out="build/windows/WorldSeeker"
+          mkdir -p "$out"
+          "$RUNNER_TEMP/godot" --headless --path godot --export-release "Windows Desktop" "../${out}/WorldSeeker.exe"
+          ls -l "$out"
+          [ -f "$out/WorldSeeker.exe" ] || { echo "::error::WorldSeeker.exeができていません"; exit 1; }
+          ls "$out"/*.dll > /dev/null || { echo "::error::SQLiteのDLLが同梱されていません"; exit 1; }
+          (cd build/windows && zip -qr "../${WIN_ZIP_NAME}" WorldSeeker)
+          ls -l build
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APK_NAME }}
           path: build/${{ env.APK_NAME }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.WIN_ZIP_NAME }}
+          path: build/${{ env.WIN_ZIP_NAME }}
 
       - name: GitHub Releaseに添付
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "build/${APK_NAME}" --title "$GITHUB_REF_NAME" --generate-notes
+          pre=""
+          case "$VERSION_NAME" in 0.*|*-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" "build/${WIN_ZIP_NAME}" "build/${APK_NAME}" \
+            --title "WorldSeeker $GITHUB_REF_NAME" --generate-notes $pre
