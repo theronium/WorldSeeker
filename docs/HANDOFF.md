@@ -35,6 +35,10 @@ GODOT_EXE="/c/Users/thero/AppData/Local/Microsoft/WinGet/Packages/GodotEngine.Go
 
 コードを変更したら、必ず上記の `--headless --quit` でエラーが出ないことを確認してから完了報告する運用にしている。
 
+### リリース(Windows版・Android版)
+
+**2026-09-24に`v0.1.0`をGitHub ReleasesにPre-releaseとして公開した**(Windows版zipとAndroid版APK)。`v*`タグのpushで、CI(`.github/workflows/release.yml`)が両方をビルドして添付する。BGMは非公開リポジトリ`theronium/WorldSeeker-assets`からCIが取得する(ライセンス上、このリポジトリには置けない)。手順・版番号の付け方・Secrets・確かめ方・困った時の対処は **[`docs/RELEASE.md`](RELEASE.md)** にまとめてある。**スマホにリリース版のAPKを入れると、`run_on_phone.sh`の手元ビルド(versionCode=1)がダウングレードとして拒否される**ので、開発用のスマホには入れないこと。
+
 ### Androidビルド(2026-09-19に追加、実機 moto g05 / Android 15 で起動・セーブ動作を確認済み)
 
 - 設定: `godot/export_presets.cfg`(arm64のみ、パッケージ名`com.theronium.worldseeker`)、`godot/project.godot`の`.mobile`フィーチャータグ上書き(描画をgl_compatibility、ストレッチをcanvas_itemsに。**Windows版には影響しない**)、CIは`.github/workflows/release.yml`(2026-09-24に`android.yml`から改名し、Windows版も作るようにした。`v*`タグのpushでWindows版zipとAPKをビルドしGitHub Releasesに添付、手動実行ではArtifactのみ)。
