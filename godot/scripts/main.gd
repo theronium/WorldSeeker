@@ -685,12 +685,17 @@ var bgm_player: AudioStreamPlayer
 
 func _build_bgm() -> void:
 	bgm_player = AudioStreamPlayer.new()
+	add_child(bgm_player) # 音源が無くても作っておく(設定画面の音量変更などが参照するため)
+	# 音源ファイルはライセンス上リポジトリに入れていない(.gitignore)。新しいクローンやCIのビルドには
+	# 無いので、その場合はBGM無しで起動する(2026-09-23)
+	if not ResourceLoader.exists(BGM_PATH):
+		push_warning("BGMの音源が見つからないため、BGM無しで起動します: " + BGM_PATH)
+		return
 	var stream: AudioStream = load(BGM_PATH)
 	if stream is AudioStreamMP3:
 		stream.loop = true # ファイル自体にループ再生を持たせる(AudioStreamPlayerのfinishedを拾って再生し直す必要が無い)
 	bgm_player.stream = stream
 	bgm_player.volume_db = _bgm_volume_db()
-	add_child(bgm_player)
 	bgm_player.play()
 	Settings.changed.connect(func(): bgm_player.volume_db = _bgm_volume_db()) # 設定画面のスライダー/ミュートに即反映する
 

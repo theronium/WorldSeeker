@@ -10,5 +10,10 @@ build/
 *.keystore
 *.jks
 
+# BGMの音源ファイルはコミットしない(配布元のライセンスが、音源を単体で取り出せる形での公開を
+# 禁じているため。godot/licenses/LICENSE-AUDIO.md参照)。ファイルは手元にだけ置き、ローカルビルドに入れる
+godot/assets/music/*.mp3
+godot/assets/music/*.mp3.import
+
 # Python
 __pycache__/
