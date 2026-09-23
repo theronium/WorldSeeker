@@ -1,10 +1,14 @@
 class_name LogWindow
 extends PanelContainer
-# ログウィンドウ(2026-09-21)。掲示板・イベント・毎日の動きの3種から、2つを選んで左右に並べる。
+# ログウィンドウ(2026-09-21)。掲示板・行動記録・毎日の動きの3種から、2つを選んで左右に並べる。
 # 以前の「掲示板」と「行動ログ」の2つのウィンドウを統合したもの(発生源がほぼ同じで、似ていた)。
 #   毎日の動き: その日、担当中のパーティが何をしていたか(DailyLog。メモリだけ。日ごと/まとめて表示の切替、パーティで絞る)
-#   イベント  : 節目の出来事(旧・行動ログ。ActionLog、DB。探索者で絞る)
-#   掲示板    : 掲示板の全体フィード/セクション別スレッド(Board)
+#   行動記録  : 節目の出来事(旧・行動ログ。ActionLog、DB。探索者で絞る)。タブ名は元「イベント」だったが、
+#               フロアのゲート結果として再生される「イベント戦闘」(シナリオのVN+戦闘画面)と紛らわしい
+#               (中身が別物なのに名前だけ似ている)ため改名した(2026-09-23)。戦闘ゲートに関する行には
+#               ⚔️を付け、イベント戦闘との関連が見て分かるようにする(_is_combat_action_entry参照)。
+#   掲示板    : 掲示板の全体フィード/セクション別スレッド(Board)。自パーティ/世界全体で色・アイコンを分ける
+#               (Board.Scope、_scope_prefix参照。2026-09-23)
 # 3種とも、新しい順に並べる。開いている間、日が進むと中身が更新される(読み返している最中は、先頭へ戻さない)。
 
 signal close_requested
@@ -14,7 +18,7 @@ const SOURCE_EVENTS := "events"
 const SOURCE_BOARD := "board"
 const SOURCES := [
 	{"key": SOURCE_DAILY, "label": "毎日の動き"},
-	{"key": SOURCE_EVENTS, "label": "イベント"},
+	{"key": SOURCE_EVENTS, "label": "行動記録"},
 	{"key": SOURCE_BOARD, "label": "掲示板"},
 ]
 const DEFAULT_SOURCES := [SOURCE_DAILY, SOURCE_EVENTS] # 左・右の枠の初期の中身
@@ -186,7 +190,7 @@ func _refresh_pane(index: int, force: bool) -> void:
 	if not any:
 		text.add_text(EMPTY_TEXTS[key])
 
-## 絞り込みの選択肢: 毎日の動き=パーティ、イベント=探索者、掲示板=スレッド(全体/セクション)。[{"value", "label"}]
+## 絞り込みの選択肢: 毎日の動き=パーティ、行動記録=探索者、掲示板=スレッド(全体/セクション)。[{"value", "label"}]
 func _filter_choices(key: String) -> Array:
 	var choices: Array = []
 	match key:
@@ -244,22 +248,46 @@ func _fill_daily(pane: Dictionary, text: RichTextLabel) -> bool:
 				text.add_text("  %s: %s\n" % [entry["party_name"], DailyLog.describe(entry, int(day_entry["day"]))])
 	return any
 
-## イベント(旧・行動ログ)。DBの行動ログを、新しい順に。
+const COMBAT_ACTION_EVENT_TYPES := ["discover_pass", "discover_blocked", "gate_pass"]
+
+## 行動記録(旧・行動ログ)。DBの行動ログを、新しい順に。戦闘ゲートに関する行には⚔️を付ける。
 func _fill_events(pane: Dictionary, text: RichTextLabel) -> bool:
 	var entries: Array = SaveSystem.query_action_log(int(pane["filters"][SOURCE_EVENTS]), EVENT_LIMIT)
 	for entry in entries:
 		_add_day_heading(text, "[Day %d]" % entry["day"])
-		text.add_text(" %s\n" % entry["text"])
+		var prefix: String = "⚔️ " if _is_combat_action_entry(entry) else ""
+		text.add_text(" %s%s\n" % [prefix, entry["text"]])
 	return not entries.is_empty()
 
-## 掲示板。全体フィードか、選んだセクションのスレッドを、新しい順に。
+## その行動記録の行が、戦闘ゲート(イベント戦闘)に関するものか。combat_retreatは常にそう、
+## 発見/突破系はそのフロアの実際のゲート種別で判定する(2026-09-23、タブ名の改名(「イベント」→
+## 「行動記録」)とあわせて、イベント戦闘との関連が見て分かるようにする対応)。
+func _is_combat_action_entry(entry: Dictionary) -> bool:
+	var event_type: String = String(entry.get("event_type", ""))
+	if event_type == "combat_retreat":
+		return true
+	if not COMBAT_ACTION_EVENT_TYPES.has(event_type):
+		return false
+	var node_id: String = String(entry.get("node_id", ""))
+	return WorldMap.nodes.has(node_id) and String(WorldMap.nodes[node_id].get("gate", {}).get("type", "")) == "combat"
+
+## 掲示板。全体フィードか、選んだセクションのスレッドを、新しい順に。自パーティ/世界全体を、
+## 行頭のアイコンと文字色で見分けられるようにする(Board.Scope、2026-09-23)。
 func _fill_board(pane: Dictionary, text: RichTextLabel) -> bool:
 	var thread_id: String = String(pane["filters"][SOURCE_BOARD])
 	var entries: Array = Board.thread_recent(thread_id, BOARD_LIMIT) if thread_id != "" else Board.recent(BOARD_LIMIT)
 	for i in range(entries.size() - 1, -1, -1):
 		_add_day_heading(text, "[Day %d]" % entries[i]["day"])
-		text.add_text(" %s\n" % entries[i]["text"])
+		_add_board_line(text, entries[i])
 	return not entries.is_empty()
+
+func _add_board_line(text: RichTextLabel, entry: Dictionary) -> void:
+	var scope: int = int(entry.get("scope", Board.Scope.PARTY))
+	text.add_text(" %s " % String(Board.SCOPE_ICON.get(scope, "")))
+	text.push_color(Board.SCOPE_COLOR.get(scope, Color.WHITE))
+	text.add_text(entry["text"])
+	text.pop()
+	text.add_text("\n")
 
 func _add_day_heading(text: RichTextLabel, heading: String) -> void:
 	text.push_color(DAY_COLOR)

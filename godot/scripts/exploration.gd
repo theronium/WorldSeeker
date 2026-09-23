@@ -22,6 +22,14 @@ extends Node
 ## 同じ場面)。画面(main.gd)が、そのエリアへマップの表示を移すために聞く。野良の旅人の発見では出さない。
 signal area_first_entered(area_id: String, node_id: String)
 
+## パーティの担当セクション(=マップ上の現在地)が、日次ループの外(会話が挟まる発見イベントの
+## on_done、_check_blocked/_update_retreat_state参照)で変わった時に出る。main.gdの
+## _on_dialogue_finished()は会話が閉じた直後にマップを一度描き直すが、それは会話終了イベントの
+## 一番手(登録順が最も早い)で、退避判定はScenarioEvents.play()のon_doneというさらに後続の
+## コールバックで行われるため、描き直した後に配置が変わってしまい、アイコンが古い位置に
+## 取り残される不具合があった(2026-09-22、「ゴブリンキングの間からアイコンが動いていない」報告)。
+signal party_location_changed
+
 const DISCOVERY_BASE_CHANCE := 0.2
 const DISCOVERY_PER_PERCEPTION := 0.1
 const DISCOVERY_MAX_CHANCE := 0.9
@@ -117,7 +125,7 @@ func _on_month_ended(current_month: int) -> void:
 	if total_income > 0:
 		Economy.earn(total_income)
 		var text := "月次収入として%d資金を得た(第%d月)" % [total_income, current_month]
-		Board.post(current_day, text, Board.Importance.MAJOR, "economy")
+		Board.post(current_day, text, Board.Importance.MAJOR, "economy", Board.Scope.WORLD)
 		ActionLog.record(current_day, "monthly_income", text)
 
 func _on_day_advanced(current_day: int) -> void:
@@ -171,7 +179,7 @@ func _process_lap(party: Dictionary, current_day: int) -> void:
 	Economy.earn(income)
 	var section_name: String = WorldMap.sections[section_id]["name"]
 	var text := "%sが「%s」を1周し、%d資金を得た" % [party["name"], section_name, income]
-	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "lap_income")
+	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "lap_income", Board.Scope.PARTY)
 	ActionLog.record(current_day, "lap_income", text, -1, "", section_id)
 	Parties.start_lap(party["id"], current_day)
 
@@ -305,20 +313,26 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 			var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 			_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
 			return
+		if is_combat:
+			# 戦闘ゲートは、会話 → 戦闘画面 → 会話(結末)の3段構成にする(2026-09-23、「結果が戦闘の前に
+			# 分かってしまい、戦闘画面が答え合わせにしかならない」との指摘への対応)。_play_combat_gate_event参照。
+			_play_combat_gate_event(discoverer_name, scout_id, party, node_id, current_day, milestone)
+			return
+		# 戦闘以外のゲート(技能・アイテム・血筋)は、これまでどおり結果込みの会話を1本再生する
+		# (勝敗の見せ場である戦闘画面が無いので、分割する意味が無い)。
 		# 突破の確定は、会話の結果コード(outcome)で行う。ScenarioEvents.play()は、同じ会話の終了時に後から
 		# 発生済みの記録と効果(フロアの開放など)を適用するので、効果は突破が反映された後に働く。
 		# 最後に、on_doneで撤退(退避)の判定をする: 効果まで済んだ後に、先へ進めるかを見る。
 		EventDialogue.finished.connect(
 			func(outcome: String):
-				var applied: Dictionary = _attempt_gate(party, node_id, current_day) if is_combat else gate_result
-				var reward_npc_id: int = applied["npc_id"] if applied["passed"] else scout_id
-				_finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id)
-				_maybe_show_battle_screen(is_combat, applied, event, party["member_ids"]),
+				var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
+				_finalize_discovery(discoverer_name, node_id, outcome == "pass", current_day, milestone, reward_npc_id),
 			CONNECT_ONE_SHOT)
 		ScenarioEvents.play(event, func():
 			if Parties.is_available(party["id"], current_day):
 				_check_blocked(party, current_day)
-			DailyLog.record_day(current_day)) # 会話の後に結果(回復・退避)が反映されたので、その日の動きを記録し直す
+			DailyLog.record_day(current_day) # 会話の後に結果(回復・退避)が反映されたので、その日の動きを記録し直す
+			party_location_changed.emit()) # _check_blockedが担当セクションを変えた場合に備え、main.gdへマップの再描画を促す
 		return
 
 	var milestone := _capture_milestone_state(node_id)
@@ -326,6 +340,67 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 	var gate_result := _attempt_gate(party, node_id, current_day)
 	var reward_npc_id: int = gate_result["npc_id"] if gate_result["passed"] else scout_id
 	_finalize_discovery(discoverer_name, node_id, gate_result["passed"], current_day, milestone, reward_npc_id)
+
+## 戦闘ゲートの会話付き発見(_on_node_found呼び出し時点で、既にhas_gate_event/非会話中/
+## WorldMap.mark_found済みが確認されている)。pass/fail両方の台本を見比べ、共通する先頭部分
+## (前置き。design.mdの実例では、敵の登場行など1行がほぼ全floorで共通している)だけを先に
+## 会話として見せ、その後で実際の戦闘を解決して戦闘画面を開き、閉じたら分岐後の残り(結末)を
+## 会話として見せる。前置きが無い(台本の1行目から分岐している/どちらかにしか台本が無い等)場合は、
+## 前置きを省いて戦闘画面から始める(2026-09-23)。
+##
+## 資金・フラグの反映(effects)やHP・報酬・退避などの状態確定は、結末の文章を見せるより前
+## (戦闘画面を開くのと同じタイミング)で従来どおり先に済ませる。戦闘画面自体が「実際の攻防を
+## 見せるだけの、副作用の無い再現表示」という既存の方針(_maybe_show_battle_screen参照)を、
+## 結末の会話にもそのまま広げた形になる。
+func _play_combat_gate_event(discoverer_name: String, scout_id: int, party: Dictionary, node_id: String,
+		current_day: int, milestone: Dictionary) -> void:
+	var pass_event := ScenarioEvents.gate_event(node_id, true)
+	var fail_event := ScenarioEvents.gate_event(node_id, false)
+	var pass_script: Array = pass_event.get("script", [])
+	var fail_script: Array = fail_event.get("script", [])
+	var intro_len := 0
+	while intro_len < pass_script.size() and intro_len < fail_script.size() and pass_script[intro_len] == fail_script[intro_len]:
+		intro_len += 1
+	var intro_script: Array = pass_script.slice(0, intro_len)
+	var intro_kind: String = ScenarioEvents.resolved_kind(pass_event if not pass_event.is_empty() else fail_event)
+
+	var after_intro := func():
+		var applied: Dictionary = _attempt_gate(party, node_id, current_day)
+		var reward_npc_id: int = applied["npc_id"] if applied["passed"] else scout_id
+		_finalize_discovery(discoverer_name, node_id, applied["passed"], current_day, milestone, reward_npc_id)
+		var full_event: Dictionary = pass_event if applied["passed"] else fail_event
+
+		var play_result := func():
+			var finish := func():
+				if Parties.is_available(party["id"], current_day):
+					_check_blocked(party, current_day)
+				DailyLog.record_day(current_day) # 会話(結末)の後に結果(回復・退避)が反映されたので、その日の動きを記録し直す
+				party_location_changed.emit() # _check_blockedが担当セクションを変えた場合に備え、main.gdへマップの再描画を促す
+			var result_event: Dictionary = full_event.duplicate(true)
+			result_event["script"] = Array(full_event.get("script", [])).slice(intro_len)
+			if result_event["script"].is_empty():
+				# 前置きだけで台本が尽きた(pass/failの台本が丸ごと同じだった等、実際にはまず起きない)場合、
+				# 結末の会話は無しで効果だけ適用する(play()はscriptが空だとon_doneすら呼ばずfalseを返すため)。
+				if not full_event.is_empty():
+					ScenarioEvents.apply_effects(full_event, "pass" if applied["passed"] else "fail")
+				finish.call()
+			else:
+				ScenarioEvents.play(result_event, finish)
+
+		_maybe_show_battle_screen(true, applied, full_event, party["member_ids"])
+		if BattleScreen.is_active:
+			# 戦闘画面が実際に開いた(設定ONで、traceがある/無くても事前撤退として開く)場合は、閉じるまで
+			# 結末の会話を待たせる(重ねて出すと、戦闘画面の下に隠れたまま結末だけ先に進んでしまう)。
+			BattleScreen.closed.connect(func(): play_result.call(), CONNECT_ONE_SHOT)
+		else:
+			play_result.call()
+
+	if intro_script.is_empty():
+		after_intro.call()
+	else:
+		EventDialogue.finished.connect(func(_outcome: String): after_intro.call(), CONNECT_ONE_SHOT)
+		EventDialogue.play(intro_script, intro_kind, "")
+		ScenarioEvents.event_started.emit(pass_event if not pass_event.is_empty() else fail_event) # 会話が開いた後に出す(画面は、会話ウィンドウに隠れない位置へマップを動かす)
 
 ## 戦闘ゲートの結果を、HP・経験値・休養状態に触れずに先読みして、{"passed": bool, "npc_id": -1}を返す
 ## (_attempt_gateと同じ結果。戦闘に乱数は無く、Combat.predict_party_resultは実際の戦闘と同じ計算式)。
@@ -369,15 +444,17 @@ func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool,
 	else:
 		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見したが、まだ先へ進めない" % [discoverer_name, node["name"]], "discover_blocked", npc_id)
 
+	# 発見者が雇用パーティのメンバー(npc_id != -1)なら自パーティ、野良の旅人(npc_id == -1)なら世界全体の扱い。
+	var milestone_scope: int = Board.Scope.PARTY if npc_id != -1 else Board.Scope.WORLD
 	if not milestone["was_section_entered"]:
 		var section_name: String = WorldMap.sections[milestone["section_id"]]["name"] if WorldMap.sections.has(milestone["section_id"]) else milestone["section_id"]
 		var text := "「%s」に初めて到達した" % section_name
-		Board.post(current_day, text, Board.Importance.MAJOR, "exploration")
+		Board.post(current_day, text, Board.Importance.MAJOR, "exploration", milestone_scope)
 		ActionLog.record(current_day, "milestone_section", text, npc_id, node_id, milestone["section_id"])
 	if milestone["area_id"] != "" and not milestone["was_area_entered"]:
 		var area_name: String = WorldMap.areas[milestone["area_id"]]["name"] if WorldMap.areas.has(milestone["area_id"]) else milestone["area_id"]
 		var text := "「%s」に初めて足を踏み入れた" % area_name
-		Board.post(current_day, text, Board.Importance.MAJOR, "exploration")
+		Board.post(current_day, text, Board.Importance.MAJOR, "exploration", milestone_scope)
 		ActionLog.record(current_day, "milestone_area", text, npc_id, node_id, milestone["section_id"])
 		if npc_id != -1: # 雇用パーティの発見(野良の旅人はnpc_idが無い)
 			area_first_entered.emit(milestone["area_id"], node_id)
@@ -416,7 +493,7 @@ func _check_section_cleared(section_id: String, current_day: int, clearing_party
 	var text := "「%s」を完全攻略した(攻略報酬: %d資金)" % [section_name, reward]
 	if is_first_clear:
 		text += "。初めての完全攻略ボーナスも得た！"
-	Board.post(current_day, text, Board.Importance.MAJOR, "section_clear")
+	Board.post(current_day, text, Board.Importance.MAJOR, "section_clear", Board.Scope.PARTY if clearing_party_id != -1 else Board.Scope.WORLD)
 	ActionLog.record(current_day, "section_clear", text, -1, "", section_id)
 
 	for party in Parties.get_parties():
@@ -444,7 +521,7 @@ func apply_post_clear_behavior(party: Dictionary, current_day: int) -> bool:
 	var section_name: String = WorldMap.sections[section_id]["name"]
 	var next_section_name: String = WorldMap.sections[next_section]["name"]
 	Parties.assign_section(party["id"], next_section)
-	Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment")
+	Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
 	# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログの探索者別フィルタで、
 	# そのメンバーで絞り込んだ時にも配置転換イベントが見えるようにするため)。
 	ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], party["member_ids"][0], "", next_section)
@@ -497,7 +574,7 @@ func _check_blocked(party: Dictionary, current_day: int) -> void:
 		var safe_name: String = WorldMap.sections[safe_section]["name"]
 		Parties.retreat_for_training(party["id"], safe_section, section_id, blocker)
 		text = "%sは「%s」の「%s」に勝つ見込みが無いため、「%s」へ戻って力を付けることにした" % [party["name"], section_name, blocker_name, safe_name]
-	Board.post(current_day, text, Board.Importance.MINOR, "reassignment")
+	Board.post(current_day, text, Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
 	# npc_idには代表としてパーティ先頭メンバーを記録する(配置転換と同じ。行動ログの探索者別フィルタ用)
 	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], blocker, section_id)
 
@@ -530,14 +607,15 @@ func _update_retreat_state(party: Dictionary, current_day: int) -> bool:
 	var to_name: String = WorldMap.sections[back_section]["name"]
 	Parties.assign_section(party["id"], back_section) # 退避の記録も消える
 	var text := "%sは力を付け、「%s」へ戻った" % [party["name"], to_name]
-	Board.post(current_day, text, Board.Importance.MINOR, "reassignment")
+	Board.post(current_day, text, Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
 	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], "", back_section)
 	return true
 
 func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
-	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "exploration")
+	var scope: int = Board.Scope.PARTY if npc_id != -1 else Board.Scope.WORLD
+	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "exploration", scope)
 	ActionLog.record(current_day, event_type, text, npc_id, node_id, section_id)
 
 ## ゲートを判定し、{"passed": bool, "npc_id": int}を返す。npc_idは判定を担った(=突破報酬アイテムを
@@ -548,15 +626,21 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 		"combat":
 			# 満タンのHPでも勝てない相手には挑まない(戦闘に乱数は無く、同じ戦力なら結果は毎回同じなので、挑んでも
 			# 全滅して休養に入るだけ。以前はそれを繰り返して、同じ敵に全滅し続けた)。詰まった後の動きは_check_blocked。
+			# trace無し・result="retreat_before_fight"で返す(戦闘画面が「戦わずに撤退した」と出し分ける。
+			# _maybe_show_battle_screen参照。2026-09-23、「イベントなのに戦闘画面に入らず終わって設定が
+			# 効いていないように見える」という報告への対応)。
 			if _is_hopeless_gate(party, WorldMap.nodes[node_id]):
-				return {"passed": false, "npc_id": -1}
+				return {"passed": false, "npc_id": -1, "trace": [], "result": "retreat_before_fight",
+					"enemy_start_power": Combat.effective_enemy_power(party["id"], gate["enemy_power"])}
 			var result: Dictionary = Combat.resolve_party_encounter(party["id"], gate["enemy_power"], current_day)
-			# trace/enemy_start_powerは、戦闘画面(_maybe_show_battle_screen)がラウンドを再現するのに使う
-			# (2026-09-22)。勝敗の判定自体には関わらない、素通しの追加情報。
+			# trace/enemy_start_power/resultは、戦闘画面(_maybe_show_battle_screen)がラウンドを再現し、
+			# 勝利/敗北/撤退を出し分けるのに使う(2026-09-22/23)。勝敗の判定自体には関わらない、素通しの追加情報。
 			if result["result"] == "victory":
-				return {"passed": true, "npc_id": result["npc_id"], "trace": result["trace"], "enemy_start_power": result["enemy_start_power"]}
+				return {"passed": true, "npc_id": result["npc_id"], "trace": result["trace"],
+					"enemy_start_power": result["enemy_start_power"], "result": result["result"]}
 			_post_retreat_help(party, node_id, current_day, result["result"], Combat.effective_enemy_power(party["id"], gate["enemy_power"]))
-			return {"passed": false, "npc_id": -1, "trace": result["trace"], "enemy_start_power": result["enemy_start_power"]}
+			return {"passed": false, "npc_id": -1, "trace": result["trace"],
+				"enemy_start_power": result["enemy_start_power"], "result": result["result"]}
 		"skill":
 			# 挑戦するたびに、たとえ突破できなくても該当スキルの経験値が(判定を担ったメンバーに)入る
 			# (5.2節: 試行を重ねることでいつか開ける、という思想を全スキルに適用)
@@ -570,9 +654,12 @@ func _attempt_gate(party: Dictionary, node_id: String, current_day: int) -> Dict
 			var member_id := WorldMap.first_passing_member(node_id, party["member_ids"])
 			return {"passed": member_id != -1, "npc_id": member_id}
 
-## 実際に攻防のあった戦闘ゲートなら、戦闘画面(battle_screen.gd)にラウンドを再現させる(2026-09-22、設定
+## 戦闘ゲートなら、戦闘画面(battle_screen.gd)にラウンドを再現させる(2026-09-22、設定
 ## Settings.show_battle_screenがオフなら何もしない)。appliedは_attempt_gate(combat分岐)の返り値。
-## 勝ち目が無く戦わなかった(_is_hopeless_gate)場合はtraceが空になるので、見せる戦闘が無く何もしない。
+## 勝ち目が無く戦わなかった(_is_hopeless_gate)場合はtraceが空になるが、その場合も
+## result="retreat_before_fight"で戦闘画面自体は開き、「戦わずに撤退した」と分かるようにする
+## (2026-09-23。以前はここで何もせず終わっており、「イベントで今から戦いだと思ったら
+## 戦闘画面に入らずいきなり終わり、設定が効いていないように見える」という報告があった)。
 ## design.md 5.4節: 会話が閉じた直後に開く。「実際の攻防を見せる」ことが目的の再現表示なので、資金・
 ## フラグ・掲示板などは(会話の時と同じく)先に確定させたまま進めてよい、という判断(効果まで戦闘画面待ちに
 ## すると、他の会話系イベントとの絡みが複雑になるため)。
@@ -580,7 +667,8 @@ func _maybe_show_battle_screen(is_combat: bool, applied: Dictionary, event: Dict
 	if not is_combat or not Settings.show_battle_screen:
 		return
 	var trace: Array = applied.get("trace", [])
-	if trace.is_empty():
+	var result: String = String(applied.get("result", ""))
+	if trace.is_empty() and result != "retreat_before_fight":
 		return
 	# EventDialogue._finish()が会話を閉じる際にTimeSystem.dialogue_holdを解いた直後なので、戦闘画面が
 	# 閉じるまでの間、再び立てておく(退避のヒント会話と同じ理由。同一フレーム内での立て直しなので、
@@ -591,6 +679,7 @@ func _maybe_show_battle_screen(is_combat: bool, applied: Dictionary, event: Dict
 	BattleScreen.show({
 		"trace": trace,
 		"passed": applied["passed"],
+		"result": result,
 		"enemy_start_power": applied.get("enemy_start_power", 0),
 		"enemy_name": enemy_name,
 		"kind": kind,
@@ -617,7 +706,7 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 		party["name"], node["name"], verb, enemy_power]
 	var section_id: String = node["section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
-	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "combat_retreat")
+	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "combat_retreat", Board.Scope.PARTY)
 	ActionLog.record(current_day, "combat_retreat", text, -1, node_id, section_id)
 
 	if not SaveSystem.is_tutorial_seen("retreat") and not _retreat_tutorial_pending:

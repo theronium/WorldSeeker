@@ -6,19 +6,27 @@ extends Node
 # 全体フィードが探索ノイズで埋もれないようにする。
 
 enum Importance { MINOR, MAJOR }
+## 自パーティ(雇用パーティ)の行動か、世界全体(野良の旅人・月次収入・シナリオイベントなど、
+## 特定の雇用パーティに紐付かないもの)かの区別。ログウィンドウの掲示板枠と、左メニュー下の
+## プレビュー(main.gdの_refresh_board)が、行の文字色とアイコンを変えるのに使う(2026-09-23、
+## 「自パーティのものか世界全体のものか色分けした方が良い」との指摘への対応)。
+enum Scope { PARTY, WORLD }
+const SCOPE_ICON := {Scope.PARTY: "🧑", Scope.WORLD: "🌍"}
+const SCOPE_COLOR := {Scope.PARTY: Color(0.55, 0.88, 0.6), Scope.WORLD: Color(0.55, 0.78, 0.98)}
 
-var entries: Array = [] # {day, text, importance, source}
+var entries: Array = [] # {day, text, importance, source, scope}
 var threads: Dictionary = {} # thread_id -> {id, title, entries: Array}
 
-func post(day: int, text: String, importance: int, source: String = "") -> void:
+func post(day: int, text: String, importance: int, source: String = "", scope: int = Scope.PARTY) -> void:
 	entries.append({
 		"day": day,
 		"text": text,
 		"importance": importance,
 		"source": source,
+		"scope": scope,
 	})
 
-func post_to_thread(thread_id: String, thread_title: String, day: int, text: String, importance: int, source: String = "") -> void:
+func post_to_thread(thread_id: String, thread_title: String, day: int, text: String, importance: int, source: String = "", scope: int = Scope.PARTY) -> void:
 	if not threads.has(thread_id):
 		threads[thread_id] = {"id": thread_id, "title": thread_title, "entries": []}
 	threads[thread_id]["entries"].append({
@@ -26,6 +34,7 @@ func post_to_thread(thread_id: String, thread_title: String, day: int, text: Str
 		"text": text,
 		"importance": importance,
 		"source": source,
+		"scope": scope,
 	})
 
 func recent(count: int) -> Array:
@@ -51,11 +60,13 @@ func load_state(data: Dictionary) -> void:
 	for entry in entries:
 		entry["day"] = int(entry["day"])
 		entry["importance"] = int(entry["importance"])
+		entry["scope"] = int(entry.get("scope", Scope.PARTY)) # scope導入(2026-09-23)前のセーブは自パーティ扱いにする
 	threads = data.get("threads", {})
 	for thread_id in threads.keys():
 		for entry in threads[thread_id]["entries"]:
 			entry["day"] = int(entry["day"])
 			entry["importance"] = int(entry["importance"])
+			entry["scope"] = int(entry.get("scope", Scope.PARTY))
 
 ## 新規プレイ開始(複数セーブスロット、save_system.gd)用のリセット。
 func reset() -> void:

@@ -243,5 +243,5 @@ func _grant_item(event: Dictionary, item_id: String, day: int) -> void:
 			return
 
 func _post(day: int, text: String) -> void:
-	Board.post(day, text, Board.Importance.MAJOR, "scenario_event")
+	Board.post(day, text, Board.Importance.MAJOR, "scenario_event", Board.Scope.WORLD)
 	ActionLog.record(day, "scenario_event", text)

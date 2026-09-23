@@ -123,6 +123,7 @@ var battle_click_catcher: Control # パネル全体のクリックで1ラウン�
 var _battle_trace: Array = []
 var _battle_round_index: int = 0
 var _battle_enemy_hp: int = 0
+var _battle_result_kind: String = "" # "victory"/"defeat"/"retreat"/"retreat_before_fight"(BattleScreen.showのdata["result"])。_finish_battle_roundsの結果表示に使う
 var _battle_slot_index_by_npc: Dictionary = {} # npc_id -> battle_party_slotsの添字
 var _battle_timer: Timer
 const BATTLE_ROUND_DELAY_SEC := 0.45
@@ -203,7 +204,7 @@ var settings_bgm_slider: HSlider
 var settings_bgm_mute_check: CheckBox
 var settings_battle_screen_check: CheckBox
 
-var log_window: LogWindow # ログウィンドウ: 掲示板・イベント・毎日の動きから2つを選んで並べる(旧「掲示板」「行動ログ」を統合)
+var log_window: LogWindow # ログウィンドウ: 掲示板・行動記録・毎日の動きから2つを選んで並べる(旧「掲示板」「行動ログ」を統合)
 
 var slot_panel: PanelContainer
 var slot_list: ItemList
@@ -278,6 +279,7 @@ func _ready() -> void:
 	TimeSystem.day_advanced.connect(_on_day_advanced)
 	ScenarioEvents.event_started.connect(_on_scenario_event_started) # イベントの起きた場所へマップを移す(_focus_map)
 	Exploration.area_first_entered.connect(_on_area_first_entered)
+	Exploration.party_location_changed.connect(_on_party_location_changed)
 	TimeSystem.month_ended.connect(_on_month_ended)
 	TimeSystem.speed_changed.connect(_on_speed_changed)
 	EventDialogue.line_shown.connect(_on_dialogue_line_shown)
@@ -499,6 +501,27 @@ func _build_theme() -> void:
 		ui_theme.set_constant("inner_item_margin_top", "Tree", TOUCH_LIST_ROW_MARGIN)
 		ui_theme.set_constant("inner_item_margin_bottom", "Tree", TOUCH_LIST_ROW_MARGIN)
 		ui_theme.set_constant("v_separation", "ItemList", 14)
+
+	# 戦闘画面のHPバー(design.md 5.4節)。ProgressBarはここでしか使っておらず、無指定のままだと
+	# Godot標準テーマの薄い塗りが暗い背景に埋もれてほぼ見えない(満タンでも空に見える不具合。
+	# 2026-09-23、実機で報告)。地(空の部分)を暗く縁取り、満タン側は視認性の高い色ではっきり塗る。
+	# 敵側だけ赤系にして、パーティ(緑系)と一目で見分けられるようにする(EnemyHPBarのtheme_type_variation)。
+	var hp_bar_bg := StyleBoxFlat.new()
+	hp_bar_bg.bg_color = Color(0.1, 0.1, 0.13, 1.0)
+	hp_bar_bg.border_color = Color(0.4, 0.44, 0.52, 0.8)
+	hp_bar_bg.set_border_width_all(1)
+	hp_bar_bg.set_corner_radius_all(3)
+	var hp_bar_fill_ally := StyleBoxFlat.new()
+	hp_bar_fill_ally.bg_color = Color(0.35, 0.82, 0.45, 1.0)
+	hp_bar_fill_ally.set_corner_radius_all(3)
+	var hp_bar_fill_enemy := StyleBoxFlat.new()
+	hp_bar_fill_enemy.bg_color = Color(0.88, 0.32, 0.32, 1.0)
+	hp_bar_fill_enemy.set_corner_radius_all(3)
+	ui_theme.set_stylebox("background", "ProgressBar", hp_bar_bg)
+	ui_theme.set_stylebox("fill", "ProgressBar", hp_bar_fill_ally)
+	ui_theme.set_type_variation("EnemyHPBar", "ProgressBar")
+	ui_theme.set_stylebox("background", "EnemyHPBar", hp_bar_bg)
+	ui_theme.set_stylebox("fill", "EnemyHPBar", hp_bar_fill_enemy)
 
 	var fallback_fonts := _load_system_fallback_fonts()
 	if not fallback_fonts.is_empty():
@@ -767,32 +790,32 @@ func _build_ui() -> void:
 	# 資金/時間以外の各機能は、ボタンが増えて240px幅のサイドバーに収まりきらなくなったため、
 	# ボタン1つで開くポップアップパネルにまとめてある(行動ログ・セーブスロットと同じパターン)。
 	var hire_button := Button.new()
-	hire_button.text = "雇用"
+	hire_button.text = "🧑 雇用"
 	hire_button.pressed.connect(_on_open_hire_pressed)
 	left.add_child(hire_button)
 
 	var npc_button := Button.new()
-	npc_button.text = "探索者管理"
+	npc_button.text = "📋 探索者管理"
 	npc_button.pressed.connect(_on_open_npc_panel_pressed)
 	left.add_child(npc_button)
 
 	party_button = Button.new()
-	party_button.text = "パーティ"
+	party_button.text = "🧩 パーティ"
 	party_button.pressed.connect(_on_open_party_panel_pressed)
 	left.add_child(party_button)
 
 	var shop_button := Button.new()
-	shop_button.text = "武器防具屋"
+	shop_button.text = "🏪 武器防具屋"
 	shop_button.pressed.connect(_on_open_shop_pressed)
 	left.add_child(shop_button)
 
 	var log_button := Button.new()
-	log_button.text = "ログ" # 掲示板・イベント・毎日の動きから2つを選んで並べる(LogWindow)
+	log_button.text = "📜 ログ" # 掲示板・行動記録・毎日の動きから2つを選んで並べる(LogWindow)
 	log_button.pressed.connect(_on_open_log_pressed)
 	left.add_child(log_button)
 
 	var slot_button := Button.new()
-	slot_button.text = "セーブ/ロード"
+	slot_button.text = "💾 セーブ/ロード"
 	slot_button.pressed.connect(_on_open_slots_pressed)
 	left.add_child(slot_button)
 
@@ -801,7 +824,7 @@ func _build_ui() -> void:
 		# 出し入れする(_build_board_overlay)。開いている間はボタンが押された状態になる。
 		# (デスクトップは、左メニュー内の常時プレビューがあり、全文は「ログ」ウィンドウで見る)
 		var board_button := Button.new()
-		board_button.text = "掲示板"
+		board_button.text = "📰 掲示板"
 		board_button.toggle_mode = true
 		board_button.toggled.connect(_set_board_overlay_visible)
 		board_toggle_button = board_button
@@ -810,14 +833,14 @@ func _build_ui() -> void:
 	# 設定(BGM音量/ミュート、イベント戦闘の戦闘画面ON-OFF。2026-09-22)。ライセンスと同じく日常的には
 	# 使わないので、その直上に置く。
 	var settings_button := Button.new()
-	settings_button.text = "設定"
+	settings_button.text = "⚙️ 設定"
 	settings_button.pressed.connect(_on_open_settings_pressed)
 	left.add_child(settings_button)
 
 	# ライセンス表示(画像・Godot・godot-sqlite・音楽)。日常的には使わないので、メニューの
 	# ボタンとしては一番下に置く。
 	var license_button := Button.new()
-	license_button.text = "ライセンス"
+	license_button.text = "📄 ライセンス"
 	license_button.pressed.connect(_on_open_license_pressed)
 	left.add_child(license_button)
 
@@ -1511,13 +1534,17 @@ func _build_battle_screen_ui() -> void:
 	battle_kind_badge.add_theme_font_size_override("font_size", 13)
 	header.add_child(battle_kind_badge)
 
-	var party_row := HBoxContainer.new()
-	party_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	party_row.add_theme_constant_override("separation", 10)
-	col.add_child(party_row)
-	battle_party_slots.clear()
-	for i in range(Parties.MAX_PARTY_SIZE):
-		battle_party_slots.append(_create_battle_party_slot(party_row, "先頭" if i == 0 else "%d番手" % (i + 1)))
+	# 敵を上、パーティを下に置く(2026-09-23。「実際に見ると敵が上・パーティが下の方が良い」との
+	# 指摘への対応。対峙する相手を先に見せてから自分たちの並びを見る方が読みやすい)。
+	var enemy_row := HBoxContainer.new()
+	enemy_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(enemy_row)
+	var enemy_slot := _create_battle_party_slot(enemy_row, "", true)
+	battle_enemy_portrait = enemy_slot["portrait"]
+	battle_enemy_name_label = enemy_slot["name"]
+	battle_enemy_hp_bar = enemy_slot["hp_bar"]
+	battle_enemy_hp_label = enemy_slot["hp_label"]
+	enemy_slot["order_label"].visible = false
 
 	var vs_label := Label.new()
 	vs_label.text = "VS"
@@ -1526,15 +1553,13 @@ func _build_battle_screen_ui() -> void:
 	vs_label.modulate = Color(1, 1, 1, 0.7)
 	col.add_child(vs_label)
 
-	var enemy_row := HBoxContainer.new()
-	enemy_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(enemy_row)
-	var enemy_slot := _create_battle_party_slot(enemy_row, "")
-	battle_enemy_portrait = enemy_slot["portrait"]
-	battle_enemy_name_label = enemy_slot["name"]
-	battle_enemy_hp_bar = enemy_slot["hp_bar"]
-	battle_enemy_hp_label = enemy_slot["hp_label"]
-	enemy_slot["order_label"].visible = false
+	var party_row := HBoxContainer.new()
+	party_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	party_row.add_theme_constant_override("separation", 10)
+	col.add_child(party_row)
+	battle_party_slots.clear()
+	for i in range(Parties.MAX_PARTY_SIZE):
+		battle_party_slots.append(_create_battle_party_slot(party_row, "先頭" if i == 0 else "%d番手" % (i + 1)))
 
 	battle_log = RichTextLabel.new()
 	battle_log.custom_minimum_size = Vector2(0, 110)
@@ -1572,7 +1597,8 @@ func _build_battle_screen_ui() -> void:
 	BattleScreen.opened.connect(_on_battle_screen_opened)
 
 ## 戦闘画面のパーティ/敵1枠(肖像・名前・HPバー・HP文字)。party_rowにもenemy_rowにも同じ形で使う。
-func _create_battle_party_slot(parent: Control, order_text: String) -> Dictionary:
+## is_enemyなら、HPバーを共有Theme(_build_theme())の"EnemyHPBar"バリエーション(赤系)にする。
+func _create_battle_party_slot(parent: Control, order_text: String, is_enemy: bool = false) -> Dictionary:
 	var box := VBoxContainer.new()
 	box.custom_minimum_size = Vector2(110, 0)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1603,6 +1629,8 @@ func _create_battle_party_slot(parent: Control, order_text: String) -> Dictionar
 	var hp_bar := ProgressBar.new()
 	hp_bar.custom_minimum_size = Vector2(0, 12)
 	hp_bar.show_percentage = false
+	if is_enemy:
+		hp_bar.theme_type_variation = "EnemyHPBar"
 	box.add_child(hp_bar)
 
 	var hp_label := Label.new()
@@ -1614,11 +1642,12 @@ func _create_battle_party_slot(parent: Control, order_text: String) -> Dictionar
 	return {"frame": frame, "portrait": portrait, "name": name_label, "hp_bar": hp_bar, "hp_label": hp_label, "order_label": order_label}
 
 ## 戦闘画面を開く(BattleScreen.opened)。dataは_maybe_show_battle_screen(exploration.gd)が渡す
-## {"trace", "passed", "enemy_start_power", "enemy_name", "kind"}。
+## {"trace", "passed", "result", "enemy_start_power", "enemy_name", "kind", "member_ids"}。
 func _on_battle_screen_opened(data: Dictionary) -> void:
 	_battle_trace = data.get("trace", [])
 	_battle_round_index = 0
 	_battle_enemy_hp = int(data.get("enemy_start_power", 0))
+	_battle_result_kind = String(data.get("result", ""))
 	var kind: String = data.get("kind", "")
 
 	battle_title_label.text = "戦闘"
@@ -1656,11 +1685,18 @@ func _on_battle_screen_opened(data: Dictionary) -> void:
 
 	battle_log.clear()
 	battle_log.append_text("[color=#9ecbff]%s が現れた![/color]\n" % battle_enemy_name_label.text)
-	battle_skip_button.visible = true
-	battle_close_button.visible = false
 
 	_open_modal(battle_panel)
-	_battle_timer.start()
+	if _battle_result_kind == "retreat_before_fight":
+		# 満タンHPでも勝てないと分かっている(_is_hopeless_gate)ので、そもそも打ち合わない。traceが
+		# 空でラウンドを再生しようがないため、ここで直接「結果」まで進める(2026-09-23)。
+		battle_skip_button.visible = false
+		battle_close_button.visible = false
+		_finish_battle_rounds()
+	else:
+		battle_skip_button.visible = true
+		battle_close_button.visible = false
+		_battle_timer.start()
 
 func _fill_battle_slot(slot: Dictionary, npc_id: int) -> void:
 	var npc := Npcs.get_npc(npc_id)
@@ -1775,14 +1811,23 @@ func _apply_battle_round(entry: Dictionary, log_line: bool) -> void:
 	if event_tag.contains("victory"):
 		battle_log.append_text("[color=#7ed08a]%sが%sを倒した！[/color]\n" % [name, battle_enemy_name_label.text])
 
+## 結果の文言は_battle_result_kind(exploration.gdのCombat.resolve_party_encounter/_attempt_gateが
+## 返す"victory"/"defeat"/"retreat"/"retreat_before_fight")で出し分ける(2026-09-23)。以前はHPが
+## 0かどうかだけで「勝利」/「撤退した」の2択にしていたため、実際は誰かが力尽きた「敗北」も
+## 一律「撤退した」と表示されており、区別が付かなかった。
 func _finish_battle_rounds() -> void:
 	for slot in battle_party_slots:
 		_set_battle_slot_active(slot, false)
 	battle_log.append_text("\n[color=#ffd54a]--- 結果 ---[/color]\n")
-	if _battle_enemy_hp <= 0:
-		battle_log.append_text("[color=#7ed08a]勝利！[/color]\n")
-	else:
-		battle_log.append_text("[color=#e0574c]撤退した[/color]\n")
+	match _battle_result_kind:
+		"victory":
+			battle_log.append_text("[color=#7ed08a]勝利！[/color]\n")
+		"defeat":
+			battle_log.append_text("[color=#e0574c]敗北した[/color]\n")
+		"retreat_before_fight":
+			battle_log.append_text("[color=#e5a04c]勝ち目が無いと判断し、戦わずに撤退した[/color]\n")
+		_: # "retreat"、または将来resultが渡らない呼び出しが出てきた場合の保険
+			battle_log.append_text("[color=#e5a04c]撤退した[/color]\n")
 	battle_skip_button.visible = false
 	battle_close_button.visible = true
 
@@ -2832,11 +2877,11 @@ func _refresh_party_roster() -> void:
 	# (2026-09-14、「未割当のパーティが赤く光る」という要望への対応。パネルを開かなくても
 	# 対応が必要なことに気付けるようにする)。
 	if has_unassigned:
-		party_button.text = "パーティ ⚠未割当あり"
+		party_button.text = "🧩 パーティ ⚠未割当あり"
 		party_button.add_theme_color_override("font_color", Color(1.0, 0.42, 0.36))
 		party_button.add_theme_color_override("font_hover_color", Color(1.0, 0.55, 0.5))
 	else:
-		party_button.text = "パーティ"
+		party_button.text = "🧩 パーティ"
 		party_button.remove_theme_color_override("font_color")
 		party_button.remove_theme_color_override("font_hover_color")
 
@@ -3301,6 +3346,10 @@ func _on_buy_equipment_pressed(slot: String, tier: int) -> void:
 	Npcs.equip(_shop_selected_npc_id, slot, tier)
 	_refresh_funds()
 	_refresh_shop_offers()
+	_refresh_roster()
+	_refresh_npc_detail()
+	_refresh_party_roster()
+	_refresh_party_detail()
 	shop_status_label.text = "装備しました"
 
 ## セーブスロット管理UI(design.md 8.2「スキーマ再プレイ」)。既存スロットの一覧・切替と、
@@ -4807,6 +4856,15 @@ func _on_area_first_entered(area_id: String, node_id: String) -> void:
 		return
 	_focus_map(area_id, node_id, String(WorldMap.nodes[node_id]["section"]))
 
+## フロア発見時の会話が挟まると、退避などによる担当セクションの変更(Exploration._check_blocked等)が
+## _on_dialogue_finished()のマップ再描画より後に確定する(exploration.gdのparty_location_changed参照)。
+## そのままだと、担当パネルの文字は新しい現在地を示すのに、マップ上のアイコンだけ前の場所に
+## 取り残されてしまう(2026-09-22の報告)。ここで改めて描き直し、両者を揃える。
+func _on_party_location_changed() -> void:
+	_refresh_map()
+	_refresh_party_roster()
+	_refresh_party_detail()
+
 ## 毎日の更新で、パーティが自動で(完全踏破後の「先へ進む」の配置転換など)、まだ雇用パーティの誰も来ていない(発見したフロアが
 ## 無い)エリアへ移っていたら、そのエリアの担当セクションへ表示を移す。既に来たことのあるエリアへの移動(退避・復帰・
 ## ループ)では切り替えない(退避のたびに表示が行き来しないように)。手動の割り当て(パーティ画面・マップのセクション名)は
@@ -5267,9 +5325,16 @@ func _npc_status_short(npc: Dictionary) -> String:
 			return "待機中"
 
 ## 左メニュー下(タッチUIは右端のウィンドウ)のプレビュー。全文・スレッド切替は、ログウィンドウ(LogWindow)の掲示板の枠で見る。
+## 自パーティ/世界全体を、行頭のアイコンと文字色で見分けられるようにする(Board.Scope、2026-09-23。
+## ログウィンドウの掲示板枠(log_window.gdの_add_board_line)と同じ見た目)。
 func _refresh_board() -> void:
 	# プレビューは常に全体フィードの直近10件固定。タッチUIで閉じている間は作らない(開く時に作り直す)。
 	if board_preview_log.is_visible_in_tree():
 		board_preview_log.clear()
 		for entry in Board.recent(10):
-			board_preview_log.append_text("[Day %d] %s\n" % [entry["day"], entry["text"]])
+			var scope: int = int(entry.get("scope", Board.Scope.PARTY))
+			board_preview_log.add_text("[Day %d] %s " % [entry["day"], String(Board.SCOPE_ICON.get(scope, ""))])
+			board_preview_log.push_color(Board.SCOPE_COLOR.get(scope, Color.WHITE))
+			board_preview_log.add_text(entry["text"])
+			board_preview_log.pop()
+			board_preview_log.add_text("\n")

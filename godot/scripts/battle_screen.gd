@@ -14,8 +14,9 @@ signal closed
 
 var is_active: bool = false
 
-## dataの中身: {"trace": Array(Combat.resolve_party_encounterの"trace"), "result": String,
-## "enemy_name": String, "enemy_image": String(EventPortraits.portrait_id()の結果), "kind": String("boss"/"combat")}
+## dataの中身: {"trace": Array(Combat.resolve_party_encounterの"trace"。戦わずに撤退した場合は空)、
+## "result": String("victory"/"defeat"/"retreat"/"retreat_before_fight")、"passed": bool,
+## "enemy_start_power": int, "enemy_name": String, "kind": String("boss"/"combat"), "member_ids": Array}
 func show(data: Dictionary) -> void:
 	is_active = true
 	opened.emit(data)
