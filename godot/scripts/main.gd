@@ -1431,7 +1431,7 @@ func _queue_fit_left_menu() -> void:
 	_fit_left_menu_pending = true
 	_fit_left_menu.call_deferred()
 
-## フロア詳細パネル。マップ上でフロアの箱をダブルクリックすると開く(_on_map_double_click)。
+## フロア詳細パネル。マップ上でフロアの箱をタップ(クリック)すると開く(_on_map_tap)。
 func _build_node_detail_ui() -> void:
 	node_detail_panel = PanelContainer.new()
 	node_detail_panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -4108,13 +4108,13 @@ func _create_section_panel(section_id: String, bounds: Rect2) -> void:
 	# まだ誰も足を踏み入れておらず、隣接する突破済みノードも無いセクション(WorldMap.
 	# is_section_reachable=false)には、枠の下に鍵アイコンを出す。表示/非表示の切り替えは
 	# 到達状況が変わるたびに_refresh_mapで行うので、ここでは作るだけ(常時mapに常駐させ、
-	# ダブルクリック判定は_on_map_double_clickでこの位置を直接ヒットテストする)。
+	# タップ判定は_on_map_tapでこの位置を直接ヒットテストする)。
 	var lock_icon := Label.new()
 	lock_icon.add_theme_font_size_override("font_size", _map_font_size(12, 9))
 	lock_icon.modulate = Color(1, 0.82, 0.35, 0.95)
 	lock_icon.position = bounds.position + Vector2(6, bounds.size.y + 4 * _map_zoom)
 	map_canvas.add_child(lock_icon)
-	lock_icon.text = "🔒 未到達(%sで詳細)" % ("ダブルタップ" if _touch_ui else "ダブルクリック") # 文字は最後に(上と同じ理由)
+	lock_icon.text = "🔒 未到達(%sで詳細)" % ("タップ" if _touch_ui else "クリック") # 文字は最後に(上と同じ理由)
 	section_lock_icons[section_id] = lock_icon
 
 func _create_node_box(id: String, cell_pos: Vector2) -> void:
@@ -4166,15 +4166,28 @@ func _create_node_box(id: String, cell_pos: Vector2) -> void:
 ## スクロールバーだけでは数百ノード規模のマップを動き回るのがつらいので、
 ## 何もない場所を左ドラッグすればキャンバスごと掴んで動かせるようにする。
 ## ホイール回転はズーム(カーソル直下の位置を保ったまま拡大縮小)に割り当てる。
+##
+## フロアの箱と鍵アイコンは、1回のタップ(クリック)で詳細を開く(2026-09-24。以前はダブルタップで、
+## 気付けなかった)。押してから離すまでにほぼ動いていなければタップ、動いたらパン(ドラッグ)とみなす。
 func _on_map_canvas_gui_input(event: InputEvent) -> void:
 	# ダブルクリック判定は先に単独でチェックする。そうしないと下のプレーンな左クリック分岐に
 	# 先に引っかかってパン開始(_map_panning=true)扱いになり、ダブルクリックへ届かなくなる。
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed and event.double_click:
+		_map_press_is_tap = false
 		_on_map_double_click(event.position)
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		_map_panning = event.pressed
+		if event.pressed:
+			_map_press_pos = event.global_position
+			_map_press_is_tap = true
+		elif _map_press_is_tap:
+			_map_press_is_tap = false
+			if not _pinch_active and event.global_position.distance_to(_map_press_pos) <= _map_tap_slop():
+				_on_map_tap(event.position)
 	elif event is InputEventMouseMotion and _map_panning:
+		if event.global_position.distance_to(_map_press_pos) > _map_tap_slop():
+			_map_press_is_tap = false
 		map_scroll.scroll_horizontal -= event.relative.x
 		map_scroll.scroll_vertical -= event.relative.y
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -4315,6 +4328,7 @@ func _start_pinch() -> void:
 	var b: Vector2 = points[1]
 	_pinch_active = true
 	_map_panning = false
+	_map_press_is_tap = false
 	_pinch_prev_distance = maxf(a.distance_to(b), 1.0)
 	_pinch_prev_center = (a + b) * 0.5
 	_pinch_target_zoom = _map_zoom
@@ -4345,16 +4359,34 @@ func _rebuild_for_pinch(force: bool) -> void:
 ## フロア(ノード)の枠内なら詳細ポップアップ、それ以外でセクション枠内ならそのセクションの
 ## 掲示板スレッドを開く。フロアの箱の方がセクション枠より内側にある(小さい)ので、先に
 ## フロアを判定してからセクションにフォールバックする。
-func _on_map_double_click(pos: Vector2) -> void:
+## タップとみなす、押してから離すまでの移動量の上限(画面上のpx)。指は、マウスより止めにくい。
+func _map_tap_slop() -> float:
+	return 24.0 if _touch_ui else 6.0
+
+## マップを1回タップ(クリック)した: フロアの箱なら詳細、未到達セクションの鍵アイコンなら説明を開く。
+## 何かを開いたらtrue。
+func _on_map_tap(pos: Vector2) -> bool:
 	for id in node_boxes.keys():
 		var box: PanelContainer = node_boxes[id]
 		if box.get_rect().has_point(pos):
 			_show_node_detail(id)
-			return
+			return true
 	for section_id in section_lock_icons.keys():
 		var lock_icon: Control = section_lock_icons[section_id]
 		if lock_icon.visible and lock_icon.get_rect().has_point(pos):
 			_show_section_lock_detail(section_id)
+			return true
+	return false
+
+## ダブルタップ(ダブルクリック): セクション枠の何も無い所なら、そのセクションの掲示板スレッドを開く。
+## フロアの箱や鍵アイコンの上なら、1回目のタップで既に開いているので(_on_map_tap)何もしない。
+func _on_map_double_click(pos: Vector2) -> void:
+	for id in node_boxes.keys():
+		if node_boxes[id].get_rect().has_point(pos):
+			return
+	for section_id in section_lock_icons.keys():
+		var lock_icon: Control = section_lock_icons[section_id]
+		if lock_icon.visible and lock_icon.get_rect().has_point(pos):
 			return
 	for section_id in section_bounds_cache.keys():
 		if section_bounds_cache[section_id].has_point(pos):
@@ -4454,7 +4486,7 @@ func _gate_description(gate: Dictionary) -> String:
 		_:
 			return "%s 不明" % icon
 
-## 未到達セクション(マップ上の鍵アイコン)をダブルクリックした時の詳細ウィンドウ。
+## 未到達セクション(マップ上の鍵アイコン)をタップ(クリック)した時の詳細ウィンドウ。
 ## 通常のフロア詳細(_show_node_detail)と同じnode_detail_panelを使い回す。
 func _show_section_lock_detail(section_id: String) -> void:
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id

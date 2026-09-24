@@ -562,7 +562,7 @@ func query_action_log(npc_id: int = -1, limit: int = 200) -> Array:
 	db.close_db()
 	return result
 
-## マップのフロアをダブルクリックした際の詳細表示用: そのフロア単体に絞った行動ログ。
+## マップのフロアをタップ(クリック)した際の詳細表示用: そのフロア単体に絞った行動ログ。
 ## query_action_log()と同じテーブルをnode_idで絞り込むだけの姉妹版。
 func query_action_log_for_node(node_id: String, limit: int = 50) -> Array:
 	var result := []
