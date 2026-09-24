@@ -156,7 +156,7 @@ func _on_day_advanced(current_day: int) -> void:
 		_retry_gates(party, current_day)
 		if Parties.is_available(party["id"], current_day):
 			_attempt_discovery(party, current_day)
-			if not EventDialogue.is_active: # 会話が開いた日は、会話が閉じた後に判定する(_on_node_found)
+			if not EventDialogue.is_active and not BattleScreen.is_active: # 会話が開いた日は、会話が閉じた後に判定する(_play_combat_gate_eventなど)
 				_check_blocked(party, current_day) # 勝てない敵しか残っていなければ、退避する
 		_process_lap(party, current_day)
 	ScenarioEvents.check_daily(current_day) # 条件が成り立ったシナリオのイベント(日数・フラグ・到達など)
@@ -228,20 +228,44 @@ func _claim_wild_progress(party: Dictionary) -> void:
 		if node["passed"] and not node["found_by_employed"]:
 			WorldMap.mark_passed(node_id, true)
 
+##
+## 会話付きの戦闘ゲートに実際に挑む時は、発見時と同じく「前置きの会話 → 戦闘画面 → 結末の会話」を再生する
+## (2026-09-24、「撤退後2回目のバトルイベントが再生されない」との報告。以前はここが無音で、撤退して鍛え直した後に
+## ボスを倒しても、突破の会話が一度も流れなかった)。勝ち目が無く挑まない日(その場で待機して鍛えている間など)は、
+## 毎日会話を出さないよう、従来どおり無音。会話・戦闘画面が開いている間は、この日の再挑戦を見送る(翌日また挑む)。
 func _retry_gates(party: Dictionary, current_day: int) -> void:
 	for node_id in WorldMap.nodes_in_section(party["assigned_section"]):
 		if not Parties.is_available(party["id"], current_day):
 			return # 戦闘で撤退し離脱した場合、この日はもう動けない
 		var node: Dictionary = WorldMap.nodes[node_id]
 		if node["found"] and not node["passed"]:
+			if _has_retry_battle_event(party, node_id):
+				if EventDialogue.is_active or BattleScreen.is_active:
+					return
+				_play_combat_gate_event(party, node_id, current_day, func(applied: Dictionary):
+					if applied["passed"]:
+						_apply_retry_pass(party, node_id, applied, current_day))
+				return # 会話が閉じるまで、この日の続き(他のフロア・発見)は行わない
 			var result := _attempt_gate(party, node_id, current_day)
 			if result["passed"]:
-				WorldMap.mark_passed(node_id, true)
-				_grant_item_reward(result["npc_id"], node)
-				var actor_name: String = Npcs.get_npc(result["npc_id"]).get("name", party["name"])
-				_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"],
-					"%sがついに「%s」を越えたってさ。大したもんだ" % [actor_name, node["name"]])
-				_check_section_cleared(party["assigned_section"], current_day, party["id"])
+				_apply_retry_pass(party, node_id, result, current_day)
+
+## 日次の再挑戦で、バトルイベント(会話付きの戦闘ゲート)を再生するか。実際に戦う(勝ち目が無いと見て挑まない、ではない)時だけ。
+func _has_retry_battle_event(party: Dictionary, node_id: String) -> bool:
+	var node: Dictionary = WorldMap.nodes[node_id]
+	if String(node["gate"].get("type", "")) != "combat" or not ScenarioEvents.has_gate_event(node_id):
+		return false
+	return not _is_hopeless_gate(party, node)
+
+## 日次の再挑戦でゲートを突破した時の反映(突破・報酬アイテム・掲示板/行動ログ・完全攻略の判定)。
+func _apply_retry_pass(party: Dictionary, node_id: String, result: Dictionary, current_day: int) -> void:
+	var node: Dictionary = WorldMap.nodes[node_id]
+	WorldMap.mark_passed(node_id, true)
+	_grant_item_reward(result["npc_id"], node)
+	var actor_name: String = Npcs.get_npc(result["npc_id"]).get("name", party["name"])
+	_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"],
+		"%sがついに「%s」を越えたってさ。大したもんだ" % [actor_name, node["name"]])
+	_check_section_cleared(party["assigned_section"], current_day, party["id"])
 
 ## パーティ内で該当スキルが最も高い(固有スキルの実効Lv込み)メンバーを返す。
 func _effective_skill_level(npc_id: int, skill: int) -> int:
@@ -289,8 +313,8 @@ func _attempt_discovery(party: Dictionary, current_day: int) -> void:
 	for node_id in frontier:
 		if not Parties.is_available(party["id"], current_day):
 			return
-		if EventDialogue.is_active:
-			return # 会話が開いた(開いている)間は、続きの発見は翌日(会話→判定の適用→撤退の順を崩さないため)
+		if EventDialogue.is_active or BattleScreen.is_active:
+			return # 会話・戦闘画面が開いた(開いている)間は、続きの発見は翌日(会話→判定の適用→撤退の順を崩さないため)
 		Npcs.grant_skill_exp(scout_id, SkillTypes.Skill.PERCEPTION, 1)
 		if randf() < chance:
 			_on_node_found(scout_name, scout_id, party, node_id, current_day)
@@ -321,7 +345,9 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 		if is_combat:
 			# 戦闘ゲートは、会話 → 戦闘画面 → 会話(結末)の3段構成にする(2026-09-23、「結果が戦闘の前に
 			# 分かってしまい、戦闘画面が答え合わせにしかならない」との指摘への対応)。_play_combat_gate_event参照。
-			_play_combat_gate_event(discoverer_name, scout_id, party, node_id, current_day, milestone)
+			_play_combat_gate_event(party, node_id, current_day, func(applied: Dictionary):
+				var reward_npc_id: int = applied["npc_id"] if applied["passed"] else scout_id
+				_finalize_discovery(discoverer_name, node_id, applied["passed"], current_day, milestone, reward_npc_id))
 			return
 		# 戦闘以外のゲート(技能・アイテム・血筋)は、これまでどおり結果込みの会話を1本再生する
 		# (勝敗の見せ場である戦闘画面が無いので、分割する意味が無い)。
@@ -357,8 +383,11 @@ func _on_node_found(discoverer_name: String, scout_id: int, party: Dictionary, n
 ## (戦闘画面を開くのと同じタイミング)で従来どおり先に済ませる。戦闘画面自体が「実際の攻防を
 ## 見せるだけの、副作用の無い再現表示」という既存の方針(_maybe_show_battle_screen参照)を、
 ## 結末の会話にもそのまま広げた形になる。
-func _play_combat_gate_event(discoverer_name: String, scout_id: int, party: Dictionary, node_id: String,
-		current_day: int, milestone: Dictionary) -> void:
+##
+## 発見時(_on_node_found)と、日次の再挑戦(_retry_gates、2026-09-24)の両方から使う。apply_resultは、実際の戦闘
+## (_attempt_gate)の結果を受け取って、突破・報酬・掲示板などを反映する(発見時は_finalize_discovery、再挑戦は
+## _apply_retry_pass)。前置きの会話が閉じた後、戦闘画面を開く前に呼ぶ。
+func _play_combat_gate_event(party: Dictionary, node_id: String, current_day: int, apply_result: Callable) -> void:
 	var pass_event := ScenarioEvents.gate_event(node_id, true)
 	var fail_event := ScenarioEvents.gate_event(node_id, false)
 	var pass_script: Array = pass_event.get("script", [])
@@ -371,8 +400,7 @@ func _play_combat_gate_event(discoverer_name: String, scout_id: int, party: Dict
 
 	var after_intro := func():
 		var applied: Dictionary = _attempt_gate(party, node_id, current_day)
-		var reward_npc_id: int = applied["npc_id"] if applied["passed"] else scout_id
-		_finalize_discovery(discoverer_name, node_id, applied["passed"], current_day, milestone, reward_npc_id)
+		apply_result.call(applied)
 		var full_event: Dictionary = pass_event if applied["passed"] else fail_event
 
 		var play_result := func():
