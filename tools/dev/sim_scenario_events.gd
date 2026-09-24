@@ -147,6 +147,10 @@ func _run() -> void:
 
 	# --- ゲート結果のイベント(発見時) ---
 	var party: Dictionary = parties.get_parties()[0]
+	# それまでの日次の処理で、野良の旅人が先にgate_a(ゲート無し)を発見・突破していることがある(乱数。約4回に1回)。
+	# ここでは「まだ誰も来ていないフロアを、雇用パーティが見つけた」場面を確かめたいので、未発見に戻してから呼ぶ。
+	world_map.nodes["gate_a"]["found"] = false
+	world_map.nodes["gate_a"]["passed"] = false
 	exploration._on_node_found("誰か", party["member_ids"][0], party, "gate_a", time_system.current_day)
 	_check("発見: ゲート結果(突破)のイベントが始まる", dialogue.is_active and dialogue.current_result == "pass" and dialogue.current_kind == "", "%s/%s" % [dialogue.current_kind, dialogue.current_result])
 	_check("発見: 会話が終わる前は未突破", not world_map.is_passed("gate_a"))
