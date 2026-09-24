@@ -591,9 +591,22 @@ func _apply_section_title_button_style(button: Button) -> void:
 ## 彩度の高い緑を専用に割り当て、共有Theme(_build_theme())の通常ボタン(青系)と
 ## 明確に見分けが付くようにする。
 func _apply_primary_button_style(button: Button) -> void:
+	_apply_accent_button_style(button, Color(0.16, 0.5, 0.22), Color(0.45, 0.85, 0.5))
+
+## 取り消せない危険な操作(スロットの削除など)のボタン: 赤(2026-09-24、「削除はボタンを赤に」)。
+func _apply_danger_button_style(button: Button) -> void:
+	_apply_accent_button_style(button, Color(0.62, 0.14, 0.12), Color(1.0, 0.42, 0.36))
+
+## 大きな切り替えを伴う操作(新規プレイなど)のボタン: オレンジ(2026-09-24、「新規プレイもオレンジくらいに」)。
+func _apply_caution_button_style(button: Button) -> void:
+	_apply_accent_button_style(button, Color(0.72, 0.4, 0.08), Color(1.0, 0.7, 0.3))
+
+## 色付きのボタン(緑=主要・赤=危険・オレンジ=注意)の共通処理。bgは通常時の背景、borderは枠の色。
+## 押せない(disabled)時は、共有Themeの灰色のままにする(色が付いていると押せそうに見えるため)。
+func _apply_accent_button_style(button: Button, bg: Color, border: Color) -> void:
 	var normal := StyleBoxFlat.new()
-	normal.bg_color = Color(0.16, 0.5, 0.22, 1.0)
-	normal.border_color = Color(0.45, 0.85, 0.5, 1.0)
+	normal.bg_color = bg
+	normal.border_color = border
 	normal.set_border_width_all(2)
 	normal.set_corner_radius_all(4)
 	normal.content_margin_left = 12
@@ -601,9 +614,9 @@ func _apply_primary_button_style(button: Button) -> void:
 	normal.content_margin_top = 8
 	normal.content_margin_bottom = 8
 	var hover := normal.duplicate()
-	hover.bg_color = Color(0.2, 0.62, 0.28, 1.0)
+	hover.bg_color = bg.lightened(0.2)
 	var pressed := normal.duplicate()
-	pressed.bg_color = Color(0.12, 0.4, 0.18, 1.0)
+	pressed.bg_color = bg.darkened(0.2)
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", pressed)
@@ -3429,7 +3442,7 @@ func _build_slot_ui() -> void:
 	slot_name_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_row.add_child(slot_name_input)
 	var rename_button := Button.new()
-	rename_button.text = "名前を変更"
+	rename_button.text = "✏️ 名前を変更"
 	rename_button.tooltip_text = "一覧で選択中のスロットの名前を、左の入力欄の内容に変更する"
 	rename_button.pressed.connect(_on_rename_slot_pressed)
 	name_row.add_child(rename_button)
@@ -3444,12 +3457,12 @@ func _build_slot_ui() -> void:
 	# 手段が無く、「新規プレイを開始する」の内部処理(離れる前のスロットを保存)頼みになって
 	# いた。分岐前のチェックポイントとして能動的に保存したい、という要望への対応。
 	var manual_save_button := Button.new()
-	manual_save_button.text = "今すぐセーブする"
+	manual_save_button.text = "💾 今すぐセーブする"
 	manual_save_button.pressed.connect(_on_manual_save_pressed)
 	op_col.add_child(manual_save_button)
 
 	var open_button := Button.new()
-	open_button.text = "このスロットをロードする"
+	open_button.text = "📂 このスロットをロードする"
 	open_button.pressed.connect(_on_open_slot_pressed)
 	op_col.add_child(open_button)
 
@@ -3457,13 +3470,14 @@ func _build_slot_ui() -> void:
 	# 分岐させたい(色々試す前のチェックポイントを残したい)場合の手段が無かった。ファイルを
 	# そのまま複製するだけなので確認ダイアログは挟まず即実行し、結果はステータス表示で伝える。
 	var duplicate_button := Button.new()
-	duplicate_button.text = "進行を複製する(分岐用)"
+	duplicate_button.text = "🔀 進行を複製する(分岐用)"
 	duplicate_button.tooltip_text = "現在の進行を複製する(分岐用の新規スロットを作る)"
 	duplicate_button.pressed.connect(_on_duplicate_slot_pressed)
 	op_col.add_child(duplicate_button)
 
 	var delete_button := Button.new()
-	delete_button.text = "選択したスロットを削除する"
+	delete_button.text = "🗑️ 選択したスロットを削除する"
+	_apply_danger_button_style(delete_button)
 	delete_button.pressed.connect(_on_delete_slot_pressed)
 	op_col.add_child(delete_button)
 
@@ -3496,7 +3510,8 @@ func _build_slot_ui() -> void:
 	_refresh_scenario_options()
 
 	var new_game_button := Button.new()
-	new_game_button.text = "新規プレイを開始する"
+	new_game_button.text = "🆕 新規プレイを開始する"
+	_apply_caution_button_style(new_game_button)
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	new_col.add_child(new_game_button)
 
@@ -3508,14 +3523,14 @@ func _build_slot_ui() -> void:
 	# エディタ(PC)で作ったシナリオのzipを取り込む・スマホに入っているカスタムシナリオを整理する(2026-09-21)。
 	# 取り込んだシナリオは、上の「シナリオ:」の一覧に出る(新規プレイで遊べる)。
 	var scenario_import_button := Button.new()
-	scenario_import_button.text = "シナリオを取り込む"
+	scenario_import_button.text = "📥 シナリオを取り込む"
 	scenario_import_button.tooltip_text = "エディタで書き出したシナリオのファイル(zip)を選んで、カスタムシナリオとして追加する(同じIDが既にあれば、確認して上書き)"
 	scenario_import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scenario_import_button.pressed.connect(_on_scenario_import_pressed)
 	transfer_grid.add_child(scenario_import_button)
 
 	var scenario_manage_button := Button.new()
-	scenario_manage_button.text = "シナリオの管理"
+	scenario_manage_button.text = "🗂️ シナリオの管理"
 	scenario_manage_button.tooltip_text = "取り込んだカスタムシナリオの一覧を見て、いらないものを削除する"
 	scenario_manage_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scenario_manage_button.pressed.connect(_on_scenario_manage_pressed)
@@ -3524,14 +3539,14 @@ func _build_slot_ui() -> void:
 	# 別の端末/場所へ移すための書き出しと取り込み(2026-09-20)。保存先・取り込み元はOSのファイル選択で選ぶ
 	# (Androidでは、Googleドライブやダウンロードなども選べる画面が開く)。
 	var export_button := Button.new()
-	export_button.text = "全スロットを書き出す"
+	export_button.text = "📤 全スロットを書き出す"
 	export_button.tooltip_text = "全てのスロットを1つのファイル(zip)にまとめて、選んだ場所へ保存する(バックアップ・別の端末への移行用)"
 	export_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	export_button.pressed.connect(_on_export_pressed)
 	transfer_grid.add_child(export_button)
 
 	var import_button := Button.new()
-	import_button.text = "セーブを取り込む"
+	import_button.text = "📥 セーブを取り込む"
 	import_button.tooltip_text = "書き出したファイルからスロットを選んで、新しいスロットとして追加する(今のスロットは変わらない)"
 	import_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	import_button.pressed.connect(_on_import_pressed)
@@ -3542,7 +3557,7 @@ func _build_slot_ui() -> void:
 	# 「見た」フラグを丸ごとリセットするボタンを設定(セーブスロットパネル)に置く。
 	# セーブデータ自体(資金/探索者等)には触れない。
 	var reset_tutorial_button := Button.new()
-	reset_tutorial_button.text = "イベント会話をリセットする(確認用)"
+	reset_tutorial_button.text = "🔄 イベント会話をリセットする(確認用)"
 	reset_tutorial_button.tooltip_text = "導入/初雇用/初撤退/初割り当ての説明会話を、もう一度見られるようにします"
 	reset_tutorial_button.pressed.connect(_on_reset_tutorials_pressed)
 	new_col.add_child(reset_tutorial_button)
@@ -3550,10 +3565,18 @@ func _build_slot_ui() -> void:
 	new_game_confirm = ConfirmationDialog.new()
 	new_game_confirm.dialog_text = "現在の進行とは別に、新しいセーブスロットでゼロから始めます。よろしいですか？"
 	new_game_confirm.confirmed.connect(_on_new_game_confirmed)
+	new_game_confirm.title = "確認"
+	new_game_confirm.cancel_button_text = "やめる"
+	new_game_confirm.ok_button_text = "開始する"
+	_apply_caution_button_style(new_game_confirm.get_ok_button())
 	add_child(new_game_confirm)
 
 	delete_slot_confirm = ConfirmationDialog.new()
 	delete_slot_confirm.confirmed.connect(_on_delete_slot_confirmed)
+	delete_slot_confirm.title = "確認"
+	delete_slot_confirm.cancel_button_text = "やめる"
+	delete_slot_confirm.ok_button_text = "削除する"
+	_apply_danger_button_style(delete_slot_confirm.get_ok_button())
 	add_child(delete_slot_confirm)
 
 	# OSのファイル選択が使えない環境のための、Godot自身のファイル選択画面(_show_file_dialogが使い分ける)。
@@ -3624,6 +3647,7 @@ func _build_slot_ui() -> void:
 	scenario_manage_dialog.title = "カスタムシナリオの管理"
 	scenario_manage_dialog.ok_button_text = "選んだシナリオを削除"
 	scenario_manage_dialog.cancel_button_text = "閉じる"
+	_apply_danger_button_style(scenario_manage_dialog.get_ok_button())
 	var manage_col := VBoxContainer.new()
 	scenario_manage_dialog.add_child(manage_col)
 	scenario_manage_hint = Label.new()
@@ -3640,6 +3664,8 @@ func _build_slot_ui() -> void:
 	scenario_delete_confirm = ConfirmationDialog.new()
 	scenario_delete_confirm.ok_button_text = "削除する"
 	scenario_delete_confirm.cancel_button_text = "やめる"
+	scenario_delete_confirm.title = "確認"
+	_apply_danger_button_style(scenario_delete_confirm.get_ok_button())
 	scenario_delete_confirm.confirmed.connect(_on_scenario_delete_confirmed)
 	scenario_delete_confirm.canceled.connect(_on_scenario_manage_pressed.call_deferred) # やめたら、一覧へ戻る
 	add_child(scenario_delete_confirm)
