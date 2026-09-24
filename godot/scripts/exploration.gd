@@ -66,6 +66,8 @@ const LAP_INCOME_PER_POINT := MONTHLY_INCOME_PER_POINT
 # 戦力不足で退避(待機)している間に、パーティ全員が毎日得る戦闘力の経験値(_update_retreat_state)。
 # 戦闘力のレベルアップに必要な経験値は10×(レベル+1)なので、Lv0→1が約10日。初期チューニング値(要調整)。
 const RETREAT_TRAINING_EXP_PER_DAY := 1
+## 戦闘ゲートの会話で、勝ち目が無く戦わなかった時の結末の1行(_play_combat_gate_event)。%sはパーティ名
+const RETREAT_BEFORE_FIGHT_TEXT := "%sは、今の力では到底敵わないと見て、刃を交えずに引き返した。"
 
 ## 初めて戦闘で撤退した直後だけ、案内会話(シナリオの場面名"retreat")を再生する。「ループ」「先へ進む」
 ## (design.md 4.7節のpost_clear_behavior)は今まさに阻まれている状況には関係なく、セクションを完全に突破し
@@ -378,6 +380,10 @@ func _play_combat_gate_event(discoverer_name: String, scout_id: int, party: Dict
 				party_location_changed.emit() # _check_blockedが担当セクションを変えた場合に備え、main.gdへマップの再描画を促す
 			var result_event: Dictionary = full_event.duplicate(true)
 			result_event["script"] = Array(full_event.get("script", [])).slice(intro_len)
+			if applied.get("result", "") == "retreat_before_fight" and not full_event.is_empty():
+				# 勝ち目が無く戦わなかった: 失敗の台本の結末は「深手を負って撤退した」のような、戦った前提の文章
+				# なので使わず、戦わずに引き返した旨の1行に差し替える(効果は失敗として適用する。2026-09-24)。
+				result_event["script"] = [{"side": "none", "name": "", "text": RETREAT_BEFORE_FIGHT_TEXT % party["name"], "outcome": "fail"}]
 			if result_event["script"].is_empty():
 				# 前置きだけで台本が尽きた(pass/failの台本が丸ごと同じだった等、実際にはまず起きない)場合、
 				# 結末の会話は無しで効果だけ適用する(play()はscriptが空だとon_doneすら呼ばずfalseを返すため)。
