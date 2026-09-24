@@ -127,7 +127,8 @@ func _on_month_ended(current_month: int) -> void:
 	if total_income > 0:
 		Economy.earn(total_income)
 		var text := "月次収入として%d資金を得た(第%d月)" % [total_income, current_month]
-		Board.post(current_day, text, Board.Importance.MAJOR, "economy", Board.Scope.WORLD)
+		Board.post(current_day, "第%d月の締めだ。探索の稼ぎは%d資金だったってさ。景気のいい話だね" % [current_month, total_income],
+			Board.Importance.MAJOR, "economy", Board.Scope.WORLD)
 		ActionLog.record(current_day, "monthly_income", text)
 
 func _on_day_advanced(current_day: int) -> void:
@@ -181,7 +182,8 @@ func _process_lap(party: Dictionary, current_day: int) -> void:
 	Economy.earn(income)
 	var section_name: String = WorldMap.sections[section_id]["name"]
 	var text := "%sが「%s」を1周し、%d資金を得た" % [party["name"], section_name, income]
-	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "lap_income", Board.Scope.PARTY)
+	Board.post_to_thread(section_id, section_name, current_day, "%sがまた「%s」をひと回りしてきたよ。%d資金ほど稼いだらしい" % [party["name"], section_name, income],
+		Board.Importance.MINOR, "lap_income", Board.Scope.PARTY)
 	ActionLog.record(current_day, "lap_income", text, -1, "", section_id)
 	Parties.start_lap(party["id"], current_day)
 
@@ -237,7 +239,8 @@ func _retry_gates(party: Dictionary, current_day: int) -> void:
 				WorldMap.mark_passed(node_id, true)
 				_grant_item_reward(result["npc_id"], node)
 				var actor_name: String = Npcs.get_npc(result["npc_id"]).get("name", party["name"])
-				_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"])
+				_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"],
+					"%sがついに「%s」を越えたってさ。大したもんだ" % [actor_name, node["name"]])
 				_check_section_cleared(party["assigned_section"], current_day, party["id"])
 
 ## パーティ内で該当スキルが最も高い(固有スキルの実効Lv込み)メンバーを返す。
@@ -444,23 +447,25 @@ func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool,
 		WorldMap.mark_passed(node_id, npc_id != -1)
 		if npc_id != -1:
 			_grant_item_reward(npc_id, node)
-		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見した" % [discoverer_name, node["name"]], "discover_pass", npc_id)
+		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見した" % [discoverer_name, node["name"]], "discover_pass", npc_id,
+			"%sが「%s」を見つけて、先へ抜けたそうだ" % [discoverer_name, node["name"]])
 		# 攻略報酬の難易度は、突破したメンバーのパーティのもの(野良の旅人など、npc_idが無ければNormal)
 		_check_section_cleared(node["section"], current_day, int(Npcs.get_npc(npc_id).get("party_id", -1)))
 	else:
-		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見したが、まだ先へ進めない" % [discoverer_name, node["name"]], "discover_blocked", npc_id)
+		_post_floor(discoverer_name, node_id, current_day, "%sが「%s」を発見したが、まだ先へ進めない" % [discoverer_name, node["name"]], "discover_blocked", npc_id,
+			"%sが「%s」を見つけたんだが、そこから先へは進めずにいるらしい" % [discoverer_name, node["name"]])
 
 	# 発見者が雇用パーティのメンバー(npc_id != -1)なら自パーティ、野良の旅人(npc_id == -1)なら世界全体の扱い。
 	var milestone_scope: int = Board.Scope.PARTY if npc_id != -1 else Board.Scope.WORLD
 	if not milestone["was_section_entered"]:
 		var section_name: String = WorldMap.sections[milestone["section_id"]]["name"] if WorldMap.sections.has(milestone["section_id"]) else milestone["section_id"]
 		var text := "「%s」に初めて到達した" % section_name
-		Board.post(current_day, text, Board.Importance.MAJOR, "exploration", milestone_scope)
+		Board.post(current_day, "聞いたかい？ とうとう「%s」まで辿り着いた連中がいるってさ" % section_name, Board.Importance.MAJOR, "exploration", milestone_scope)
 		ActionLog.record(current_day, "milestone_section", text, npc_id, node_id, milestone["section_id"])
 	if milestone["area_id"] != "" and not milestone["was_area_entered"]:
 		var area_name: String = WorldMap.areas[milestone["area_id"]]["name"] if WorldMap.areas.has(milestone["area_id"]) else milestone["area_id"]
 		var text := "「%s」に初めて足を踏み入れた" % area_name
-		Board.post(current_day, text, Board.Importance.MAJOR, "exploration", milestone_scope)
+		Board.post(current_day, "大ニュースだ！ 誰かが初めて「%s」に足を踏み入れたらしいぞ" % area_name, Board.Importance.MAJOR, "exploration", milestone_scope)
 		ActionLog.record(current_day, "milestone_area", text, npc_id, node_id, milestone["section_id"])
 		if npc_id != -1: # 雇用パーティの発見(野良の旅人はnpc_idが無い)
 			area_first_entered.emit(milestone["area_id"], node_id)
@@ -499,7 +504,8 @@ func _check_section_cleared(section_id: String, current_day: int, clearing_party
 	var text := "「%s」を完全攻略した(攻略報酬: %d資金)" % [section_name, reward]
 	if is_first_clear:
 		text += "。初めての完全攻略ボーナスも得た！"
-	Board.post(current_day, text, Board.Importance.MAJOR, "section_clear", Board.Scope.PARTY if clearing_party_id != -1 else Board.Scope.WORLD)
+	Board.post(current_day, "「%s」はもう隅々まで調べ尽くされたってさ。たんまり報酬が出たらしいよ" % section_name,
+		Board.Importance.MAJOR, "section_clear", Board.Scope.PARTY if clearing_party_id != -1 else Board.Scope.WORLD)
 	ActionLog.record(current_day, "section_clear", text, -1, "", section_id)
 
 	for party in Parties.get_parties():
@@ -527,7 +533,7 @@ func apply_post_clear_behavior(party: Dictionary, current_day: int) -> bool:
 	var section_name: String = WorldMap.sections[section_id]["name"]
 	var next_section_name: String = WorldMap.sections[next_section]["name"]
 	Parties.assign_section(party["id"], next_section)
-	Board.post(current_day, "%sは「%s」から「%s」へ配置転換された" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
+	Board.post(current_day, "%sは「%s」を片付けて、次は「%s」へ向かうそうだ" % [party["name"], section_name, next_section_name], Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
 	# npc_idには代表としてパーティ先頭メンバーを記録する(行動ログの探索者別フィルタで、
 	# そのメンバーで絞り込んだ時にも配置転換イベントが見えるようにするため)。
 	ActionLog.record(current_day, "reassignment", "%sが「%s」へ配置転換された" % [party["name"], next_section_name], party["member_ids"][0], "", next_section)
@@ -572,15 +578,18 @@ func _check_blocked(party: Dictionary, current_day: int) -> void:
 		safe_section = section_id
 	var section_name: String = WorldMap.sections[section_id]["name"]
 	var blocker_name: String = WorldMap.nodes[blocker]["name"]
-	var text: String
+	var text: String # 行動ログ(報告調)
+	var board_text: String # 掲示板(噂話の口語調)
 	if safe_section == section_id:
 		Parties.set_return(party["id"], section_id, blocker)
 		text = "%sは「%s」の「%s」に勝つ見込みが無いため、戦力が整うまでその場で待機する" % [party["name"], section_name, blocker_name]
+		board_text = "「%s」の「%s」は手強いらしい。%sは腕を上げるまで、その場で様子見だってさ" % [section_name, blocker_name, party["name"]]
 	else:
 		var safe_name: String = WorldMap.sections[safe_section]["name"]
 		Parties.retreat_for_training(party["id"], safe_section, section_id, blocker)
 		text = "%sは「%s」の「%s」に勝つ見込みが無いため、「%s」へ戻って力を付けることにした" % [party["name"], section_name, blocker_name, safe_name]
-	Board.post(current_day, text, Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
+		board_text = "「%s」の「%s」は手強いらしい。%sは「%s」まで戻って、鍛え直すんだとさ" % [section_name, blocker_name, party["name"], safe_name]
+	Board.post(current_day, board_text, Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
 	# npc_idには代表としてパーティ先頭メンバーを記録する(配置転換と同じ。行動ログの探索者別フィルタ用)
 	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], blocker, section_id)
 
@@ -613,15 +622,16 @@ func _update_retreat_state(party: Dictionary, current_day: int) -> bool:
 	var to_name: String = WorldMap.sections[back_section]["name"]
 	Parties.assign_section(party["id"], back_section) # 退避の記録も消える
 	var text := "%sは力を付け、「%s」へ戻った" % [party["name"], to_name]
-	Board.post(current_day, text, Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
+	Board.post(current_day, "%sがひと回り逞しくなって、「%s」へ戻っていったよ。今度はやれるかな" % [party["name"], to_name], Board.Importance.MINOR, "reassignment", Board.Scope.PARTY)
 	ActionLog.record(current_day, "reassignment", text, party["member_ids"][0], "", back_section)
 	return true
 
-func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int = -1) -> void:
+## textは行動ログ(報告調)、board_textは掲示板(噂話の口語調)の文。
+func _post_floor(discoverer_name: String, node_id: String, current_day: int, text: String, event_type: String, npc_id: int, board_text: String) -> void:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
 	var scope: int = Board.Scope.PARTY if npc_id != -1 else Board.Scope.WORLD
-	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "exploration", scope)
+	Board.post_to_thread(section_id, section_name, current_day, board_text, Board.Importance.MINOR, "exploration", scope)
 	ActionLog.record(current_day, event_type, text, npc_id, node_id, section_id)
 
 ## ゲートを判定し、{"passed": bool, "npc_id": int}を返す。npc_idは判定を担った(=突破報酬アイテムを
@@ -712,7 +722,9 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 		party["name"], node["name"], verb, enemy_power]
 	var section_id: String = node["section"]
 	var section_name: String = WorldMap.sections[section_id]["name"] if WorldMap.sections.has(section_id) else section_id
-	Board.post_to_thread(section_id, section_name, current_day, text, Board.Importance.MINOR, "combat_retreat", Board.Scope.PARTY)
+	var board_text := "%sが「%s」で%sらしい。装備を買い替えるか、戦闘の腕を磨くか……何度も挑んでりゃ、そのうち勝てるかもしれないけどね" % [
+		party["name"], node["name"], "こっぴどくやられて逃げ帰った" if result == "defeat" else "苦戦して引き返してきた"]
+	Board.post_to_thread(section_id, section_name, current_day, board_text, Board.Importance.MINOR, "combat_retreat", Board.Scope.PARTY)
 	ActionLog.record(current_day, "combat_retreat", text, -1, node_id, section_id)
 
 	if not SaveSystem.is_tutorial_seen("retreat") and not _retreat_tutorial_pending:

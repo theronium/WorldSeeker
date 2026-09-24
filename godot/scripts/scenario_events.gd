@@ -219,18 +219,19 @@ func apply_effects(event: Dictionary, outcome: String) -> void:
 				var amount: int = int(effect["amount"])
 				if amount >= 0:
 					Economy.earn(amount)
-					_post(day, "「%s」: %d資金を得た" % [event["title"], amount])
+					_post(day, "「%s」: %d資金を得た" % [event["title"], amount], "「%s」の一件で、%d資金が転がり込んだそうだ" % [event["title"], amount])
 				else:
 					var paid: int = min(-amount, Economy.funds) # 資金は0未満にならない
 					Economy.spend(paid)
-					_post(day, "「%s」: %d資金を失った" % [event["title"], paid])
+					_post(day, "「%s」: %d資金を失った" % [event["title"], paid], "「%s」の一件で、%d資金も失くしたんだとさ。災難だねえ" % [event["title"], paid])
 			"grant_item":
 				_grant_item(event, String(effect["item"]), day)
 			"open_floor":
 				var floor_id := String(effect["floor"])
 				if WorldMap.nodes.has(floor_id) and not WorldMap.is_passed(floor_id):
 					WorldMap.mark_passed(floor_id, true)
-					_post(day, "「%s」: 「%s」への道が開いた" % [event["title"], WorldMap.nodes[floor_id]["name"]])
+					_post(day, "「%s」: 「%s」への道が開いた" % [event["title"], WorldMap.nodes[floor_id]["name"]],
+						"「%s」への道が開けたらしいよ。「%s」の一件のおかげだってさ" % [WorldMap.nodes[floor_id]["name"], event["title"]])
 
 ## そのアイテムをまだ持たない雇用探索者のうち、名簿の先頭の1人へ渡す。
 func _grant_item(event: Dictionary, item_id: String, day: int) -> void:
@@ -239,9 +240,11 @@ func _grant_item(event: Dictionary, item_id: String, day: int) -> void:
 	for npc_id in ids:
 		if not Items.has_item(npc_id, item_id):
 			Items.grant(npc_id, item_id)
-			_post(day, "「%s」: %sが「%s」を手に入れた" % [event["title"], Npcs.get_npc(npc_id)["name"], Items.name_of(item_id)])
+			_post(day, "「%s」: %sが「%s」を手に入れた" % [event["title"], Npcs.get_npc(npc_id)["name"], Items.name_of(item_id)],
+				"%sが「%s」を手に入れたって噂だ。「%s」の一件でね" % [Npcs.get_npc(npc_id)["name"], Items.name_of(item_id), event["title"]])
 			return
 
-func _post(day: int, text: String) -> void:
-	Board.post(day, text, Board.Importance.MAJOR, "scenario_event", Board.Scope.WORLD)
+## textは行動ログ(報告調)、board_textは掲示板(噂話の口語調)の文。
+func _post(day: int, text: String, board_text: String) -> void:
+	Board.post(day, board_text, Board.Importance.MAJOR, "scenario_event", Board.Scope.WORLD)
 	ActionLog.record(day, "scenario_event", text)
