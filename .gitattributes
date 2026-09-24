@@ -1,0 +1,21 @@
+# 改行コードの統一(2026-09-24)。テキストは、どの環境(Windowsの core.autocrlf=true を含む)で取り出しても LF にする。
+# Godot・シナリオエディタのサーバー・スクリプトは LF で書くので、取り出し時に CRLF へ変わると作業フォルダが LF と CRLF の
+# 混在になり、ファイルの中身を1バイト単位で比べるテスト(エディタの保存し直し等)が、新しく取り出した環境でだけ落ちていた。
+* text=auto eol=lf
+
+# Windowsのコマンドプロンプトで実行するものは CRLF(LF だとラベル・gotoなどが誤動作することがある)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# バイナリ(自動判定に任せず明示する)
+*.png binary
+*.ico binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.zip binary
+*.so binary
+*.dll binary
+*.apk binary
+*.aab binary
+*.keystore binary

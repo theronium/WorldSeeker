@@ -44,6 +44,8 @@ GODOT_EXE="/c/Users/thero/AppData/Local/Microsoft/WinGet/Packages/GodotEngine.Go
 
 コードを変更したら、必ず上記の `--headless --quit` でエラーが出ないことを確認してから完了報告する運用にしている。
 
+**改行コードは LF に統一(2026-09-24、`.gitattributes`)**: テキストは、どの環境で取り出しても LF(`.bat`/`.cmd`だけ CRLF)。この PC は Git がシステム全体で `core.autocrlf=true` のため、以前は取り出したファイルが CRLF になり、Godot・エディタのサーバー・スクリプトが LF で書き直したファイルと混在していた(新しく取り出した環境でだけ、エディタの保存のテストが落ちた)。**ファイルを書き換えるスクリプトは LF で書く**(Pythonなら `open(p, 'w', newline='')` で `\n` のまま)。改行の状態は `git ls-files --eol` で確かめられる(作業フォルダは `w/lf`、`.bat`/`.cmd`は `w/crlf` が正しい)。
+
 ### リリース(Windows版・Android版)
 
 **2026-09-24に`v0.1.0`をGitHub ReleasesにPre-releaseとして公開した**(Windows版zipとAndroid版APK)。`v*`タグのpushで、CI(`.github/workflows/release.yml`)が両方をビルドして添付する。BGMは非公開リポジトリ`theronium/WorldSeeker-assets`からCIが取得する(ライセンス上、このリポジトリには置けない)。手順・版番号の付け方・Secrets・確かめ方・困った時の対処は **[`docs/RELEASE.md`](RELEASE.md)** にまとめてある。**スマホにリリース版のAPKを入れると、`run_on_phone.sh`の手元ビルド(versionCode=1)がダウングレードとして拒否される**ので、開発用のスマホには入れないこと。
