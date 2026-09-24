@@ -1,7 +1,7 @@
-# 使い捨ての確認用スクリプト(2026-09-21)。ログウィンドウ(掲示板・イベント・毎日の動きから2つを選んで並べる)と、
-# 毎日の動き(DailyLog)の確認。
+# 使い捨ての確認用スクリプト(2026-09-21)。ログウィンドウ(毎日の動き・行動ログ・掲示板をタブで切り替え、
+# マップの右端に重ねる。2026-09-24に2枠のモーダルから変更)と、毎日の動き(DailyLog)の確認。
 #   D: DailyLog(状態の判定・未割当は出さない・同じ日の記録し直し・90日の保持・まとめ表示の区間・リセット)
-#   W: ログウィンドウ(メイン画面を組み立てて操作する。ボタン・2枠・絞り込み・まとめて表示・掲示板のスレッド)
+#   W: ログウィンドウ(メイン画面を組み立てて操作する。マップ右上のボタン・タブ・絞り込み・まとめて表示・掲示板のスレッド)
 #   I: 探索との連携(日次の記録。会話が閉じて退避が反映された後に、その日の動きが記録し直される)
 # 実行: APPDATA=<隔離した空のディレクトリ> godot --headless --path godot --script <このファイルの絶対パス>
 # (--script モードの作法は tools/dev/README.md 参照。実セーブに触れないよう、必ずAPPDATAを差し替える)
@@ -38,22 +38,19 @@ func _finish(dialogue) -> void:
 		guard += 1
 		dialogue.advance()
 
-func _pane_text(index: int) -> String:
-	return _main.log_window._panes[index]["text"].get_parsed_text()
+func _log_text() -> String:
+	return _main.log_window._text.get_parsed_text()
 
-func _select_source(index: int, key: String) -> void:
-	var source: OptionButton = _main.log_window._panes[index]["source"]
-	for i in source.item_count:
-		if source.get_item_metadata(i) == key:
-			source.select(i)
-	_main.log_window._refresh_pane(index, true)
+func _select_source(key: String) -> void:
+	_main.log_window._tab_buttons[key].button_pressed = true
+	_main.log_window._tab_buttons[key].pressed.emit()
 
-func _select_filter(index: int, value: Variant) -> void:
-	var filter: OptionButton = _main.log_window._panes[index]["filter"]
+func _select_filter(value: Variant) -> void:
+	var filter: OptionButton = _main.log_window._filter
 	for i in filter.item_count:
 		if filter.get_item_metadata(i) == value:
 			filter.select(i)
-			_main.log_window._on_filter_selected(index, i)
+			_main.log_window._on_filter_selected(i)
 
 func _run() -> void:
 	var save = root.get_node("SaveSystem"); var world_map = root.get_node("WorldMap"); var parties = root.get_node("Parties")
@@ -155,78 +152,81 @@ func _run() -> void:
 	for child in _main.left_menu.get_children():
 		if child is Button:
 			button_texts.append(child.text)
-	_check("W: 左メニュー: 「ログ」があり、「行動ログ」「掲示板」のボタンは無い(デスクトップ)", "ログ" in button_texts and not ("行動ログ" in button_texts) and not ("掲示板" in button_texts), str(button_texts))
+	_check("W: 左メニューに「ログ」「掲示板」のボタンは無い(マップ右上へ移した)", not button_texts.any(func(t): return String(t).contains("ログ") or String(t).contains("掲示板")), str(button_texts))
 	var window = _main.log_window
-	_check("W: 2枠。初期は左=毎日の動き、右=イベント", window._panes.size() == 2 and window._source_key(window._panes[0]) == "daily" and window._source_key(window._panes[1]) == "events")
-	_check("W: 枠の種類の選択肢: 3種", window._panes[0]["source"].item_count == 3)
+	var toggle: Button = _main.log_toggle_button
+	_check("W: マップ右上に「ログ」ボタン", toggle != null and toggle.get_parent() == window.get_parent() and toggle.text.contains("ログ"))
+	_check("W: タブは3つ(毎日の動き・行動ログ・掲示板)", window._tab_buttons.size() == 3 and window._tab_buttons["events"].text == "行動ログ")
+	_check("W: ログウィンドウはモーダルではない(マップの領域の子)", window.get_parent() == toggle.get_parent() and not _main.modal_blocker.visible)
 	# 毎日の動き
 	daily.reset()
 	parties.assign_section(p1["id"], second)
 	for day in range(1, 5):
 		daily.record_day(day)
-	_main._on_open_log_pressed()
-	_check("W: 「ログ」で窓が開く", window.visible)
-	var text0: String = _pane_text(0)
+	toggle.button_pressed = true
+	_check("W: ボタンで窓が開き、ボタンは押された状態", window.visible and toggle.button_pressed)
+	_select_source("daily")
+	var text0: String = _log_text()
 	_check("W: 毎日の動き: 日ごと(新しい日が上)", text0.find("Day 4") >= 0 and text0.find("Day 4") < text0.find("Day 3") and text0.contains("初期パーティ: 「"), text0.substr(0, 80))
-	_main.log_window._panes[0]["merge"].button_pressed = true
-	_main.log_window._refresh_pane(0, true)
-	_check("W: まとめて表示: 「Day 1〜4」1行(4日間)", _pane_text(0).contains("Day 1〜4") and _pane_text(0).contains("(4日間)"), _pane_text(0))
-	_main.log_window._panes[0]["merge"].button_pressed = false
+	window._merge.button_pressed = true
+	_check("W: まとめて表示: 「Day 1〜4」1行(4日間)", _log_text().contains("Day 1〜4") and _log_text().contains("(4日間)"), _log_text())
+	window._merge.button_pressed = false
 	# 絞り込み(パーティ)
-	var party_filter: OptionButton = window._panes[0]["filter"]
-	_check("W: 絞り込みの選択肢: 全パーティ+パーティ数", party_filter.item_count == 1 + parties.get_parties().size(), str(party_filter.item_count))
-	_select_filter(0, p2_id)
-	_check("W: 未割当のパーティで絞ると、記録なし", _pane_text(0).contains("まだ動きの記録がありません"))
-	_select_filter(0, -1)
-	# 掲示板・イベント
+	_check("W: 絞り込みの選択肢: 全パーティ+パーティ数", window._filter.item_count == 1 + parties.get_parties().size(), str(window._filter.item_count))
+	_select_filter(p2_id)
+	_check("W: 未割当のパーティで絞ると、記録なし", _log_text().contains("まだ動きの記録がありません"))
+	_select_filter(-1)
+	# 掲示板・行動ログ
 	board.reset()
 	board.post(7, "掲示板の全体の書き込み", board.Importance.MAJOR, "test")
 	board.post_to_thread("village_area", "始まりの村周辺", 8, "スレッドの書き込み", board.Importance.MINOR, "test")
 	board.post(9, "新しい書き込み", board.Importance.MAJOR, "test")
 	action_log.record(6, "test_event", "イベントの記録A", npcs.roster.keys()[0])
 	action_log.record(7, "test_event", "イベントの記録B", npcs.roster.keys()[1])
-	save.save_game() # イベントはDBから読むので、保存して反映する(隔離APPDATA)
-	window.refresh()
-	var events_text := _pane_text(1)
-	_check("W: イベント: 新しい順(B→A)", events_text.contains("イベントの記録B") and events_text.find("イベントの記録B") < events_text.find("イベントの記録A"), events_text.substr(0, 90))
-	_select_filter(1, npcs.roster.keys()[0])
-	_check("W: イベント: 探索者で絞る", _pane_text(1).contains("イベントの記録A") and not _pane_text(1).contains("イベントの記録B"))
-	_select_filter(1, -1)
-	_select_source(1, "board")
-	var board_text := _pane_text(1)
+	save.save_game() # 行動ログはDBから読むので、保存して反映する(隔離APPDATA)
+	_select_source("events")
+	var events_text := _log_text()
+	_check("W: 行動ログ: 新しい順(B→A)", events_text.contains("イベントの記録B") and events_text.find("イベントの記録B") < events_text.find("イベントの記録A"), events_text.substr(0, 90))
+	_select_filter(npcs.roster.keys()[0])
+	_check("W: 行動ログ: 探索者で絞る", _log_text().contains("イベントの記録A") and not _log_text().contains("イベントの記録B"))
+	_select_source("board")
+	var board_text := _log_text()
 	_check("W: 掲示板: 全体フィードを新しい順(9→7)", board_text.contains("新しい書き込み") and board_text.find("新しい書き込み") < board_text.find("掲示板の全体の書き込み") and not board_text.contains("スレッドの書き込み"), board_text)
-	_select_filter(1, "village_area")
-	_check("W: 掲示板: スレッドで絞る", _pane_text(1).contains("スレッドの書き込み") and not _pane_text(1).contains("新しい書き込み"), _pane_text(1))
-	_check("W: 枠ごとに絞り込みを覚えている(左の毎日の動きはそのまま)", _pane_text(0).contains("Day 4"))
-	# 種類を切り替えると、前に選んだ絞り込みを覚えている
-	_select_source(1, "events")
-	_select_source(1, "board")
-	_check("W: 種類を戻すと、掲示板のスレッドの選択が残っている", window._panes[1]["filters"]["board"] == "village_area")
-	# セクションのスレッドを開く(パーティパネルの「ログを見る」・マップのダブルクリックの共通処理)
-	_main._close_modal(window)
-	_check("W: 閉じると窓が隠れる", not window.visible)
-	_select_source(1, "events")
+	_select_filter("village_area")
+	_check("W: 掲示板: スレッドで絞る", _log_text().contains("スレッドの書き込み") and not _log_text().contains("新しい書き込み"), _log_text())
+	# タブを切り替えると、前に選んだ絞り込みを覚えている
+	_select_source("events")
+	_check("W: 行動ログへ戻ると、探索者の絞り込みが残っている", _log_text().contains("イベントの記録A") and not _log_text().contains("イベントの記録B"))
+	_select_filter(-1)
+	_select_source("board")
+	_check("W: 掲示板へ戻ると、スレッドの選択が残っている", window._filters["board"] == "village_area" and _log_text().contains("スレッドの書き込み"))
+	# ✕で閉じると、ボタンの押された状態も戻る
+	window.close_requested.emit()
+	_check("W: ✕で閉じると窓が隠れ、ボタンも戻る", not window.visible and not toggle.button_pressed)
+	# セクションのスレッドを開く(割り当て画面の「ログ」・マップのダブルクリックの共通処理)
+	_select_source("events")
 	_main._open_section_thread("village_area")
-	_check("W: セクションのスレッドを開くと、掲示板の枠がそのスレッドになる", window.visible and window._source_key(window._panes[1]) == "board" and _pane_text(1).contains("スレッドの書き込み"), _pane_text(1))
-	_main._close_modal(window)
-	# 掲示板の枠が既に左にあれば、そちらを使う(右のイベントは残る)
-	_select_source(1, "events")
-	_select_source(0, "board")
+	_check("W: セクションのスレッドを開くと、掲示板タブがそのスレッドになる", window.visible and toggle.button_pressed and window._source == "board" and window._tab_buttons["board"].button_pressed and _log_text().contains("スレッドの書き込み"), _log_text())
+	window.close_requested.emit()
+	# ポップアップ(割り当て画面など)から開くと、ポップアップは閉じる
+	_main._open_modal(_main.section_assign_panel)
 	_main._open_section_thread("village_area")
-	_check("W: 掲示板の枠が既にあれば、その枠を使う", window._source_key(window._panes[0]) == "board" and window._source_key(window._panes[1]) == "events" and _pane_text(0).contains("スレッドの書き込み"))
-	_main._close_modal(window)
+	_check("W: ポップアップから開くと、ポップアップは閉じる", window.visible and not _main.section_assign_panel.visible and not _main.modal_blocker.visible)
+	# 戻るキー(Android)で閉じる
+	_main._on_go_back_requested()
+	_check("W: 戻るキーで閉じる", not window.visible and not toggle.button_pressed)
 	# 自動更新(日が進むと、開いている間だけ更新される)
-	_select_source(0, "daily")
-	_main._on_open_log_pressed()
+	toggle.button_pressed = true
+	_select_source("daily")
 	daily.record_day(5)
 	window._dirty = true
 	window._on_refresh_timer()
-	_check("W: 日が進んだ印があると、自動更新される", _pane_text(0).contains("Day 5"))
-	_main._close_modal(window)
+	_check("W: 日が進んだ印があると、自動更新される", _log_text().contains("Day 5"))
+	toggle.button_pressed = false
 	daily.record_day(6)
 	window._dirty = true
 	window._on_refresh_timer()
-	_check("W: 閉じている間は更新しない(印は立ったまま)", not _pane_text(0).contains("Day 6") and window._dirty)
+	_check("W: 閉じている間は更新しない(印は立ったまま)", not _log_text().contains("Day 6") and window._dirty)
 
 	# ---------- I: 探索との連携 ----------
 	print("--- I: 探索との連携 ---")
@@ -250,6 +250,12 @@ func _run() -> void:
 	_check("I: 日次の処理で、毎日の動きが記録される", opened_day > 0 and daily.day_count() == opened_day, "%d日目で会話、%d日分" % [opened_day, daily.day_count()])
 	_check("I: 会話が開いている間は、その日の動きは「探索中」", daily.days_newest_first()[0]["parties"][0]["kind"] == "explore", str(daily.days_newest_first()[0]["parties"][0]["kind"]))
 	_finish(dialogue)
+	# 戦闘ゲートの会話は、前置き→戦闘画面→結末の会話の順(2026-09-23)。戦闘画面(設定ON)を閉じ、結末の会話も読み切る
+	var battle_screen = root.get_node("BattleScreen")
+	for _i in 5:
+		if battle_screen.is_active:
+			battle_screen.close()
+		_finish(dialogue)
 	var after: Dictionary = daily.days_newest_first()[0]
 	_check("I: 会話が閉じて退避が反映された後は、その日の動きが「力を付けている」に記録し直される(日は増えない)", after["day"] == opened_day and after["parties"][0]["kind"] == "train" and daily.day_count() == opened_day, "%s %d日分" % [after["parties"][0]["kind"], daily.day_count()])
 

@@ -7,8 +7,8 @@ extends Node
 
 enum Importance { MINOR, MAJOR }
 ## 自パーティ(雇用パーティ)の行動か、世界全体(野良の旅人・月次収入・シナリオイベントなど、
-## 特定の雇用パーティに紐付かないもの)かの区別。ログウィンドウの掲示板枠と、左メニュー下の
-## プレビュー(main.gdの_refresh_board)が、行の文字色とアイコンを変えるのに使う(2026-09-23、
+## 特定の雇用パーティに紐付かないもの)かの区別。ログウィンドウの掲示板タブ(log_window.gdの
+## _add_board_line)が、行の文字色とアイコンを変えるのに使う(2026-09-23、
 ## 「自パーティのものか世界全体のものか色分けした方が良い」との指摘への対応)。
 enum Scope { PARTY, WORLD }
 const SCOPE_ICON := {Scope.PARTY: "🧑", Scope.WORLD: "🌍"}

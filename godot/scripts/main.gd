@@ -95,9 +95,7 @@ var month_bar: TimeBar
 var day_caption: Label
 var month_caption: Label
 var speed_buttons: Dictionary = {} # multiplier:float -> Button
-var board_preview_log: RichTextLabel # デスクトップは左メニュー内の常時プレビュー、タッチUIは右端のboard_overlay内
-var board_overlay: PanelContainer # タッチUI時だけ: 掲示板ボタンで出し入れする、右端の半透明の直近ログ
-var board_toggle_button: Button # タッチUI時の掲示板ボタン(overlayが出ている間は押された状態にする)
+var log_toggle_button: Button # マップ右上のフロートボタン。ログウィンドウ(log_window)を出し入れする
 var area_nav_panel: PanelContainer # マップ上部にフロートするエリア選択バー
 var left_scroll: ScrollContainer
 var left_menu: VBoxContainer
@@ -127,10 +125,13 @@ var _battle_result_kind: String = "" # "victory"/"defeat"/"retreat"/"retreat_bef
 var _battle_slot_index_by_npc: Dictionary = {} # npc_id -> battle_party_slotsの添字
 var _battle_timer: Timer
 const BATTLE_ROUND_DELAY_SEC := 0.45
-var next_month_button: Button
+var next_month_button: Button # 月末の集計待ちの間だけ、今日・今月のバー(time_bars_box)の位置に重ねて出す
+var time_bars_box: VBoxContainer
 var map_scroll: ScrollContainer
 var map_canvas: Control
 var _map_panning: bool = false
+var _map_press_pos := Vector2.ZERO # マップを押した位置(画面上)。離した時にほぼ動いていなければタップとみなす
+var _map_press_is_tap := false # 押してから、まだタップとみなせる範囲しか動いていない
 var _map_zoom: float = 1.0
 
 # 2本指のピンチでマップを拡大縮小するための状態(2026-09-19)。Android等のタッチ画面向け。
@@ -175,7 +176,8 @@ const MOBILE_MIN_EDGE_MARGIN := 24.0
 const LEFT_MENU_BUTTON_MARGIN_V := 4
 const LEFT_MENU_BOTTOM_MARGIN := 12.0 # 左メニューの最下のボタンの下に空ける余白
 const LEFT_MENU_RIGHT_MARGIN := 12 # 左メニューのボタンの右に空ける余白(マップとの間)
-const BOARD_OVERLAY_WIDTH := 380.0 # タッチUI時の掲示板ウィンドウの幅(表示上のpx)
+const LOG_WINDOW_WIDTH_TOUCH := 400.0 # ログウィンドウ(マップ右端に重ねる)の幅(表示上のpx)
+const LOG_WINDOW_WIDTH_DESKTOP := 460.0
 
 const BACK_EXIT_WINDOW_MSEC := 2000 # 戻るキーを続けて押して終了するまでの猶予(何も開いていない時)
 var _last_back_press_msec: int = -100000
@@ -204,7 +206,7 @@ var settings_bgm_slider: HSlider
 var settings_bgm_mute_check: CheckBox
 var settings_battle_screen_check: CheckBox
 
-var log_window: LogWindow # ログウィンドウ: 掲示板・行動記録・毎日の動きから2つを選んで並べる(旧「掲示板」「行動ログ」を統合)
+var log_window: LogWindow # ログウィンドウ: マップ右端に重ねる。毎日の動き・行動ログ・掲示板をタブで切り替える
 
 var slot_panel: PanelContainer
 var slot_list: ItemList
@@ -253,7 +255,6 @@ func _ready() -> void:
 	_build_node_styles()
 	_build_ui()
 	_build_dialogue_ui()
-	_build_log_window()
 	_build_slot_ui()
 	_build_hire_ui()
 	_build_npc_ui()
@@ -347,8 +348,8 @@ func _on_go_back_requested() -> void:
 	if modal_blocker.visible:
 		_close_any_modal()
 		return
-	if board_overlay != null and board_overlay.visible:
-		_set_board_overlay_visible(false)
+	if log_window.visible:
+		_set_log_window_visible(false)
 		return
 	if dialogue_panel.visible:
 		return # 会話中は誤って終了しないよう何もしない(「次へ」で進める)
@@ -764,10 +765,24 @@ func _build_ui() -> void:
 	time_label.modulate = Color(1, 1, 1, 0.7)
 	left.add_child(time_label)
 
+	# 今日・今月のバーと「次の月へ」ボタンは、同じ場所に重ねて置き、月末の集計待ちの間だけボタンを見せる
+	# (2026-09-24。以前はボタンをバーの下に1行足していて、月末のたびにメニューが伸び縮みしていた)。
+	# MarginContainerは子を重ねて並べるので、高さは両者の大きい方で固定になる。
+	var time_stack := MarginContainer.new()
+	left.add_child(time_stack)
+	time_bars_box = VBoxContainer.new()
+	time_bars_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	time_stack.add_child(time_bars_box)
 	day_bar = TimeBar.new()
-	day_caption = _add_time_bar_row(left, day_bar, 10.0)
+	day_caption = _add_time_bar_row(time_bars_box, day_bar, 10.0)
 	month_bar = TimeBar.new()
-	month_caption = _add_time_bar_row(left, month_bar, 6.0)
+	month_caption = _add_time_bar_row(time_bars_box, month_bar, 6.0)
+	next_month_button = Button.new()
+	next_month_button.text = "次の月へ ▶"
+	next_month_button.pressed.connect(_on_next_month_pressed)
+	_apply_primary_button_style(next_month_button)
+	time_stack.add_child(next_month_button)
+	_set_next_month_shown(false)
 
 	# 順送りクリックで切り替えるのではなく、全段階を横に並べて1クリックで直接選べるようにする。
 	# ButtonGroupで排他選択(ラジオボタン相当)にし、現在の倍速が一目で分かるようにする。
@@ -785,12 +800,6 @@ func _build_ui() -> void:
 		btn.pressed.connect(_on_speed_button_pressed.bind(speed))
 		speed_row.add_child(btn)
 		speed_buttons[speed] = btn
-
-	next_month_button = Button.new()
-	next_month_button.text = "次の月へ"
-	next_month_button.pressed.connect(_on_next_month_pressed)
-	next_month_button.visible = false
-	left.add_child(next_month_button)
 
 	# 資金/時間以外の各機能は、ボタンが増えて240px幅のサイドバーに収まりきらなくなったため、
 	# ボタン1つで開くポップアップパネルにまとめてある(行動ログ・セーブスロットと同じパターン)。
@@ -814,26 +823,10 @@ func _build_ui() -> void:
 	shop_button.pressed.connect(_on_open_shop_pressed)
 	left.add_child(shop_button)
 
-	var log_button := Button.new()
-	log_button.text = "📜 ログ" # 掲示板・行動記録・毎日の動きから2つを選んで並べる(LogWindow)
-	log_button.pressed.connect(_on_open_log_pressed)
-	left.add_child(log_button)
-
 	var slot_button := Button.new()
 	slot_button.text = "💾 セーブ/ロード"
 	slot_button.pressed.connect(_on_open_slots_pressed)
 	left.add_child(slot_button)
-
-	if _touch_ui:
-		# タッチUIでは、メニューに直近ログを常時置く余裕が無いので、ボタンで右端の半透明ウィンドウを
-		# 出し入れする(_build_board_overlay)。開いている間はボタンが押された状態になる。
-		# (デスクトップは、左メニュー内の常時プレビューがあり、全文は「ログ」ウィンドウで見る)
-		var board_button := Button.new()
-		board_button.text = "📰 掲示板"
-		board_button.toggle_mode = true
-		board_button.toggled.connect(_set_board_overlay_visible)
-		board_toggle_button = board_button
-		left.add_child(board_button)
 
 	# 設定(BGM音量/ミュート、イベント戦闘の戦闘画面ON-OFF。2026-09-22)。ライセンスと同じく日常的には
 	# 使わないので、その直上に置く。
@@ -855,28 +848,6 @@ func _build_ui() -> void:
 		bottom_spacer.custom_minimum_size = Vector2(0, LEFT_MENU_BOTTOM_MARGIN)
 		bottom_spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		left.add_child(bottom_spacer)
-
-	if not _touch_ui:
-		# ボタン直下に直近10件(全体フィード固定)だけ流す小さなプレビュー。全文・スレッド切替は
-		# 「ログ」ウィンドウ(log_window)の掲示板の枠で行う。背景を透かさず不透明気味にして、
-		# 他の要素の上に浮いて見えないようにする。
-		var board_preview_panel := PanelContainer.new()
-		var board_preview_style := StyleBoxFlat.new()
-		board_preview_style.bg_color = Color(0.05, 0.05, 0.07, 0.95)
-		board_preview_style.set_border_width_all(1)
-		board_preview_style.border_color = Color(1, 1, 1, 0.15)
-		board_preview_style.content_margin_left = 4
-		board_preview_style.content_margin_right = 4
-		board_preview_style.content_margin_top = 4
-		board_preview_style.content_margin_bottom = 4
-		board_preview_panel.add_theme_stylebox_override("panel", board_preview_style)
-		left.add_child(board_preview_panel)
-
-		board_preview_log = RichTextLabel.new()
-		board_preview_log.custom_minimum_size = Vector2(0, 150)
-		board_preview_log.scroll_active = true
-		board_preview_log.add_theme_font_size_override("normal_font_size", 11)
-		board_preview_panel.add_child(board_preview_log)
 
 	# マップが縦に長くエリア間の移動が大変なため、マップ領域(map_area)を作って
 	# map_scrollを全面に敷き、その上にエリア選択ボタンをフロートで重ねる。
@@ -913,8 +884,7 @@ func _build_ui() -> void:
 	map_area.add_child(area_nav_panel)
 
 	_rebuild_area_nav()
-	if _touch_ui:
-		_build_board_overlay(map_area) # エリアバーの後に追加して、その手前に重ねる
+	_build_log_window(map_area) # エリアバーの後に追加して、その手前に重ねる
 
 ## エリア選択バーを、今のWorldMap.areasから(作り直して)組み立てる。別のシナリオ(別の世界)へ切り替えると
 ## エリアの顔ぶれが変わるため、_refresh_all()が_built_world_versionとの違いを見つけて呼び直す。
@@ -986,7 +956,7 @@ func _on_area_step_pressed(direction: int) -> void:
 ## 雇用/探索者管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
 		p.visible = (p == panel)
 	modal_blocker.visible = true
 	move_child(modal_blocker, get_child_count() - 1)
@@ -1215,7 +1185,6 @@ func _on_dialogue_finished(_outcome: String) -> void:
 	dialogue_panel.visible = false
 	_set_portrait_slot_image(left_slot, "") # 次の会話に前の話者の顔が残らないようにする
 	_set_portrait_slot_image(right_slot, "")
-	_refresh_board()
 	_refresh_map()
 	# 導入会話・後編("intro_part2")の予約消化。他の会話(フロア発見時のVN等)
 	# が終わるたびにここでも確認する(下のコメント参照)。
@@ -1253,25 +1222,68 @@ func _close_any_modal() -> void:
 	# 時間が止まったままになる)。
 	if battle_panel.visible:
 		BattleScreen.close()
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, log_window, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
 		p.visible = false
 	modal_blocker.visible = false
 
-## ログウィンドウ(LogWindow): 掲示板・イベント(旧・行動ログ)・毎日の動きから2つを選んで、左右に並べる。
-## 以前の「掲示板」「行動ログ」の2つのウィンドウを統合した(発生源がほぼ同じで、似ていたため)。
-func _build_log_window() -> void:
+## ログウィンドウ(LogWindow): 毎日の動き・行動ログ・掲示板をタブで切り替える。マップの右端に半透明で重ね、
+## マップ右上のフロートボタン(log_toggle_button)で出し入れする(2026-09-24)。モーダルではないので、
+## 開いたままマップを操作できる。以前は、画面中央のモーダルの「ログ」(2種を左右に並べる)と、タッチUIの
+## 右端の「掲示板」ウィンドウ(直近10件)が別々にあり、同じ掲示板を見る入口が重複していた。
+func _build_log_window(map_area: Control) -> void:
+	log_toggle_button = Button.new()
+	log_toggle_button.text = "📜 ログ"
+	log_toggle_button.toggle_mode = true
+	log_toggle_button.tooltip_text = "毎日の動き・行動ログ・掲示板"
+	log_toggle_button.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	log_toggle_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	log_toggle_button.toggled.connect(_set_log_window_visible)
+	map_area.add_child(log_toggle_button)
+
 	log_window = LogWindow.new()
-	log_window.close_requested.connect(func(): _close_modal(log_window))
-	add_child(log_window)
+	log_window.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
+	log_window.offset_left = -(LOG_WINDOW_WIDTH_TOUCH if _touch_ui else LOG_WINDOW_WIDTH_DESKTOP)
+	log_window.offset_right = -4
+	log_window.offset_bottom = -8
+	if _touch_ui:
+		log_window.theme = _compact_button_theme() # 見出しの小さなボタン用
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.07, 0.85)
+	style.border_color = Color(1, 1, 1, 0.3)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(6)
+	log_window.add_theme_stylebox_override("panel", style)
+	log_window.close_requested.connect(_set_log_window_visible.bind(false))
+	map_area.add_child(log_window)
 
-func _on_open_log_pressed() -> void:
-	_open_modal(log_window)
-	log_window.refresh()
+	# エリア選択バーの高さ(文字の設定・画面幅で変わる)に合わせて、ボタンとウィンドウをその下に置く
+	area_nav_panel.resized.connect(_place_log_window)
+	log_toggle_button.minimum_size_changed.connect(_place_log_window)
+	_place_log_window.call_deferred()
 
-## 掲示板のスレッド(""なら全体フィード)を、ログウィンドウで開く(掲示板の枠が無ければ、右の枠を掲示板にする)。
+func _place_log_window() -> void:
+	var top := area_nav_panel.size.y + 4
+	var button_size := log_toggle_button.get_combined_minimum_size()
+	log_toggle_button.offset_top = top
+	log_toggle_button.offset_bottom = top + button_size.y
+	log_toggle_button.offset_right = -4
+	log_toggle_button.offset_left = -4 - button_size.x
+	log_window.offset_top = log_toggle_button.offset_bottom + 4
+
+func _set_log_window_visible(shown: bool) -> void:
+	log_window.visible = shown
+	log_toggle_button.set_pressed_no_signal(shown) # ✕や戻るで閉じた時も、ボタンの押された状態を戻す
+	if shown:
+		log_window.refresh()
+
+## 掲示板のスレッド(""なら全体フィード)を、ログウィンドウの掲示板タブで開く。ポップアップ(セクションの
+## 割り当て画面など)から開いた場合は、ポップアップを閉じる(ログウィンドウはマップの上に出るため)。
 func _open_board_log(thread_id: String) -> void:
+	if modal_blocker.visible and not battle_panel.visible:
+		_close_any_modal()
 	log_window.show_board_thread(thread_id)
-	_open_modal(log_window)
+	_set_log_window_visible(true)
 
 ## ライセンス画面。文書の一覧と読み込みはLicenseInfo(license_info.gd)にあり、ここは表示だけを担当する。
 ## 音楽などの素材を追加する時も、この関数は変更不要(LicenseInfo.ENTRIESに足す)。
@@ -1367,62 +1379,6 @@ func _on_open_settings_pressed() -> void:
 	settings_bgm_mute_check.set_pressed_no_signal(Settings.bgm_muted)
 	settings_battle_screen_check.set_pressed_no_signal(Settings.show_battle_screen)
 	_open_modal(settings_panel)
-
-## タッチUIの掲示板ウィンドウ(右端に重ねる半透明の直近10件、全体フィード固定)。デスクトップの左メニュー内の
-## 常時プレビューの代わりで、掲示板ボタンで出し入れする(_set_board_overlay_visible)。全文・スレッド切替は、
-## 「全文」で「ログ」ウィンドウ(掲示板の枠)を開く。マップの上に重ねるので、背景を半透明にしてマップが透ける。
-func _build_board_overlay(map_area: Control) -> void:
-	board_overlay = PanelContainer.new()
-	board_overlay.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
-	board_overlay.offset_left = -BOARD_OVERLAY_WIDTH
-	board_overlay.visible = false
-	board_overlay.theme = _compact_button_theme() # 見出しの小さなボタン用
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.05, 0.07, 0.72)
-	style.border_color = Color(1, 1, 1, 0.3)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(6)
-	board_overlay.add_theme_stylebox_override("panel", style)
-	map_area.add_child(board_overlay)
-
-	var col := VBoxContainer.new()
-	board_overlay.add_child(col)
-
-	var header := HBoxContainer.new()
-	col.add_child(header)
-
-	var title := Label.new()
-	title.text = "掲示板"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
-
-	var full_button := Button.new()
-	full_button.text = "全文"
-	full_button.pressed.connect(func():
-		_set_board_overlay_visible(false)
-		_open_board_log(""))
-	header.add_child(full_button)
-
-	var close_button := Button.new()
-	close_button.text = "閉じる"
-	close_button.pressed.connect(_set_board_overlay_visible.bind(false))
-	header.add_child(close_button)
-
-	board_preview_log = RichTextLabel.new()
-	board_preview_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	board_preview_log.scroll_following = true # 古い順に並ぶので、はみ出す時は最新が見えるようにする
-	board_preview_log.add_theme_font_size_override("normal_font_size", 13)
-	col.add_child(board_preview_log)
-
-func _set_board_overlay_visible(shown: bool) -> void:
-	board_overlay.visible = shown
-	board_toggle_button.set_pressed_no_signal(shown) # ×や「全文」で閉じた時も、ボタンの押された状態を戻す
-	if shown:
-		# エリア選択バーの下から画面の下端まで
-		board_overlay.offset_top = area_nav_panel.size.y + 4
-		board_overlay.offset_bottom = -8
-		_refresh_board()
 
 ## ボタンの内側余白(上下)を小さくしたテーマ。共通テーマのボタンのスタイルを複製して、余白だけ変える。
 ## 左メニューや掲示板ウィンドウなど、縦の余裕が無い場所のControlに設定して使う。
@@ -4973,7 +4929,13 @@ func _on_upgrade_facility_pressed() -> void:
 
 func _on_next_month_pressed() -> void:
 	TimeSystem.confirm_and_resume()
-	next_month_button.visible = false
+	_set_next_month_shown(false)
+
+## 月末の集計待ちの間だけ、今日・今月のバーの位置に「次の月へ」ボタンを出す(バーは見えなくするだけで、
+## 場所は取ったまま。メニューの高さを変えないため)。
+func _set_next_month_shown(shown: bool) -> void:
+	next_month_button.visible = shown
+	time_bars_box.modulate.a = 0.0 if shown else 1.0
 
 func _on_speed_button_pressed(speed: float) -> void:
 	TimeSystem.set_speed(speed)
@@ -4983,7 +4945,6 @@ func _on_speed_changed(multiplier: float) -> void:
 		speed_buttons[multiplier].button_pressed = true
 
 func _on_day_advanced(_day: int) -> void:
-	_refresh_board()
 	_follow_parties_to_new_area() # 再描画の前に、表示するエリアを決める
 	_refresh_map()
 	_refresh_roster()
@@ -4994,8 +4955,7 @@ func _on_day_advanced(_day: int) -> void:
 	SaveSystem.autosave()
 
 func _on_month_ended(_month: int) -> void:
-	next_month_button.visible = true
-	_refresh_board()
+	_set_next_month_shown(true)
 	_refresh_funds() # 月次収入(exploration.gdのEconomy.earn())はここで確定するので反映する
 
 func _refresh_all() -> void:
@@ -5005,7 +4965,6 @@ func _refresh_all() -> void:
 	_refresh_funds()
 	_refresh_candidates()
 	_refresh_roster()
-	_refresh_board()
 	_refresh_map()
 	_refresh_npc_detail()
 	_refresh_party_roster()
@@ -5015,7 +4974,7 @@ func _refresh_all() -> void:
 	# next_month_buttonは元々month_endedシグナル(その場で月末になった瞬間)でのみ表示していたため、
 	# 「一時停止した状態のままセーブ→再起動」すると、is_paused=trueなのにボタンだけ非表示で
 	# 再開する手段が無くなってしまう不具合があった。ロード直後の実状態にも合わせて同期する。
-	next_month_button.visible = TimeSystem.is_paused
+	_set_next_month_shown(TimeSystem.is_paused)
 
 func _refresh_facility_button() -> void:
 	var cost := Economy.facility_upgrade_cost()
@@ -5328,18 +5287,3 @@ func _npc_status_short(npc: Dictionary) -> String:
 			return "探索中"
 		_:
 			return "待機中"
-
-## 左メニュー下(タッチUIは右端のウィンドウ)のプレビュー。全文・スレッド切替は、ログウィンドウ(LogWindow)の掲示板の枠で見る。
-## 自パーティ/世界全体を、行頭のアイコンと文字色で見分けられるようにする(Board.Scope、2026-09-23。
-## ログウィンドウの掲示板枠(log_window.gdの_add_board_line)と同じ見た目)。
-func _refresh_board() -> void:
-	# プレビューは常に全体フィードの直近10件固定。タッチUIで閉じている間は作らない(開く時に作り直す)。
-	if board_preview_log.is_visible_in_tree():
-		board_preview_log.clear()
-		for entry in Board.recent(10):
-			var scope: int = int(entry.get("scope", Board.Scope.PARTY))
-			board_preview_log.add_text("[Day %d] %s " % [entry["day"], String(Board.SCOPE_ICON.get(scope, ""))])
-			board_preview_log.push_color(Board.SCOPE_COLOR.get(scope, Color.WHITE))
-			board_preview_log.add_text(entry["text"])
-			board_preview_log.pop()
-			board_preview_log.add_text("\n")
