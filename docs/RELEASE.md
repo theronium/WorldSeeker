@@ -1,7 +1,7 @@
 # リリース手順
 
 WorldSeeker の Windows 版と Android 版を GitHub Releases に出すための手順と、その仕組みをまとめた資料です。
-最初のリリースは `v0.1.0`(2026-09-24、Pre-release)。
+最初のリリースは `v0.1.0`(2026-09-24、Pre-release)。2つ目は `v0.2.0`(同日、Pre-release。試しビルドで確かめてからタグを打った)。
 
 ## 仕組みの全体像
 
@@ -103,9 +103,20 @@ BGM「森の旅」(OpenTracks)の規約は、「エンドユーザーが音源�
     /d/DevTools/godot-android/sdk/build-tools/<版>/apksigner.bat verify --print-certs WorldSeeker-*.apk
   ```
   SHA-256 が上の値と一致すること。BGM は `unzip -l <apk> | grep bgm` で `.mp3str` が入っていること。
-- **ダウンロードが途中で止まる時**: この PC の回線では `gh run download` が止まることがある。
+- **ダウンロードが途中で止まる時**: この PC の回線では `gh run download` が止まることがある(何もダウンロードされずに終わる)。
   Artifact の API(`/repos/theronium/WorldSeeker/actions/artifacts/<id>/zip`)が返すリダイレクト先の URL を、
-  `curl -C - --max-time 60` で繰り返し取得すると、途中から再開できる。
+  `curl -C - --max-time 60` で繰り返し取得すると、途中から再開できる。**`gh api -i` はリダイレクトを自動でたどって
+  中身を返してしまい、URL が取れない**ので、リダイレクト先は curl で取る(2026-09-24。1分に数MB程度しか出ないことがあり、
+  zip と APK で10分以上かかった)。Artifact の id は `gh api repos/theronium/WorldSeeker/actions/runs/<run id>/artifacts`。
+  ```
+  TOKEN=$(gh auth token)
+  for i in $(seq 1 30); do
+    url=$(curl -s -D - -o /dev/null -H "Authorization: Bearer $TOKEN" \
+      https://api.github.com/repos/theronium/WorldSeeker/actions/artifacts/<id>/zip | grep -i '^location:' | tr -d '\r' | cut -d' ' -f2)
+    curl -s -C - --max-time 60 -o out.zip "$url"
+    [ "$(stat -c %s out.zip)" -ge <size_in_bytes> ] && break
+  done
+  ```
 
 ## スマホの手元ビルドとの関係(注意)
 
