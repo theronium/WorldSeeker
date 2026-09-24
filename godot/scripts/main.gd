@@ -1914,6 +1914,22 @@ func _create_section_assign_row(party: Dictionary) -> Control:
 	sub_label.text = "現在: %s / 状態: %s / 戦力: %d" % [section_name, _party_status_text(party), Parties.power(party["id"])]
 	info.add_child(sub_label)
 
+	# 予測(2026-09-24、「セクションクリック時も予測ボタンを出して欲しい」)。パーティパネルの「予測」と同じ計算・文面で、
+	# このパーティをこのセクションに置いた場合の今月の見込みを、行の下に出す。
+	var forecast_label := Label.new()
+	forecast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	forecast_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45))
+	forecast_label.visible = false
+	info.add_child(forecast_label)
+
+	var forecast_button := Button.new()
+	forecast_button.text = "予測"
+	forecast_button.tooltip_text = "このパーティをここに割り当てた場合の、今月の予測報酬と撤退リスク"
+	forecast_button.pressed.connect(func():
+		forecast_label.text = _forecast_text(party["id"], _section_assign_target_id)
+		forecast_label.visible = true)
+	hbox.add_child(forecast_button)
+
 	var assign_button := Button.new()
 	assign_button.text = "現在地です" if is_current else "ここに割り当てる"
 	assign_button.disabled = is_current
@@ -3185,12 +3201,19 @@ func _on_forecast_pressed() -> void:
 	var section_id = selected_item.get_metadata(0)
 	if section_id == null:
 		return
-	var result := Exploration.forecast_section(_selected_party_id, section_id)
+	section_forecast_label.text = _forecast_text(_selected_party_id, section_id)
+
+## 予測の文面(パーティパネルの「予測」と、マップのセクション名から開く割り当て画面の「予測」で共通)。
+## 完全攻略済み(周回する)セクションは、合計に加えて、1周の日数・単価・月内の周回数も出す。
+func _forecast_text(party_id: int, section_id: String) -> String:
+	var result := Exploration.forecast_section(party_id, section_id)
+	var lap_note := ""
+	if int(result["lap_days"]) > 0:
+		lap_note = "(周回: 1周%d日で%d資金 × 約%.1f周)" % [result["lap_days"], result["lap_income"], result["laps"]]
 	if result["risk_node_name"] == "":
-		section_forecast_label.text = "予測報酬(1ヶ月): 約%d資金 / 撤退リスク: なし" % result["predicted_income"]
-	else:
-		section_forecast_label.text = "予測報酬(1ヶ月): 約%d資金(通常時は約%d資金) / 撤退リスク: 約%d%%(「%s」で撤退の恐れ)" % [
-			result["predicted_income"], result["base_income"], roundi(result["retreat_probability"] * 100), result["risk_node_name"]]
+		return "予測報酬(1ヶ月): 約%d資金%s / 撤退リスク: なし" % [result["predicted_income"], lap_note]
+	return "予測報酬(1ヶ月): 約%d資金(通常時は約%d資金)%s / 撤退リスク: 約%d%%(「%s」で撤退の恐れ)" % [
+		result["predicted_income"], result["base_income"], lap_note, roundi(result["retreat_probability"] * 100), result["risk_node_name"]]
 
 ## 武器防具屋パネル(design.md 6.2節)。選んだ探索者のジョブに応じた武器種別・防具カテゴリの
 ## 材質等級ボタンを並べ、購入するとその場で装備が切り替わる(既に装備中の等級はボタンを無効化)。

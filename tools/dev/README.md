@@ -37,6 +37,7 @@ APPDATA=<空の隔離ディレクトリ> "$GODOT_EXE" --headless --path godot --
 | `sim_bgm.gd` | BGM(`main.gd`の`_build_bgm()`、design.md 10章)と設定画面(`Settings`autoload、`_build_settings_ui`)の確認: 起動時の自動再生・ループ・初期音量がSettings.bgm_volumeから計算した値であること、音量スライダー/ミュートを変えると即座に反映されること、設定画面のUIがSettingsの値と一致し操作するとSettingsに反映されること、`user://settings.cfg`への保存・読み込み。**`--headless`(ダミー音声ドライバ)だと、終了時に`ERROR: 1 resources still in use at exit`が出ることがあるが、exit codeは0のままで実ウィンドウ起動では出ない後片付け表示なので無視してよい** |
 | `sim_retreat_save_roundtrip.gd` | 退避状態のSQLiteのセーブ往復 |
 | `sim_retreat_before_fight.gd` | 勝ち目が無く戦わずに撤退した時、会話の結末が失敗の台本(「深手を負って撤退した」など)ではなく、戦わずに引き返した旨の1行になること。実際に戦って負けた時は、従来どおり失敗の台本(2026-09-24) |
+| `sim_forecast_lap.gd` | 「予測」(`Exploration.forecast_section`、`main.gd`の`_forecast_text`)が、完全攻略済み(周回する)セクションで「1周の単価×月内の周回数」になり、文面に1周の日数・単価・周回数が出ること、実際に30日動かした周回数と1周以内で一致すること、未攻略のセクションは従来どおり(2026-09-24) |
 | `sim_map_tap.gd` | マップのタップ(`main.gd`の`_on_map_canvas_gui_input`/`_on_map_tap`、2026-09-24): フロアの箱・鍵アイコンは1回のタップで開く、少しのずれは許す、ドラッグ(パン)では開かない、セクション枠の何も無い所は1回では何もせず、ダブルタップで掲示板スレッド。タッチUIは末尾に`-- --touch-ui` |
 | `survey_events.gd` | イベント会話のあるフロアの、ゲート種別ごとの集計 |
 | `sim_scenario_events.gd` | シナリオ・イベントの仕組み全体(docs/scenario_editor.md): カスタムシナリオでの新規開始と暦の起点、条件イベント(日数・フラグ)、効果(資金・フラグ・フロア開放)、ゲート結果の会話、セーブ往復、別シナリオへの切替と、編集後も古いスロットが遊び始めた時点のままか、旧形式スキーマの読込、画像の読込、読み込み時間 |

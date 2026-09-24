@@ -741,11 +741,25 @@ func _post_retreat_help(party: Dictionary, node_id: String, current_day: int, re
 ## 月内に行き着く確率分だけ予測報酬を割り引く(=撤退が先に来れば、その分の報酬は無いもの
 ## として扱う期待値化)。スキル/所持品/血筋のゲートで現状塞がれている先は、今月中に
 ## 抜けられる保証が無いため、この見積もりには含めない。
+##
+## 完全攻略済みのセクションは、月次収入の対象外で、代わりに1周(フロア数と同じ日数)ごとに周回収入が入る
+## (_process_lap)。その場合は、1周の単価(lap_income)×月内の周回数(laps = 30日÷1周の日数lap_days)を
+## base_incomeとする(2026-09-24、「予測がループ回数分を掛けていない」との指摘。以前は周回するセクションでも
+## 月次収入1回分の式で計算していた)。周回しない(未攻略の)セクションでは、lap_daysは0。
 func forecast_section(party_id: int, section_id: String) -> Dictionary:
 	var party := Parties.get_party(party_id)
 	if party.is_empty():
-		return {"base_income": 0, "predicted_income": 0, "retreat_probability": 0.0, "risk_node_name": ""}
+		return {"base_income": 0, "predicted_income": 0, "retreat_probability": 0.0, "risk_node_name": "",
+			"lap_days": 0, "lap_income": 0, "laps": 0.0}
 	var base_income: int = Difficulty.reward(MONTHLY_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id), Difficulty.of_party(party))
+	var lap_days := 0
+	var lap_income := 0
+	var laps := 0.0
+	if WorldMap.is_section_cleared(section_id):
+		lap_days = max(1, WorldMap.nodes_in_section(section_id).size()) # _process_lapと同じ
+		lap_income = Difficulty.reward(LAP_INCOME_PER_POINT * WorldMap.section_multiplier(section_id) * WorldMap.passed_count_in_section(section_id), Difficulty.of_party(party))
+		laps = float(TimeSystem.DAYS_PER_MONTH) / lap_days
+		base_income = int(round(lap_income * laps))
 	var horizon := float(TimeSystem.DAYS_PER_MONTH)
 	var scout_id := _best_member_for_skill(party, SkillTypes.Skill.PERCEPTION)
 	var chance := discovery_chance_for_member(scout_id) if scout_id != -1 else DISCOVERY_BASE_CHANCE
@@ -831,6 +845,9 @@ func forecast_section(party_id: int, section_id: String) -> Dictionary:
 		"predicted_income": int(round(base_income * (1.0 - retreat_probability))),
 		"retreat_probability": retreat_probability,
 		"risk_node_name": risk_node_name,
+		"lap_days": lap_days,
+		"lap_income": lap_income,
+		"laps": laps,
 	}
 
 ## design.md 6.2節「推奨戦力」: セクション内で最も敵戦闘力(enemy_power)が高い戦闘ゲートの値。
