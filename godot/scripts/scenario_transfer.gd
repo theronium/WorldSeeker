@@ -37,6 +37,7 @@ const CONDITION_KEYS := {
 const EFFECT_KEYS := {
 	"set_flag": [["flag", "string"]], "funds": [["amount", "number"]],
 	"grant_item": [["item", "string"]], "open_floor": [["floor", "string"]],
+	"join": [["name", "string"], ["bloodline", "string"], ["job", "string"]],
 }
 
 # --- 取り込み ---

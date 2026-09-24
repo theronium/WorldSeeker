@@ -198,5 +198,15 @@
     "name": "謎かけの妖精",
     "image": "npc_20",
     "side": "left"
+  },
+  {
+    "name": "イザベラ",
+    "image": "char_40",
+    "side": "left"
+  },
+  {
+    "name": "リュシアン",
+    "image": "char_26",
+    "side": "left"
   }
 ]

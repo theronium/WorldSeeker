@@ -59,7 +59,7 @@ func _phase1() -> void:
 	_main._on_scenario_import_file_selected(DIR + "/transfer_one.zip")
 	var text: String = _main.scenario_import_label.text
 	_check("確認画面: 出る", _main.scenario_import_confirm.visible)
-	_check("確認画面: 名前・ID・数・作者・説明が出る", text.contains("持ち込み試験") and text.contains("transfer_one") and text.contains("フロア194") and text.contains("画像1枚") and text.contains("試験者") and text.contains("取り込みの確認用"), text)
+	_check("確認画面: 名前・ID・数・作者・説明が出る", text.contains("持ち込み試験") and text.contains("transfer_one") and text.contains("フロア196") and text.contains("画像1枚") and text.contains("試験者") and text.contains("取り込みの確認用"), text)
 	_check("確認画面: 新しいIDなので、ボタンは「取り込む」", _main.scenario_import_confirm.ok_button_text == "取り込む")
 	_main.scenario_import_confirm.hide()
 	_main._on_scenario_import_confirmed()

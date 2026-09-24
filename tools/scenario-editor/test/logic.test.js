@@ -135,6 +135,43 @@ test('検証: 問題のあるイベントを見つける', () => {
   assert.deepStrictEqual(L.validateEvent(sys, ctx([sys])).filter((i) => i.level === 'error'), []);
 });
 
+test('効果「探索者が加入する」: 説明文と検証(名前・職業・肖像・技能)', () => {
+  const ctx = (evs) => ({ idx, events: evs, library: new Set(['char_40', 'npc_01']), scenarioImages: new Set() });
+  const ev = L.newGateEvent(idx, 'cave', 'pass', new Set());
+  const join = { on: 'pass', type: 'join', name: 'イザベラ', bloodline: '旧家の血筋', job: 'SAGE', portrait: 'char_40', skills: { WISDOM: 4 } };
+  ev.effects.push(join);
+  assert.strictEqual(L.describeEffect(join, idx), '探索者「イザベラ」(旧家の血筋・賢者)が加入する');
+  const issues = () => L.validateEvent(ev, ctx([ev])).map((i) => `${i.level}:${i.msg}`);
+  assert.deepStrictEqual(issues().filter((m) => m.includes('加入')), []);
+  join.name = ' ';
+  assert.ok(issues().some((m) => m.startsWith('error:') && m.includes('名前が空')));
+  join.name = 'イザベラ';
+  join.job = 'KNIGHT';
+  assert.ok(issues().some((m) => m.startsWith('error:') && m.includes('職業')));
+  join.job = 'SAGE';
+  join.portrait = 'npc_01'; // 探索者の画像ではない
+  assert.ok(issues().some((m) => m.startsWith('warn:') && m.includes('肖像')));
+  join.portrait = 'char_40';
+  join.skills = { MAGIC: 3, COMBAT: -1 };
+  assert.ok(issues().some((m) => m.includes('不明なもの')));
+  assert.ok(issues().some((m) => m.includes('0以上の整数')));
+  assert.ok(L.EFFECT_TYPES.some((t) => t.type === 'join'));
+});
+
+test('デフォルトシナリオ: 血筋キャラの加入イベント(王都の旧家の屋敷→貴族街の離宮の隠れ家)', () => {
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const manor = byId.get('floor_old_family_manor_pass');
+  const villa = byId.get('floor_hidden_villa_pass');
+  assert.ok(manor && villa);
+  assert.strictEqual(idx.floors.get('old_family_manor').section, 'capital_district');
+  assert.strictEqual(idx.floors.get('hidden_villa').section, 'noble_quarter');
+  const joinOf = (ev) => ev.effects.find((e) => e.type === 'join');
+  assert.strictEqual(joinOf(manor).bloodline, '旧家の血筋'); // 貴族街の門(旧家の血筋)を開ける
+  assert.strictEqual(joinOf(villa).bloodline, '王家の落胤'); // 国境の関所(王家の落胤)を開ける
+  assert.strictEqual(idx.floors.get('noble_gate').gate.value, '旧家の血筋');
+  assert.strictEqual(idx.floors.get('border_checkpoint').gate.value, '王家の落胤');
+});
+
 test('雛形: 新しいイベントは検証を通る(エラー無し)', () => {
   const mk = [L.newGateEvent(idx, 'cave', 'pass', new Set()), L.newGateEvent(idx, 'cave', 'fail', new Set()), L.newConditionEvent('t', new Set()), L.newSystemEvent('retreat', new Set())];
   const c = { idx, events: mk, library: new Set(), scenarioImages: new Set() };

@@ -2,6 +2,9 @@ extends Node
 # 募集(候補提示)から雇用までのフロー。
 
 const BLOODLINES := ["平民", "旧家の血筋", "森人の血", "王家の落胤"]
+## 雇用候補の血筋の出やすさ(合計100)。旧家の血筋と王家の落胤は、ごく稀にしか出ない(2026-09-24。以前は4種が等確率で、
+## 候補の4人に1人が王家の落胤だった)。主な入手手段は、シナリオのイベントでの加入(効果「探索者が加入する」)。
+const BLOODLINE_WEIGHTS := {"平民": 71, "森人の血": 25, "旧家の血筋": 3, "王家の落胤": 1}
 
 var current_candidates: Array = []
 
@@ -19,7 +22,7 @@ func _generate_candidates(count: int) -> Array:
 		var skills := {}
 		for skill in SkillTypes.all_skills():
 			skills[skill] = randi_range(0, 2) + int(quality * 3)
-		var bloodline: String = BLOODLINES[randi() % BLOODLINES.size()]
+		var bloodline := _roll_bloodline()
 		var job: int = jobs[randi() % jobs.size()]
 		candidates.append({
 			"name": NameGenerator.generate(bloodline),
@@ -31,6 +34,18 @@ func _generate_candidates(count: int) -> Array:
 			"cost": Economy.hire_cost(quality),
 		})
 	return candidates
+
+## BLOODLINE_WEIGHTSの重みで、血筋を1つ選ぶ。
+static func _roll_bloodline() -> String:
+	var total := 0
+	for weight in BLOODLINE_WEIGHTS.values():
+		total += int(weight)
+	var roll := randi() % total
+	for bloodline in BLOODLINES:
+		roll -= int(BLOODLINE_WEIGHTS.get(bloodline, 0))
+		if roll < 0:
+			return bloodline
+	return BLOODLINES[0]
 
 func hire_candidate(index: int) -> int:
 	if index < 0 or index >= current_candidates.size():

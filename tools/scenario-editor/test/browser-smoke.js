@@ -85,7 +85,7 @@ async function main() {
     await send('Page.navigate', { url: `http://127.0.0.1:${appPort}/` });
 
     check('起動: イベント一覧が出る', await waitFor(`document.querySelectorAll('.list-item').length > 100`));
-    check('起動: 一覧の総数(170本)', (await evaluate(`document.querySelector('.list-panel .muted').textContent`)).includes('170 / 170'));
+    check('起動: 一覧の総数(172本)', (await evaluate(`document.querySelector('.list-panel .muted').textContent`)).includes('172 / 172'));
     check('起動: シナリオ検証が終わっている(エラー0)', (await evaluate(`document.getElementById('issue-count').textContent`)).startsWith('✓') || (await evaluate(`document.getElementById('issue-count').className`)) !== 'has-error');
 
     // 古い祠(突破)を開く
@@ -149,7 +149,7 @@ async function main() {
 
     // 登場人物タブ・マップタブ
     await click('#tabs button', '登場人物');
-    check('登場人物タブ: 40人が並ぶ', await waitFor(`document.querySelectorAll('.cast-row').length === 40`));
+    check('登場人物タブ: 42人が並ぶ', await waitFor(`document.querySelectorAll('.cast-row').length === 42`));
     await shot('05_cast');
     await click('#tabs button', 'マップ');
     check('マップタブ: エリア9・セクション39がツリーに並ぶ', await waitFor(`document.querySelectorAll('.tree-row.depth0:not(.items-row)').length === 9 && document.querySelectorAll('.tree-row.depth1').length === 39`));
@@ -273,7 +273,7 @@ async function main() {
     await click('.modal-buttons button', '破棄して進む');
     check('新規シナリオ: カスタムとして作られ、開く', await waitFor(`document.querySelector('.source-badge.custom') !== null`));
     check('新規シナリオ: フォルダができる', fs.existsSync(path.join(config.customRoot, 'smoke_test', 'scenario.json')));
-    check('新規シナリオ: 元(デフォルト)のコピー(先に足した1本を含む171本)', (await evaluate(`document.querySelector('.list-panel .muted').textContent`)).includes('171'));
+    check('新規シナリオ: 元(デフォルト)のコピー(先に足した1本を含む173本)', (await evaluate(`document.querySelector('.list-panel .muted').textContent`)).includes('173'));
 
     // zipの書き出しと取り込み(スマホへの持ち込み。docs/scenario_editor.md)
     const exportInfo = await evaluate(`(async () => { const r = await fetch('/api/scenarios/default/default/export'); return r.status + ':' + r.headers.get('content-type') + ':' + (await r.arrayBuffer()).byteLength; })()`);

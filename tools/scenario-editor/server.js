@@ -259,7 +259,7 @@ function parseJsonEntry(entry) {
 }
 
 const CONDITION_KEYS = { day_min: [['day', 'number']], flag: [['flag', 'string']], floor_found: [['floor', 'string']], floor_passed: [['floor', 'string']], section_entered: [['section', 'string']], area_entered: [['area', 'string']] };
-const EFFECT_KEYS = { set_flag: [['flag', 'string']], funds: [['amount', 'number']], grant_item: [['item', 'string']], open_floor: [['floor', 'string']] };
+const EFFECT_KEYS = { set_flag: [['flag', 'string']], funds: [['amount', 'number']], grant_item: [['item', 'string']], open_floor: [['floor', 'string']], join: [['name', 'string'], ['bloodline', 'string'], ['job', 'string']] };
 
 // 取り込むイベントの検査。ゲーム(ScenarioEvents)が、種類ごとの決まったキーを、存在を前提に読む(無いと発生の時にエラーになる)
 function validateEventDeep(event, fileId) {

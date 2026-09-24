@@ -44,7 +44,7 @@ test('一覧: デフォルトが出る', async () => {
   const { status, data } = await api('GET', '/api/scenarios');
   assert.strictEqual(status, 200);
   const d = data.find((s) => s.id === 'default');
-  assert.ok(d && d.source === 'default' && d.eventCount === 170, JSON.stringify(d));
+  assert.ok(d && d.source === 'default' && d.eventCount === 172, JSON.stringify(d));
 });
 
 test('カスタムをデフォルトからコピーして作り、イベントを保存・削除できる', async () => {
@@ -53,8 +53,8 @@ test('カスタムをデフォルトからコピーして作り、イベント�
   r = await api('GET', '/api/scenarios/custom/my_story');
   assert.strictEqual(r.data.meta.name, '私の物語');
   assert.strictEqual(r.data.meta.id, 'my_story');
-  assert.strictEqual(r.data.events.length, 170);
-  assert.strictEqual(r.data.world.nodes.length, 194);
+  assert.strictEqual(r.data.events.length, 172);
+  assert.strictEqual(r.data.world.nodes.length, 196);
   assert.deepStrictEqual(r.data.errors, []);
 
   const ev = { id: 'my_event', title: 'テスト', trigger: { type: 'conditions' }, conditions: [], repeat: false, priority: 0, kind: '', script: [{ side: 'none', name: '', text: 'やあ', outcome: 'ok' }], effects: [] };
@@ -63,7 +63,7 @@ test('カスタムをデフォルトからコピーして作り、イベント�
   const onDisk = fs.readFileSync(path.join(config.customRoot, 'my_story', 'events', 'my_event.json'), 'utf8');
   assert.strictEqual(onDisk, JSON.stringify(ev, null, 2) + '\n');
   r = await api('GET', '/api/scenarios/custom/my_story');
-  assert.strictEqual(r.data.events.length, 171);
+  assert.strictEqual(r.data.events.length, 173);
 
   r = await api('DELETE', '/api/scenarios/custom/my_story/events/my_event');
   assert.strictEqual(r.status, 200);
@@ -71,7 +71,7 @@ test('カスタムをデフォルトからコピーして作り、イベント�
   assert.strictEqual(r.status, 404);
 
   // デフォルトのシナリオには影響しない
-  assert.strictEqual((await api('GET', '/api/scenarios/default/default')).data.events.length, 170);
+  assert.strictEqual((await api('GET', '/api/scenarios/default/default')).data.events.length, 172);
 });
 
 test('登場人物表とメタ情報の保存', async () => {
@@ -156,7 +156,7 @@ test('シナリオのzip: 書き出し→削除→取り込みで元どおりに
   const files = readZip(exported.buffer);
   const names = files.map((f) => f.name);
   assert.ok(['manifest.json', 'scenario.json', 'world.json', 'cast.json'].every((n) => names.includes(n)), names.slice(0, 6).join(','));
-  assert.strictEqual(names.filter((n) => n.startsWith('events/')).length, 170);
+  assert.strictEqual(names.filter((n) => n.startsWith('events/')).length, 172);
   const manifest = JSON.parse(files.find((f) => f.name === 'manifest.json').data.toString('utf8'));
   assert.strictEqual(manifest.format, 'worldseeker-scenario');
   assert.strictEqual(manifest.id, 'my_story');
@@ -167,7 +167,7 @@ test('シナリオのzip: 書き出し→削除→取り込みで元どおりに
   assert.strictEqual(r.status, 200, JSON.stringify(r.data));
   assert.strictEqual(r.data.id, 'my_story');
   assert.strictEqual(r.data.overwritten, false);
-  assert.strictEqual(r.data.eventCount, 170);
+  assert.strictEqual(r.data.eventCount, 172);
   const after = await api('GET', '/api/scenarios/custom/my_story');
   assert.deepStrictEqual(after.data.world, before.data.world);
   assert.deepStrictEqual(after.data.events, before.data.events);

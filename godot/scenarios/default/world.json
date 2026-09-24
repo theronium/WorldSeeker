@@ -559,7 +559,8 @@
         "capital_gate",
         "guild_hall",
         "market_district",
-        "noble_gate"
+        "noble_gate",
+        "old_family_manor"
       ],
       "gate": {},
       "item_reward": "",
@@ -654,6 +655,17 @@
       "initially_passed": false
     },
     {
+      "id": "old_family_manor",
+      "name": "旧家の屋敷",
+      "section": "capital_district",
+      "connections": [
+        "capital_plaza"
+      ],
+      "gate": {},
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
       "id": "noble_gate",
       "name": "貴族街の門",
       "section": "noble_quarter",
@@ -702,7 +714,8 @@
       "section": "noble_quarter",
       "connections": [
         "manor_garden",
-        "bell_tower"
+        "bell_tower",
+        "hidden_villa"
       ],
       "gate": {},
       "item_reward": "",
@@ -721,6 +734,17 @@
         "skill": "DESTRUCTION",
         "min_level": 3
       },
+      "item_reward": "",
+      "initially_passed": false
+    },
+    {
+      "id": "hidden_villa",
+      "name": "離宮の隠れ家",
+      "section": "noble_quarter",
+      "connections": [
+        "cathedral_square"
+      ],
+      "gate": {},
       "item_reward": "",
       "initially_passed": false
     },

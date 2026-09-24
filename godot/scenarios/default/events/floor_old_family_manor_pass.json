@@ -1,0 +1,61 @@
+{
+  "id": "floor_old_family_manor_pass",
+  "title": "旧家の屋敷(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "old_family_manor",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "",
+      "text": "蔦に覆われた古い屋敷。門の奥から、一人の女性が現れた。",
+      "next": 1
+    },
+    {
+      "side": "left",
+      "name": "イザベラ",
+      "text": "探索者の方ね。……ヴァルモン家は、もう名ばかりの家。それでも家名だけは、貴族街の門番にまだ通じるのよ。",
+      "next": 2
+    },
+    {
+      "side": "left",
+      "name": "イザベラ",
+      "text": "あの奥に、父が遺したものがあるの。わたしを連れて行ってくれる？",
+      "next": 3
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "イザベラ・ヴァルモン(旧家の血筋)が仲間に加わった。パーティに加えれば、貴族街の門を通れるはずだ。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": [
+    {
+      "on": "pass",
+      "type": "join",
+      "name": "イザベラ・ヴァルモン",
+      "bloodline": "旧家の血筋",
+      "job": "SAGE",
+      "portrait": "char_40",
+      "skills": {
+        "WISDOM": 4,
+        "PERCEPTION": 2,
+        "HEALING": 2,
+        "COMBAT": 1
+      }
+    },
+    {
+      "on": "pass",
+      "type": "set_flag",
+      "flag": "isabella_joined",
+      "value": true
+    }
+  ]
+}

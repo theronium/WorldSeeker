@@ -70,6 +70,12 @@ select.target { max-width: 320px; }
 .and { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
 .rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .cond-row, .choice-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* 効果「探索者が加入する」: 肖像の選択(小さな見本付き)と、初期スキルLvの並び */
+.join-portrait-box { display: inline-flex; align-items: center; gap: 4px; }
+.join-portrait { width: 32px; height: 32px; border-radius: 4px; object-fit: cover; }
+.skill-levels { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.skill-levels label { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
+.skill-levels input.num { width: 44px; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip { padding: 2px 10px; border-radius: 12px; font-size: 12.5px; }
 .chip.pass { border-color: #2f6b4d; color: #c7f0d8; }

@@ -24,6 +24,9 @@
     ...Object.entries(KIND_STYLES).map(([value, s]) => ({ value, label: s.label })),
   ];
   const SKILL_NAMES = { WISDOM: '知恵', LOCKPICKING: '鍵開け', DESTRUCTION: '破壊', PERCEPTION: '知覚/発見', COMBAT: '戦闘力', HEALING: '回復' };
+  // 効果「探索者が加入する」で選べる血筋と職業(ゲームのRecruitment.BLOODLINES・Jobs.Jobと同じ)
+  const BLOODLINES = ['平民', '旧家の血筋', '森人の血', '王家の落胤'];
+  const JOB_NAMES = { WARRIOR: '戦士', HEAVY_WARRIOR: '重戦士', THIEF: '盗賊', SAGE: '賢者', SCOUT: '斥候' };
   const SIDES = [{ value: 'left', label: '左(人物)' }, { value: 'right', label: '右(敵)' }, { value: 'none', label: 'なし(語り)' }];
   const SYSTEM_SCENES = [
     { value: 'intro_part1', label: '導入・前編(新規プレイの開始直後。シナリオごとに一度きり)' },
@@ -44,6 +47,9 @@
     { type: 'funds', label: '資金を増減', fields: [{ key: 'amount', kind: 'int', default: 100 }] },
     { type: 'grant_item', label: 'アイテムを渡す', fields: [{ key: 'item', kind: 'item' }] },
     { type: 'open_floor', label: 'フロアを開放(突破済みにする)', fields: [{ key: 'floor', kind: 'floor' }] },
+    // 物語上の加入なので、雇用上限を超えても加わる。肖像は探索者の画像(char_XX)。空なら血筋から自動で選ぶ
+    { type: 'join', label: '探索者が加入する', fields: [{ key: 'name', kind: 'text' }, { key: 'bloodline', kind: 'bloodline', default: '平民' },
+      { key: 'job', kind: 'job', default: 'WARRIOR' }, { key: 'portrait', kind: 'portrait' }, { key: 'skills', kind: 'skills' }] },
   ];
   const EVENT_ID = /^[a-z0-9][a-z0-9_]{0,80}$/;
   const POOL_SIZE = 32;
@@ -314,6 +320,7 @@
       case 'funds': return e.amount >= 0 ? `資金 +${e.amount}` : `資金 ${e.amount}`;
       case 'grant_item': return `アイテム「${idx.items.get(e.item) ? idx.items.get(e.item).name : e.item}」を渡す`;
       case 'open_floor': return `「${idx.floors.get(e.floor) ? idx.floors.get(e.floor).name : e.floor}」を開放する`;
+      case 'join': return `探索者「${e.name}」(${e.bloodline}・${JOB_NAMES[e.job] || e.job})が加入する`;
       default: return `(不明な効果: ${e.type})`;
     }
   }
@@ -399,6 +406,16 @@
       if (eff.type === 'funds' && (!Number.isInteger(eff.amount) || eff.amount === 0)) warn('資金の増減は、0以外の整数にしてください');
       if (eff.type === 'grant_item' && !idx.items.has(eff.item)) warn(`アイテムが定義されていません: ${eff.item}`);
       if (eff.type === 'open_floor' && !idx.floors.has(eff.floor)) err(`開放するフロアが存在しません: ${eff.floor}`);
+      if (eff.type === 'join') {
+        if (!String(eff.name || '').trim()) err('加入する探索者の名前が空です');
+        if (!BLOODLINES.includes(eff.bloodline)) warn(`加入する探索者の血筋が、ゲームの4種にありません: ${eff.bloodline}(ゲートの判定には、そのまま使われます)`);
+        if (!JOB_NAMES[eff.job]) err(`加入する探索者の職業が正しくありません: ${eff.job}`);
+        if (eff.portrait && (!eff.portrait.startsWith('char_') || (ctx.library && !ctx.library.has(eff.portrait)))) warn(`加入する探索者の肖像は、探索者の画像(char_XX)から選んでください(今の指定では、血筋から自動で選ばれます): ${eff.portrait}`);
+        for (const [key, level] of Object.entries(eff.skills || {})) {
+          if (!SKILL_NAMES[key]) warn(`加入する探索者の技能に、不明なものがあります: ${key}`);
+          else if (!Number.isInteger(level) || level < 0) warn(`加入する探索者の技能「${SKILL_NAMES[key]}」のLvは、0以上の整数にしてください`);
+        }
+      }
     }
 
     // 画像の指定
@@ -437,7 +454,7 @@
   }
 
   return {
-    KIND_STYLES, KIND_OPTIONS, SKILL_NAMES, SIDES, SYSTEM_SCENES, CONDITION_TYPES, EFFECT_TYPES, EVENT_ID,
+    KIND_STYLES, KIND_OPTIONS, SKILL_NAMES, BLOODLINES, JOB_NAMES, SIDES, SYSTEM_SCENES, CONDITION_TYPES, EFFECT_TYPES, EVENT_ID,
     godotHash, fallbackImage, resolveImage, worldIndex, autoKind, gateSummary, effectiveKind,
     clone, normalizeSequential, insertLine, deleteLine, moveLine, defaultLine, stepTarget, edgesOf, reachable, endOutcomes, usedSpeakers,
     canonicalLine, canonicalEvent, uniqueId, newGateEvent, newConditionEvent, newSystemEvent,

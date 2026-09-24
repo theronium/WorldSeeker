@@ -11,6 +11,8 @@ extends Node
 # 会話が終わると、発生済みに記録し、その結果コード(outcome)に合う効果(effects)を適用する。
 
 ## 会話を開いた直後に出る。画面(main.gd)が、イベントの起きた場所へマップの表示を移すために聞く(event_locationで場所を引く)。
+## 効果「探索者が加入する」で探索者が加わった(main.gdが、探索者・パーティの一覧を更新する)
+signal joined(npc_id: int)
 signal event_started(event: Dictionary)
 
 var info: Dictionary = {} # シナリオの基本情報(id, source, name, ...)
@@ -226,6 +228,8 @@ func apply_effects(event: Dictionary, outcome: String) -> void:
 					_post(day, "「%s」: %d資金を失った" % [event["title"], paid], "「%s」の一件で、%d資金も失くしたんだとさ。災難だねえ" % [event["title"], paid])
 			"grant_item":
 				_grant_item(event, String(effect["item"]), day)
+			"join":
+				_join(event, effect, day)
 			"open_floor":
 				var floor_id := String(effect["floor"])
 				if WorldMap.nodes.has(floor_id) and not WorldMap.is_passed(floor_id):
@@ -245,6 +249,30 @@ func _grant_item(event: Dictionary, item_id: String, day: int) -> void:
 			return
 
 ## textは行動ログ(報告調)、board_textは掲示板(噂話の口語調)の文。
+## 効果「探索者が加入する」(2026-09-24)。シナリオに書いた名前・血筋・職業・肖像・初期スキルの探索者を、雇用上限を
+## 超えても加入させる(物語上の加入なので、枠が空くのを待たない。上限を超えている間は、次の雇用ができないだけ)。
+## 雇用と同じく、どのパーティにも入っていない状態で加わる。職業・スキルの名前はenumのキー(SAGE・WISDOMなど)。
+## 知らない職業は戦士、知らないスキルは無視する(取り込み時の検査で弾くのは、必須のキーの有無と型まで)。
+func _join(event: Dictionary, effect: Dictionary, day: int) -> void:
+	var job_key := String(effect["job"])
+	var job: int = int(Jobs.Job[job_key]) if Jobs.Job.has(job_key) else Jobs.Job.WARRIOR
+	var skills := {}
+	var skill_levels = effect.get("skills", {})
+	if skill_levels is Dictionary:
+		for key in skill_levels.keys():
+			if SkillTypes.Skill.has(String(key)):
+				skills[int(SkillTypes.Skill[String(key)])] = int(skill_levels[key])
+	var bloodline := String(effect["bloodline"])
+	var npc_name := String(effect["name"])
+	# 探索者の肖像は、探索者用の画像(char_XX)だけ(res://assets/portraits/にあるもの)。それ以外・空なら、血筋から選ぶ
+	var portrait := String(effect.get("portrait", ""))
+	if not portrait.begins_with("char_") or not ResourceLoader.exists(PortraitLibrary.texture_path(portrait)):
+		portrait = ""
+	var npc_id: int = Npcs.hire(npc_name, {"bloodline": bloodline}, skills, job, portrait)
+	_post(day, "「%s」: %s(%s・%s)が仲間に加わった" % [event["title"], npc_name, bloodline, Jobs.JOB_NAMES.get(job, "")],
+		"%sって人が、探索者の一団に加わったらしいよ。%sだって噂だ" % [npc_name, bloodline])
+	joined.emit(npc_id)
+
 func _post(day: int, text: String, board_text: String) -> void:
 	Board.post(day, board_text, Board.Importance.MAJOR, "scenario_event", Board.Scope.WORLD)
 	ActionLog.record(day, "scenario_event", text)

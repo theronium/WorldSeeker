@@ -1,0 +1,60 @@
+{
+  "id": "floor_hidden_villa_pass",
+  "title": "離宮の隠れ家(突破)",
+  "trigger": {
+    "type": "gate",
+    "floor": "hidden_villa",
+    "result": "pass"
+  },
+  "conditions": [],
+  "repeat": false,
+  "priority": 0,
+  "kind": "auto",
+  "script": [
+    {
+      "side": "none",
+      "name": "",
+      "text": "大聖堂の裏手に、人目を避けるように建つ小さな館がある。",
+      "next": 1
+    },
+    {
+      "side": "left",
+      "name": "リュシアン",
+      "text": "旧家の者と一緒か……なら、話してもいいだろう。",
+      "next": 2
+    },
+    {
+      "side": "left",
+      "name": "リュシアン",
+      "text": "俺の出自は、この国では知られるわけにはいかない。いずれ消される前に、国境を越えてレインヴェールへ行きたい。",
+      "next": 3
+    },
+    {
+      "side": "none",
+      "name": "",
+      "text": "リュシアン(王家の落胤)が仲間に加わった。彼の血筋なら、国境の関所を通れるはずだ。",
+      "outcome": "pass"
+    }
+  ],
+  "effects": [
+    {
+      "on": "pass",
+      "type": "join",
+      "name": "リュシアン",
+      "bloodline": "王家の落胤",
+      "job": "HEAVY_WARRIOR",
+      "portrait": "char_26",
+      "skills": {
+        "COMBAT": 4,
+        "DESTRUCTION": 3,
+        "PERCEPTION": 1
+      }
+    },
+    {
+      "on": "pass",
+      "type": "set_flag",
+      "flag": "lucien_joined",
+      "value": true
+    }
+  ]
+}

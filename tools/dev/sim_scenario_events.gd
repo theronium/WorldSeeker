@@ -93,8 +93,8 @@ func _run() -> void:
 	var portraits = load("res://scripts/event_portraits.gd")
 
 	# --- 起動時のデフォルトシナリオ ---
-	_check("起動時: デフォルトシナリオを読み込んだ", scenario.info.get("id", "") == "default" and world_map.nodes.size() == 194, str(world_map.nodes.size()))
-	_check("起動時: 会話170本(案内4含む)", scenario.events.size() == 170, str(scenario.events.size()))
+	_check("起動時: デフォルトシナリオを読み込んだ", scenario.info.get("id", "") == "default" and world_map.nodes.size() == 196, str(world_map.nodes.size()))
+	_check("起動時: 会話172本(案内4含む)", scenario.events.size() == 172, str(scenario.events.size()))
 	_check("起動時: 案内会話(intro_part1)が引ける", not scenario.system_event("intro_part1").is_empty())
 	_check("起動時: 登場人物表(案内人=npc_01)", scenario.cast_image("案内人") == "npc_01")
 	_check("起動時: 1つ目のフロアは初期突破済み", world_map.is_passed("village"))
@@ -177,7 +177,7 @@ func _run() -> void:
 	_check("導入: デフォルトの記録は従来のキー(state/tutorial_intro_seen)に付く", ConfigFile.new().load(save.META_PATH) == OK and bool(_cfg_value(save.META_PATH, "state", "tutorial_intro_seen")))
 	save.reset_tutorial_flags()
 	_check("導入: リセットは今のシナリオだけ(デフォルトは未視聴に戻り、自作の記録は残る)", not save.is_tutorial_seen("intro_part1") and bool(_cfg_value(save.META_PATH, "tutorial_seen.custom.test_custom", "intro_part1")))
-	_check("別シナリオ: デフォルトの世界(194)、フラグは空、暦は0年1月", world_map.nodes.size() == 194 and scenario.flags.is_empty() and time_system.format_date() == "0年1月1日", "%d %s" % [world_map.nodes.size(), time_system.format_date()])
+	_check("別シナリオ: デフォルトの世界(196)、フラグは空、暦は0年1月", world_map.nodes.size() == 196 and scenario.flags.is_empty() and time_system.format_date() == "0年1月1日", "%d %s" % [world_map.nodes.size(), time_system.format_date()])
 	# シナリオを後から編集する(名前と、条件イベントの本数)
 	_write_custom_scenario("試験シナリオ(編集後)")
 	ScenarioStore.write_json("user://scenarios/test_custom/events/extra.json", {"id": "extra", "trigger": {"type": "conditions"}, "conditions": [], "script": [{"side": "none", "name": "", "text": "追加", "outcome": "ok"}]})
@@ -204,7 +204,7 @@ func _run() -> void:
 	_check("旧形式: 突破用の台本からgateイベントが起こる", legacy_event.get("id", "") == "floor_old_shrine_pass" and legacy_event["script"][0]["text"] == "旧形式", str(legacy_event.get("id", "")))
 	_check("旧形式: 台本の無い側は空", scenario.gate_event("old_shrine", false).is_empty())
 	_check("旧形式: 登場人物表はデフォルトのものを使う", scenario.cast_image("案内人") == "npc_01" and scenario.info.get("id", "") == "default")
-	_check("旧形式: 世界は同じ", world_map.nodes.size() == 194 and world_map.areas.keys()[0] == "kingdom")
+	_check("旧形式: 世界は同じ", world_map.nodes.size() == 196 and world_map.areas.keys()[0] == "kingdom")
 
 	_measure_load_time()
 	_completed = true

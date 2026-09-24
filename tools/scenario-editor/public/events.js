@@ -92,13 +92,46 @@
       case 'section': return refSelect(S.idx.sections, item[spec.key], (v) => { item[spec.key] = v; onchange(); });
       case 'area': return refSelect(S.idx.areas, item[spec.key], (v) => { item[spec.key] = v; onchange(); });
       case 'item': return refSelect(S.idx.items, item[spec.key], (v) => { item[spec.key] = v; onchange(); });
+      case 'text': return textInput(item[spec.key] || '', (v) => { item[spec.key] = v; onchange(); }, { placeholder: '名前' });
+      case 'bloodline': return select(L.BLOODLINES.map((b) => ({ value: b, label: b })), item[spec.key], (v) => { item[spec.key] = v; onchange(); });
+      case 'job': return select(Object.entries(L.JOB_NAMES).map(([value, label]) => ({ value, label })), item[spec.key], (v) => { item[spec.key] = v; onchange(); });
+      case 'portrait': return portraitSelect(item, spec.key, onchange);
+      case 'skills': return skillLevels(item, spec.key, onchange);
       default: return h('span', {}, '?');
     }
+  }
+
+  // 加入する探索者の肖像: 探索者の画像(char_XX)から選ぶ。空なら、ゲームが血筋から自動で選ぶ
+  function portraitSelect(item, key, onchange) {
+    const preview = h('img', { class: 'join-portrait', alt: '' });
+    const show = () => { preview.src = item[key] ? imageUrl(item[key]) : ''; preview.style.visibility = item[key] ? 'visible' : 'hidden'; };
+    const ids = (S.library || []).filter((i) => i.group === 'char').map((i) => i.id);
+    if (item[key] && !ids.includes(item[key])) ids.unshift(item[key]);
+    const el = select([{ value: '', label: '(肖像: 血筋から自動)' }, ...ids.map((id) => ({ value: id, label: id }))], item[key] || '', (v) => {
+      if (v) item[key] = v; else delete item[key];
+      show(); onchange();
+    });
+    show();
+    return h('span', { class: 'join-portrait-box' }, el, preview);
+  }
+
+  // 加入する探索者の初期スキルLv(0なら書かない)
+  function skillLevels(item, key, onchange) {
+    return h('span', { class: 'skill-levels' }, Object.entries(L.SKILL_NAMES).map(([skill, label]) => h('label', {}, label,
+      numberInput((item[key] || {})[skill] || 0, (v) => {
+        const levels = { ...(item[key] || {}) };
+        if (v && v > 0) levels[skill] = v; else delete levels[skill];
+        if (Object.keys(levels).length) item[key] = levels; else delete item[key];
+        onchange();
+      }, { class: 'num', min: '0' }))));
   }
 
   function defaultFieldValue(spec) {
     switch (spec.kind) {
       case 'int': return spec.default;
+      case 'text': return '';
+      case 'bloodline': return spec.default;
+      case 'job': return spec.default;
       case 'bool': return spec.default;
       case 'flag': return '';
       case 'floor': return (S.bundle.world.nodes[0] || {}).id || '';
@@ -111,7 +144,10 @@
 
   function makeItem(spec) {
     const item = { type: spec.type };
-    for (const f of spec.fields) item[f.key] = defaultFieldValue(f);
+    for (const f of spec.fields) {
+      if (f.kind === 'portrait' || f.kind === 'skills') continue; // 任意の項目(空なら書かない)
+      item[f.key] = defaultFieldValue(f);
+    }
     return item;
   }
 
