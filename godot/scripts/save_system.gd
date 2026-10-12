@@ -26,7 +26,7 @@ const META_PATH := "user://worldseeker_meta.cfg"
 const TABLES := [
 	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory", "parties", "party_members",
 	"world_progress", "section_rewards", "board_entries", "board_threads", "board_thread_entries",
-	"scenario_flags", "scenario_events_fired",
+	"scenario_flags", "scenario_events_fired", "monthly_stats",
 ]
 
 ## current_slot_idがこの値の間は「起動直後のまっさらな新規プレイ」を表し、どのスロット
@@ -227,6 +227,7 @@ func start_fresh_session() -> void:
 	Recruitment.reset()
 	Board.reset()
 	ActionLog.reset()
+	MonthlyStats.reset()
 	DailyLog.reset() # 毎日の動きはメモリだけ(セーブしない)。別のセーブの動きが混ざらないようにする
 	var starter_ids := Npcs.create_starter_roster()
 	Parties.form_party(starter_ids, "初期パーティ")
@@ -627,6 +628,7 @@ func _ensure_schema(db: SQLite) -> void:
 	# 2026-09-21追加。シナリオのイベントの進行状態(scenario_events.gd): 立っているフラグと、発生済みのイベント。
 	db.query("CREATE TABLE IF NOT EXISTS scenario_flags (flag TEXT PRIMARY KEY)")
 	db.query("CREATE TABLE IF NOT EXISTS scenario_events_fired (event_id TEXT PRIMARY KEY, count INTEGER, day INTEGER)")
+	db.query("CREATE TABLE IF NOT EXISTS monthly_stats (npc_id INTEGER PRIMARY KEY, dealt INTEGER, taken INTEGER, healed INTEGER)")
 	db.query("""CREATE TABLE IF NOT EXISTS action_log (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, day INTEGER, event_type TEXT,
 		npc_id INTEGER, node_id TEXT, section_id TEXT, text TEXT
@@ -746,6 +748,13 @@ func save_game() -> void:
 		var record: Dictionary = scenario_state["fired"][event_id]
 		db.query_with_bindings("INSERT INTO scenario_events_fired (event_id, count, day) VALUES (?, ?, ?)",
 			[event_id, record["count"], record["day"]])
+
+	# 月の集計(monthly_stats.gd)。月の途中や月末の待ちで保存・ロードしても、その月の数字が消えないようにする
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["monthly_stats_month", MonthlyStats.month_index])
+	for npc_id in MonthlyStats.stats.keys():
+		var record: Dictionary = MonthlyStats.stats[npc_id]
+		db.query_with_bindings("INSERT INTO monthly_stats (npc_id, dealt, taken, healed) VALUES (?, ?, ?, ?)",
+			[npc_id, record["dealt"], record["taken"], record["healed"]])
 
 	ActionLog.flush(db)
 
@@ -933,6 +942,13 @@ func load_game() -> bool:
 	for row in db.query_result:
 		scenario_fired[String(row["event_id"])] = {"count": int(row["count"]), "day": int(row["day"])}
 	ScenarioEvents.load_state({"flags": scenario_flags, "fired": scenario_fired})
+
+	var monthly_stats := {}
+	db.query("SELECT npc_id, dealt, taken, healed FROM monthly_stats")
+	for row in db.query_result:
+		monthly_stats[int(row["npc_id"])] = {"dealt": int(row["dealt"]), "taken": int(row["taken"]), "healed": int(row["healed"])}
+	# この機能より前のセーブにはmonthly_stats_monthが無い: -1(まだ何も記録していない)として読む
+	MonthlyStats.load_state({"month_index": int(meta.get("monthly_stats_month", -1)), "stats": monthly_stats})
 
 	db.close_db()
 	return true

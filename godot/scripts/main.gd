@@ -200,6 +200,12 @@ var advance_hint: Button
 var license_panel: PanelContainer # 左メニュー一番下の「ライセンス」ボタンで開く(内容はLicenseInfoが読み込む)
 var license_text: RichTextLabel
 
+# 月の集計画面(2026-10-08): 月末に自動で開き、探索者ごとの今月の与ダメージ・被ダメージ・回復量(MonthlyStats)を出す。
+var month_summary_panel: PanelContainer
+var month_summary_title: Label
+var month_summary_body: VBoxContainer
+var _month_summary_pending: bool = false # 月末になったが、会話・戦闘画面が開いていてまだ出せていない
+
 # 設定画面(2026-09-22): 端末ごとの設定(Settings)。BGM音量・ミュート、イベント戦闘の戦闘画面ON-OFF。
 var settings_panel: PanelContainer
 var settings_bgm_slider: HSlider
@@ -264,6 +270,7 @@ func _ready() -> void:
 	_build_battle_screen_ui()
 	_build_section_assign_ui()
 	_build_license_ui()
+	_build_month_summary_ui()
 	_build_settings_ui()
 	_build_back_hint_ui()
 	_apply_safe_area()
@@ -973,7 +980,7 @@ func _on_area_step_pressed(direction: int) -> void:
 ## 雇用/探索者管理/行動ログ/セーブ/掲示板のポップアップパネルを、他を必ず閉じた上で1つだけ開く。
 ## 遮断レイヤーも一緒に前面へ持ってきて、開いている間はマップや他のパネルを操作できなくする。
 func _open_modal(panel: PanelContainer) -> void:
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel, month_summary_panel]:
 		p.visible = (p == panel)
 	modal_blocker.visible = true
 	move_child(modal_blocker, get_child_count() - 1)
@@ -1207,6 +1214,8 @@ func _on_dialogue_finished(_outcome: String) -> void:
 	# が終わるたびにここでも確認する(下のコメント参照)。
 	if _pending_assignment_followup:
 		call_deferred("_try_show_assignment_followup_tutorial")
+	if _month_summary_pending:
+		call_deferred("_maybe_show_month_summary")
 
 ## パーティ割り当て(_assign_party_to_section)の直後に呼ぶ。導入会話・後編を、
 ## 初めて割り当てを行った時だけ再生する。割り当てはプレイヤーの明示的なクリック操作なので
@@ -1239,7 +1248,7 @@ func _close_any_modal() -> void:
 	# 時間が止まったままになる)。
 	if battle_panel.visible:
 		BattleScreen.close()
-	for p in [hire_panel, npc_panel, party_panel, shop_panel, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel]:
+	for p in [hire_panel, npc_panel, party_panel, shop_panel, slot_panel, node_detail_panel, section_assign_panel, license_panel, battle_panel, settings_panel, month_summary_panel]:
 		p.visible = false
 	modal_blocker.visible = false
 
@@ -1339,6 +1348,129 @@ func _on_open_license_pressed() -> void:
 	license_text.text = LicenseInfo.to_bbcode() # 開く時に読み込む(起動を遅くしない)
 	license_text.scroll_to_line(0)
 	_open_modal(license_panel)
+
+## 月の集計画面(2026-10-08)。月末に自動で開き、探索者ごとの今月の戦績(MonthlyStats)をパーティごとの表で出す。
+## 「次の月へ」はサイドバーのボタンと同じ動き。閉じるだけなら、時間は止まったまま(サイドバーから次の月へ進める)。
+func _build_month_summary_ui() -> void:
+	month_summary_panel = PanelContainer.new()
+	month_summary_panel.set_anchors_preset(Control.PRESET_CENTER)
+	month_summary_panel.offset_left = -320
+	month_summary_panel.offset_top = -240
+	month_summary_panel.offset_right = 320
+	month_summary_panel.offset_bottom = 240
+	month_summary_panel.visible = false
+	add_child(month_summary_panel)
+
+	var col := VBoxContainer.new()
+	month_summary_panel.add_child(col)
+
+	var header := HBoxContainer.new()
+	col.add_child(header)
+	month_summary_title = Label.new()
+	month_summary_title.add_theme_font_size_override("font_size", 18)
+	month_summary_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(month_summary_title)
+	var close_button := Button.new()
+	close_button.text = "閉じる"
+	close_button.pressed.connect(func(): _close_modal(month_summary_panel))
+	header.add_child(close_button)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 320)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	month_summary_body = VBoxContainer.new()
+	month_summary_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	month_summary_body.add_theme_constant_override("separation", 10)
+	scroll.add_child(month_summary_body)
+
+	var next_button := Button.new()
+	next_button.text = "次の月へ"
+	next_button.pressed.connect(_on_next_month_pressed)
+	col.add_child(next_button)
+
+	BattleScreen.closed.connect(func():
+		if _month_summary_pending:
+			call_deferred("_maybe_show_month_summary"))
+
+## 月末の集計画面を出す。会話や戦闘画面が開いている間は見送り、閉じた時(_on_dialogue_finished、
+## BattleScreen.closed)に呼び直す。
+func _maybe_show_month_summary() -> void:
+	if not _month_summary_pending or EventDialogue.is_active or BattleScreen.is_active:
+		return
+	_month_summary_pending = false
+	_fill_month_summary()
+	_open_modal(month_summary_panel)
+
+const MONTH_SUMMARY_COLUMNS := [["dealt", "与ダメージ"], ["taken", "被ダメージ"], ["healed", "回復"]]
+const MONTH_SUMMARY_TOP_COLOR := Color(1.0, 0.84, 0.29) # 列ごとの最大値(誰が一番か)
+
+func _fill_month_summary() -> void:
+	# 終わった月の暦(月末の待ちの間、TimeSystem.current_monthは既に次の月へ繰り上がっている)
+	var ended := TimeSystem.start_month - 1 + TimeSystem.current_month - 1
+	month_summary_title.text = "%d年%d月の集計" % [TimeSystem.start_year + ended / TimeSystem.MONTHS_PER_YEAR, ended % TimeSystem.MONTHS_PER_YEAR + 1]
+	for child in month_summary_body.get_children():
+		child.queue_free()
+
+	# パーティごとに並べる。月の途中でパーティを抜けた探索者に記録があれば、最後に「パーティ外」でまとめる
+	var groups: Array = []
+	var listed := {}
+	for party in Parties.get_parties():
+		groups.append([party["name"], party["member_ids"]])
+		for npc_id in party["member_ids"]:
+			listed[npc_id] = true
+	var others: Array = []
+	for npc_id in MonthlyStats.stats.keys():
+		var record := MonthlyStats.for_npc(npc_id)
+		if not listed.has(npc_id) and not Npcs.get_npc(npc_id).is_empty() and int(record["dealt"]) + int(record["taken"]) + int(record["healed"]) > 0:
+			others.append(npc_id)
+	if not others.is_empty():
+		groups.append(["パーティ外", others])
+
+	var top := {}
+	for column in MONTH_SUMMARY_COLUMNS:
+		top[column[0]] = 0
+	for group in groups:
+		for npc_id in group[1]:
+			var record := MonthlyStats.for_npc(npc_id)
+			for column in MONTH_SUMMARY_COLUMNS:
+				top[column[0]] = maxi(top[column[0]], int(record[column[0]]))
+
+	for group in groups:
+		var party_label := Label.new()
+		party_label.text = group[0]
+		party_label.add_theme_font_size_override("font_size", 16)
+		month_summary_body.add_child(party_label)
+		var grid := GridContainer.new()
+		grid.columns = 1 + MONTH_SUMMARY_COLUMNS.size()
+		grid.add_theme_constant_override("h_separation", 16)
+		month_summary_body.add_child(grid)
+		grid.add_child(_month_summary_cell("名前", false))
+		for column in MONTH_SUMMARY_COLUMNS:
+			grid.add_child(_month_summary_cell(column[1], true))
+		for npc_id in group[1]:
+			var npc := Npcs.get_npc(npc_id)
+			if npc.is_empty():
+				continue
+			var name_cell := _month_summary_cell(npc["name"], false)
+			name_cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(name_cell)
+			var record := MonthlyStats.for_npc(npc_id)
+			for column in MONTH_SUMMARY_COLUMNS:
+				var value := int(record[column[0]])
+				var cell := _month_summary_cell(str(value), true)
+				if value > 0 and value == top[column[0]]:
+					cell.add_theme_color_override("font_color", MONTH_SUMMARY_TOP_COLOR)
+				grid.add_child(cell)
+
+func _month_summary_cell(text: String, number: bool) -> Label:
+	var label := Label.new()
+	label.text = text
+	if number:
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		label.custom_minimum_size = Vector2(88, 0)
+	return label
 
 ## 設定画面(2026-09-22)。端末ごとの設定(Settings、セーブスロットとは無関係)を直接操作する。
 ## BGM音量・ミュートと、イベント戦闘の戦闘画面ON-OFFの2項目(配色など他の項目は優先度低のため今回は含めない)。
@@ -5015,6 +5147,9 @@ func _on_upgrade_facility_pressed() -> void:
 func _on_next_month_pressed() -> void:
 	TimeSystem.confirm_and_resume()
 	_set_next_month_shown(false)
+	_month_summary_pending = false
+	if month_summary_panel.visible:
+		_close_modal(month_summary_panel)
 
 ## 月末の集計待ちの間だけ、今日・今月のバーの位置に「次の月へ」ボタンを出す(バーは見えなくするだけで、
 ## 場所は取ったまま。メニューの高さを変えないため)。
@@ -5041,6 +5176,8 @@ func _on_day_advanced(_day: int) -> void:
 
 func _on_month_ended(_month: int) -> void:
 	_set_next_month_shown(true)
+	_month_summary_pending = true
+	call_deferred("_maybe_show_month_summary") # 月末の日の会話・戦闘画面が開いていれば、閉じてから出す
 	_refresh_funds() # 月次収入(exploration.gdのEconomy.earn())はここで確定するので反映する
 
 func _refresh_all() -> void:

@@ -198,12 +198,16 @@ func _apply_daily_healing(party: Dictionary) -> void:
 		return
 	var heal_amount := float(HEALING_BASE + HEALING_PER_LEVEL * _effective_skill_level(healer_id, SkillTypes.Skill.HEALING))
 	var healed_anyone := false
+	var healed_total := 0.0
 	for npc_id in party["member_ids"]:
 		var npc := Npcs.get_npc(npc_id)
 		if npc.is_empty() or npc["hp"] >= npc["max_hp"]:
 			continue
-		npc["hp"] = min(float(npc["max_hp"]), float(npc["hp"]) + heal_amount)
+		var hp_before := float(npc["hp"])
+		npc["hp"] = min(float(npc["max_hp"]), hp_before + heal_amount)
+		healed_total += float(npc["hp"]) - hp_before
 		healed_anyone = true
+	MonthlyStats.add(healer_id, "healed", roundi(healed_total)) # 月の集計: 担当者が実際に回復させた量(最大HPで切った分)
 	if healed_anyone:
 		Npcs.grant_skill_exp(healer_id, SkillTypes.Skill.HEALING, 1)
 

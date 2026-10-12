@@ -70,6 +70,9 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 			var enemy_before := enemy_power
 			hp -= max(1, enemy_power - combat_power)
 			enemy_power -= max(1, combat_power - enemy_power / 2)
+			# 月の集計(monthly_stats.gd)には、実際に通った分だけ数える(止めの一撃の超過分や、マイナスまで減ったHPは含めない)
+			MonthlyStats.add(npc_id, "dealt", enemy_before - maxi(enemy_power, 0))
+			MonthlyStats.add(npc_id, "taken", roundi(hp_before - maxf(hp, 0.0)))
 			var event_tag := ""
 
 			if hp / npc["max_hp"] <= policy["hp_threshold"]:
