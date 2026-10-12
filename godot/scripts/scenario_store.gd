@@ -91,6 +91,10 @@ static func load_scenario(id: String, source: String) -> Dictionary:
 		},
 		"items": [], "areas": [], "sections": [], "nodes": [], "events": [], "cast": [],
 	}
+	# 他の組織(organizations.gd)。scenario_info表は文字列しか持てないので、JSONの文字列で入れる。定義が無いシナリオには
+	# キーごと入れない(定義の無い既存のシナリオの版=ハッシュを変えないため)
+	if meta.get("organizations", null) is Array:
+		snapshot["scenario"]["organizations"] = JSON.stringify(meta["organizations"])
 	for item in world.get("items", []):
 		snapshot["items"].append({"id": String(item["id"]), "name": String(item["name"])})
 	for area in world.get("areas", []):

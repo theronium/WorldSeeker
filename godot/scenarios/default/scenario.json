@@ -5,5 +5,10 @@
   "description": "標準のシナリオ。9エリア・39セクション・196フロアのデモ規模のワールド。",
   "author": "Theronium",
   "start_year": 0,
-  "start_month": 1
+  "start_month": 1,
+  "organizations": [
+    {"id": "compass", "name": "銀の羅針盤", "style": "explore", "share": 0.3, "strength": 1.0, "growth": 0.08},
+    {"id": "hammer", "name": "鉄槌団", "style": "combat", "share": 0.2, "strength": 1.2, "growth": 0.05},
+    {"id": "lion", "name": "金獅子商会", "style": "trade", "share": 0.2, "strength": 0.9, "growth": 0.12}
+  ]
 }

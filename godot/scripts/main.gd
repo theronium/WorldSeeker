@@ -203,7 +203,14 @@ var license_text: RichTextLabel
 # 月の集計画面(2026-10-08): 月末に自動で開き、探索者ごとの今月の与ダメージ・被ダメージ・回復量(MonthlyStats)を出す。
 var month_summary_panel: PanelContainer
 var month_summary_title: Label
-var month_summary_body: VBoxContainer
+var month_summary_body: VBoxContainer # 「探索者の戦績」タブの中身
+var month_summary_stats_scroll: ScrollContainer
+var month_summary_ranking_scroll: ScrollContainer
+var month_summary_ranking_body: VBoxContainer # 「ランキング」タブの中身(organizations.gd、2026-10-12)
+var month_summary_ranking_tab: Button
+var month_summary_stats_tab: Button
+var new_game_org_input: LineEdit # 新規プレイで使う、自分の組織の名前
+var settings_org_input: LineEdit # 今のセーブの、自分の組織の名前を変える
 var _month_summary_pending: bool = false # 月末になったが、会話・戦闘画面が開いていてまだ出せていない
 
 # 設定画面(2026-09-22): 端末ごとの設定(Settings)。BGM音量・ミュート、イベント戦闘の戦闘画面ON-OFF。
@@ -1375,15 +1382,33 @@ func _build_month_summary_ui() -> void:
 	close_button.pressed.connect(func(): _close_modal(month_summary_panel))
 	header.add_child(close_button)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(0, 320)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	col.add_child(scroll)
+	# タブ: ランキング(先に見せる)/探索者の戦績
+	var tabs := HBoxContainer.new()
+	col.add_child(tabs)
+	var tab_group := ButtonGroup.new()
+	month_summary_ranking_tab = Button.new()
+	month_summary_ranking_tab.text = "🏆 ランキング"
+	month_summary_stats_tab = Button.new()
+	month_summary_stats_tab.text = "⚔️ 探索者の戦績"
+	for tab in [month_summary_ranking_tab, month_summary_stats_tab]:
+		tab.toggle_mode = true
+		tab.button_group = tab_group
+		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tabs.add_child(tab)
+	month_summary_ranking_tab.pressed.connect(func(): _show_month_summary_tab(true))
+	month_summary_stats_tab.pressed.connect(func(): _show_month_summary_tab(false))
+
+	month_summary_ranking_scroll = _month_summary_scroll(col)
+	month_summary_ranking_body = VBoxContainer.new()
+	month_summary_ranking_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	month_summary_ranking_body.add_theme_constant_override("separation", 10)
+	month_summary_ranking_scroll.add_child(month_summary_ranking_body)
+
+	month_summary_stats_scroll = _month_summary_scroll(col)
 	month_summary_body = VBoxContainer.new()
 	month_summary_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	month_summary_body.add_theme_constant_override("separation", 10)
-	scroll.add_child(month_summary_body)
+	month_summary_stats_scroll.add_child(month_summary_body)
 
 	var next_button := Button.new()
 	next_button.text = "次の月へ"
@@ -1394,6 +1419,20 @@ func _build_month_summary_ui() -> void:
 		if _month_summary_pending:
 			call_deferred("_maybe_show_month_summary"))
 
+func _month_summary_scroll(parent: Control) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 300)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	parent.add_child(scroll)
+	return scroll
+
+func _show_month_summary_tab(ranking: bool) -> void:
+	month_summary_ranking_scroll.visible = ranking
+	month_summary_stats_scroll.visible = not ranking
+	month_summary_ranking_tab.set_pressed_no_signal(ranking)
+	month_summary_stats_tab.set_pressed_no_signal(not ranking)
+
 ## 月末の集計画面を出す。会話や戦闘画面が開いている間は見送り、閉じた時(_on_dialogue_finished、
 ## BattleScreen.closed)に呼び直す。
 func _maybe_show_month_summary() -> void:
@@ -1401,6 +1440,8 @@ func _maybe_show_month_summary() -> void:
 		return
 	_month_summary_pending = false
 	_fill_month_summary()
+	_fill_month_ranking()
+	_show_month_summary_tab(true)
 	_open_modal(month_summary_panel)
 
 const MONTH_SUMMARY_COLUMNS := [["dealt", "与ダメージ"], ["taken", "被ダメージ"], ["healed", "回復"]]
@@ -1464,6 +1505,77 @@ func _fill_month_summary() -> void:
 					cell.add_theme_color_override("font_color", MONTH_SUMMARY_TOP_COLOR)
 				grid.add_child(cell)
 
+const RANKING_PLAYER_COLOR := Color(0.55, 0.88, 0.6) # 自分の組織の行
+const RANKING_UP_COLOR := Color(0.49, 0.82, 0.54)
+const RANKING_DOWN_COLOR := Color(0.88, 0.45, 0.4)
+
+## 「ランキング」タブ: 最新の確定済みの月(Organizations.latest())の順位表と、部門ごとの1位。
+func _fill_month_ranking() -> void:
+	for child in month_summary_ranking_body.get_children():
+		child.queue_free()
+	var entry := Organizations.latest()
+	if entry.is_empty():
+		var empty := Label.new()
+		empty.text = "まだ番付は出ていません(月末に発表されます)"
+		month_summary_ranking_body.add_child(empty)
+		return
+
+	var grid := GridContainer.new()
+	grid.columns = 7
+	grid.add_theme_constant_override("h_separation", 14)
+	month_summary_ranking_body.add_child(grid)
+	for heading in ["順位", "組織"]:
+		grid.add_child(_month_summary_cell(heading, false))
+	for heading in ["総合", "開拓", "稼ぎ", "戦闘"]:
+		grid.add_child(_month_summary_cell(heading, true))
+	grid.add_child(_month_summary_cell("前月", false))
+	for row in entry["rows"]:
+		var is_player: bool = row["id"] == Organizations.PLAYER_ID
+		var cells: Array[Label] = [_month_summary_cell("%d位" % row["rank"], false), _month_summary_cell(row["name"], false)]
+		cells[1].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cells[1].text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		for key in ["total", "explore", "earn", "combat"]:
+			var cell := _month_summary_cell(str(row[key]), true)
+			cell.custom_minimum_size = Vector2(56, 0)
+			cells.append(cell)
+		var previous := Organizations.previous_rank(row["id"])
+		var change_text := "―"
+		if previous != -1 and previous > row["rank"]:
+			change_text = "↑%d" % (previous - row["rank"])
+		elif previous != -1 and previous < row["rank"]:
+			change_text = "↓%d" % (row["rank"] - previous)
+		var change := _month_summary_cell(change_text, false)
+		if change_text != "―":
+			change.add_theme_color_override("font_color", RANKING_UP_COLOR if previous > row["rank"] else RANKING_DOWN_COLOR)
+		cells.append(change)
+		for i in range(cells.size()):
+			if is_player and i < 6:
+				cells[i].add_theme_color_override("font_color", RANKING_PLAYER_COLOR)
+			grid.add_child(cells[i])
+
+	var leaders := Organizations.category_leaders(entry)
+	if not leaders.is_empty():
+		var leader_title := Label.new()
+		leader_title.text = "部門別の1位"
+		leader_title.add_theme_font_size_override("font_size", 16)
+		month_summary_ranking_body.add_child(leader_title)
+		for category in Organizations.CATEGORIES:
+			if not leaders.has(category):
+				continue
+			var line := Label.new()
+			line.text = "%s: %s(%d点)" % [Organizations.CATEGORY_NAMES[category], leaders[category]["name"], leaders[category][category]]
+			if leaders[category]["id"] == Organizations.PLAYER_ID:
+				line.add_theme_color_override("font_color", MONTH_SUMMARY_TOP_COLOR)
+			month_summary_ranking_body.add_child(line)
+
+	var note := Label.new()
+	note.text = "開拓: 発見%d点・ゲート突破%d点 / 稼ぎ: 収入%d資金ごとに1点 / 戦闘: 勝利1回%d点" % [
+		Organizations.POINTS_DISCOVER, Organizations.POINTS_GATE, Organizations.FUNDS_PER_EARN_POINT, Organizations.POINTS_VICTORY]
+	note.add_theme_font_size_override("font_size", 12)
+	note.modulate = Color(1, 1, 1, 0.7)
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	month_summary_ranking_body.add_child(note)
+
 func _month_summary_cell(text: String, number: bool) -> Label:
 	var label := Label.new()
 	label.text = text
@@ -1523,11 +1635,32 @@ func _build_settings_ui() -> void:
 	settings_battle_screen_check.toggled.connect(func(pressed: bool): Settings.set_show_battle_screen(pressed))
 	col.add_child(settings_battle_screen_check)
 
+	# 自分の組織の名前(このセーブだけ。他の項目と違い、端末ごとの設定ではない)
+	var org_label := Label.new()
+	org_label.text = "組織名(このセーブ)"
+	col.add_child(org_label)
+	var org_row := HBoxContainer.new()
+	col.add_child(org_row)
+	settings_org_input = LineEdit.new()
+	settings_org_input.max_length = 20
+	settings_org_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	org_row.add_child(settings_org_input)
+	var org_button := Button.new()
+	org_button.text = "変更"
+	org_button.pressed.connect(_on_org_rename_pressed)
+	org_row.add_child(org_button)
+
 func _on_open_settings_pressed() -> void:
 	settings_bgm_slider.set_value_no_signal(Settings.bgm_volume)
 	settings_bgm_mute_check.set_pressed_no_signal(Settings.bgm_muted)
 	settings_battle_screen_check.set_pressed_no_signal(Settings.show_battle_screen)
+	settings_org_input.text = Organizations.player_name
 	_open_modal(settings_panel)
+
+func _on_org_rename_pressed() -> void:
+	var new_name := settings_org_input.text.strip_edges()
+	Organizations.player_name = new_name if new_name != "" else Organizations.DEFAULT_PLAYER_NAME
+	settings_org_input.text = Organizations.player_name
 
 ## ボタンの内側余白(上下)を小さくしたテーマ。共通テーマのボタンのスタイルを複製して、余白だけ変える。
 ## 左メニューや掲示板ウィンドウなど、縦の余裕が無い場所のControlに設定して使う。
@@ -3645,6 +3778,18 @@ func _build_slot_ui() -> void:
 	scenario_row.add_child(new_game_scenario_option)
 	_refresh_scenario_options()
 
+	# 自分の組織の名前(organizations.gd)。月末のランキングに出る。空なら既定の名前。あとから設定画面で変えられる
+	var org_row := HBoxContainer.new()
+	new_col.add_child(org_row)
+	var org_label := Label.new()
+	org_label.text = "組織名:"
+	org_row.add_child(org_label)
+	new_game_org_input = LineEdit.new()
+	new_game_org_input.placeholder_text = Organizations.DEFAULT_PLAYER_NAME
+	new_game_org_input.max_length = 20
+	new_game_org_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	org_row.add_child(new_game_org_input)
+
 	var new_game_button := Button.new()
 	new_game_button.text = "🆕 新規プレイを開始する"
 	_apply_caution_button_style(new_game_button)
@@ -3870,7 +4015,8 @@ func _on_open_slot_pressed() -> void:
 
 func _on_new_game_confirmed() -> void:
 	var entry := _selected_scenario()
-	SaveSystem.create_new_slot(slot_name_input.text.strip_edges(), String(entry.get("id", "")), String(entry.get("source", "default")))
+	SaveSystem.create_new_slot(slot_name_input.text.strip_edges(), String(entry.get("id", "")), String(entry.get("source", "default")),
+		new_game_org_input.text.strip_edges())
 	_refresh_all()
 	_close_modal(slot_panel)
 	_play_intro_if_unseen() # 遊ぶシナリオの導入会話を、そのシナリオでまだ見ていなければ流す(パネルを閉じた後: 開いたままだと会話が隠れる)

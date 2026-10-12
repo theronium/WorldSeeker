@@ -108,6 +108,7 @@ func resolve_party_encounter(party_id: int, enemy_power: int, current_day: int) 
 
 		npc["hp"] = hp
 		victor_id = npc_id # 突破報酬アイテムの受け取り手(止めを刺したメンバー)
+		Organizations.add(Organizations.PLAYER_ID, "combat", Organizations.POINTS_VICTORY) # 月のランキングの「戦闘」
 		_tag_last_round(trace, "victory") # 止めを刺したラウンドに印を付ける
 		break
 

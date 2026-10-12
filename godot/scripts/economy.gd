@@ -26,6 +26,7 @@ func spend(amount: int) -> bool:
 
 func earn(amount: int) -> void:
 	funds += amount
+	Organizations.add_player_income(amount) # 月のランキングの「稼ぎ」(organizations.gd)
 
 func recruitment_post_cost() -> int:
 	return 50

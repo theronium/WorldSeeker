@@ -27,6 +27,7 @@ const TABLES := [
 	"meta", "npcs", "npc_traits", "npc_skills", "npc_inventory", "parties", "party_members",
 	"world_progress", "section_rewards", "board_entries", "board_threads", "board_thread_entries",
 	"scenario_flags", "scenario_events_fired", "monthly_stats",
+	"organizations", "org_points", "org_history",
 ]
 
 ## current_slot_idがこの値の間は「起動直後のまっさらな新規プレイ」を表し、どのスロット
@@ -231,6 +232,7 @@ func start_fresh_session() -> void:
 	DailyLog.reset() # 毎日の動きはメモリだけ(セーブしない)。別のセーブの動きが混ざらないようにする
 	var starter_ids := Npcs.create_starter_roster()
 	Parties.form_party(starter_ids, "初期パーティ")
+	Organizations.setup_from_scenario() # 他の組織は、今のシナリオの定義から(呼び出し側が先にワールドを読み込んでおく)
 
 ## 新規スロットを作成してアクティブにする(design.md 8.2「スキーマ再プレイ」)。
 ## ワールドスキーマDB(world_schema_db.gd)経由でWorldMapを再構築するため、
@@ -238,7 +240,7 @@ func start_fresh_session() -> void:
 ## 新規プレイは常に最新のワールドスキーマ(WorldSchemaDb.current_version_id)を使う。scenario_idを渡すと、
 ## そのシナリオ(scenario_source="default"/"custom")を今の内容で読み直して使う(読めなければ、今選んでいる
 ## シナリオのまま)。省略すると、今選んでいるシナリオの、今の内容(=エディタで直した最新)を使う。
-func create_new_slot(display_name: String = "", scenario_id: String = "", scenario_source: String = "default") -> int:
+func create_new_slot(display_name: String = "", scenario_id: String = "", scenario_source: String = "default", org_name: String = "") -> int:
 	var next_id := _next_free_slot_id()
 	if current_slot_id != NO_ACTIVE_SLOT:
 		save_game() # 離れる前のスロットを保存(起動直後でまだどのスロットにも属していなければ何もしない)
@@ -248,6 +250,8 @@ func create_new_slot(display_name: String = "", scenario_id: String = "", scenar
 		WorldSchemaDb.use_scenario(String(ScenarioEvents.info.get("id", "")), String(ScenarioEvents.info.get("source", "default")))
 	WorldSchemaDb.import_into_worldmap(WorldSchemaDb.current_version_id)
 	start_fresh_session() # ワールドの読み込みの後(暦の起点などをシナリオの情報から決めるため)
+	if org_name != "":
+		Organizations.player_name = org_name
 	_set_active_slot(next_id)
 	current_slot_name = display_name
 	save_game()
@@ -629,6 +633,9 @@ func _ensure_schema(db: SQLite) -> void:
 	db.query("CREATE TABLE IF NOT EXISTS scenario_flags (flag TEXT PRIMARY KEY)")
 	db.query("CREATE TABLE IF NOT EXISTS scenario_events_fired (event_id TEXT PRIMARY KEY, count INTEGER, day INTEGER)")
 	db.query("CREATE TABLE IF NOT EXISTS monthly_stats (npc_id INTEGER PRIMARY KEY, dealt INTEGER, taken INTEGER, healed INTEGER)")
+	db.query("CREATE TABLE IF NOT EXISTS organizations (id TEXT PRIMARY KEY, order_index INTEGER, name TEXT, style TEXT, share REAL, strength REAL, growth REAL)")
+	db.query("CREATE TABLE IF NOT EXISTS org_points (org_id TEXT PRIMARY KEY, explore INTEGER, earn_funds INTEGER, combat INTEGER)")
+	db.query("CREATE TABLE IF NOT EXISTS org_history (month INTEGER, org_id TEXT, name TEXT, explore INTEGER, earn INTEGER, combat INTEGER, total INTEGER, rank INTEGER, PRIMARY KEY (month, org_id))")
 	db.query("""CREATE TABLE IF NOT EXISTS action_log (
 		id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, day INTEGER, event_type TEXT,
 		npc_id INTEGER, node_id TEXT, section_id TEXT, text TEXT
@@ -755,6 +762,22 @@ func save_game() -> void:
 		var record: Dictionary = MonthlyStats.stats[npc_id]
 		db.query_with_bindings("INSERT INTO monthly_stats (npc_id, dealt, taken, healed) VALUES (?, ?, ?, ?)",
 			[npc_id, record["dealt"], record["taken"], record["healed"]])
+
+	# 組織と月のランキング(organizations.gd)
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["org_player_name", Organizations.player_name])
+	db.query_with_bindings("INSERT INTO meta (key, value) VALUES (?, ?)", ["org_points_month", Organizations.month_index])
+	for i in range(Organizations.rivals.size()):
+		var rival: Dictionary = Organizations.rivals[i]
+		db.query_with_bindings("INSERT INTO organizations (id, order_index, name, style, share, strength, growth) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			[rival["id"], i, rival["name"], rival["style"], rival["share"], rival["strength"], rival["growth"]])
+	for org_id in Organizations.points.keys():
+		var record: Dictionary = Organizations.points[org_id]
+		db.query_with_bindings("INSERT INTO org_points (org_id, explore, earn_funds, combat) VALUES (?, ?, ?, ?)",
+			[org_id, record["explore"], record["earn_funds"], record["combat"]])
+	for entry in Organizations.history:
+		for row in entry["rows"]:
+			db.query_with_bindings("INSERT INTO org_history (month, org_id, name, explore, earn, combat, total, rank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+				[entry["month"], row["id"], row["name"], row["explore"], row["earn"], row["combat"], row["total"], row["rank"]])
 
 	ActionLog.flush(db)
 
@@ -949,6 +972,27 @@ func load_game() -> bool:
 		monthly_stats[int(row["npc_id"])] = {"dealt": int(row["dealt"]), "taken": int(row["taken"]), "healed": int(row["healed"])}
 	# この機能より前のセーブにはmonthly_stats_monthが無い: -1(まだ何も記録していない)として読む
 	MonthlyStats.load_state({"month_index": int(meta.get("monthly_stats_month", -1)), "stats": monthly_stats})
+
+	# 組織と月のランキング。この機能より前のセーブには何も無い: 他の組織は、そのセーブのシナリオの定義から作る(load_state)
+	var rivals := []
+	db.query("SELECT * FROM organizations ORDER BY order_index")
+	for row in db.query_result:
+		rivals.append({"id": String(row["id"]), "name": String(row["name"]), "style": String(row["style"]),
+			"share": float(row["share"]), "strength": float(row["strength"]), "growth": float(row["growth"])})
+	var org_points := {}
+	db.query("SELECT * FROM org_points")
+	for row in db.query_result:
+		org_points[String(row["org_id"])] = {"explore": int(row["explore"]), "earn_funds": int(row["earn_funds"]), "combat": int(row["combat"])}
+	var history := []
+	db.query("SELECT * FROM org_history ORDER BY month, rank")
+	for row in db.query_result:
+		var month := int(row["month"])
+		if history.is_empty() or history[-1]["month"] != month:
+			history.append({"month": month, "rows": []})
+		history[-1]["rows"].append({"id": String(row["org_id"]), "name": String(row["name"]), "explore": int(row["explore"]), "earn": int(row["earn"]),
+			"combat": int(row["combat"]), "total": int(row["total"]), "rank": int(row["rank"])})
+	Organizations.load_state({"player_name": String(meta.get("org_player_name", "")), "rivals": rivals, "points": org_points,
+		"month_index": int(meta.get("org_points_month", -1)), "history": history})
 
 	db.close_db()
 	return true

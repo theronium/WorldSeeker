@@ -265,6 +265,7 @@ func _has_retry_battle_event(party: Dictionary, node_id: String) -> bool:
 func _apply_retry_pass(party: Dictionary, node_id: String, result: Dictionary, current_day: int) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
 	WorldMap.mark_passed(node_id, true)
+	Organizations.add(Organizations.PLAYER_ID, "explore", Organizations.POINTS_GATE) # 月のランキングの「開拓」
 	_grant_item_reward(result["npc_id"], node)
 	var actor_name: String = Npcs.get_npc(result["npc_id"]).get("name", party["name"])
 	_post_floor(actor_name, node_id, current_day, "%sが「%s」を突破した" % [actor_name, node["name"]], "gate_pass", result["npc_id"],
@@ -461,7 +462,12 @@ func wild_discover(node_id: String, current_day: int) -> void:
 	var milestone := _capture_milestone_state(node_id)
 	WorldMap.mark_found(node_id)
 	var passed: bool = node["gate"].is_empty()
-	_finalize_discovery("野良の旅人", node_id, passed, current_day, milestone)
+	# 野良の発見は、分担率で他の組織の発見になる(organizations.gd。残りは無所属の「野良の旅人」)
+	var owner := Organizations.roll_wild_owner()
+	if owner != "":
+		Organizations.add(owner, "explore", Organizations.POINTS_DISCOVER)
+	var discoverer := "「%s」の一行" % Organizations.org_name(owner) if owner != "" else "野良の旅人"
+	_finalize_discovery(discoverer, node_id, passed, current_day, milestone)
 
 func _capture_milestone_state(node_id: String) -> Dictionary:
 	var section_id: String = WorldMap.nodes[node_id]["section"]
@@ -475,6 +481,10 @@ func _capture_milestone_state(node_id: String) -> Dictionary:
 
 func _finalize_discovery(discoverer_name: String, node_id: String, passed: bool, current_day: int, milestone: Dictionary, npc_id: int = -1) -> void:
 	var node: Dictionary = WorldMap.nodes[node_id]
+	if npc_id != -1: # 月のランキングの「開拓」(organizations.gd): 自分の組織の発見と、ゲートの突破
+		Organizations.add(Organizations.PLAYER_ID, "explore", Organizations.POINTS_DISCOVER)
+		if passed and not node["gate"].is_empty():
+			Organizations.add(Organizations.PLAYER_ID, "explore", Organizations.POINTS_GATE)
 	if passed:
 		WorldMap.mark_passed(node_id, npc_id != -1)
 		if npc_id != -1:

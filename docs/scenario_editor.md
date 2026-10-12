@@ -33,8 +33,10 @@ Gitで差分が読めるよう、JSONは整形(インデント2、キー順固�
 
 ### scenario.json
 ```json
-{"format": 1, "id": "default", "name": "小さな王国", "description": "…", "author": "", "start_year": 0, "start_month": 1}
+{"format": 1, "id": "default", "name": "小さな王国", "description": "…", "author": "", "start_year": 0, "start_month": 1,
+ "organizations": [{"id": "compass", "name": "銀の羅針盤", "style": "explore", "share": 0.3, "strength": 1.0, "growth": 0.08}]}
 ```
+`organizations`(省略可、2026-10-12)は、ランキングで競う他の組織(design.md 4.10節)。`style`は`explore`/`combat`/`trade`、`share`は野良の発見の分担率(合計が1を超えると縮める)、`strength`は強さの倍率、`growth`は毎月の成長率。省略すると既定の3組織。エディタの「シナリオの基本情報」はまだこの項目を編集できないが、保存し直しても消さない(JSONを直接書く)。
 
 ### world.json
 順序が意味を持つ(エリアの並び=難度倍率、セクションの並び=退避先の判定)ため、全て配列。
